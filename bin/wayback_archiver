@@ -1,0 +1,4 @@
+#!/usr/bin/env ruby
+
+require 'wayback_archiver'
+WaybackArchiver.archive(ARGV[0], ARGV[1])
