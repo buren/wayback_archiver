@@ -1,4 +1,12 @@
 #!/usr/bin/env ruby
 
 require 'wayback_archiver'
-WaybackArchiver.archive(ARGV[0], ARGV[1])
+
+url  = ARGV[0]
+from = ARGV[1]
+
+if from.nil?
+  WaybackArchiver.archive(url)
+else
+  WaybackArchiver.archive(url, from)
+end
