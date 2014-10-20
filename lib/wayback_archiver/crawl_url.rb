@@ -4,7 +4,8 @@ module WaybackArchiver
 
     def initialize(base_url)
       @resolved_base_url = Request.resolve_url(base_url)
-      @base_hostname     = URI.parse(@resolved_base_url).host
+      @base_hostname     = URI.parse(@resolved_base_url).hostname
+      @resolved_base_url.prepend('http://') unless @resolved_base_url.start_with?('http')
     end
 
     def absolute_url_from(raw_url, get_url)
@@ -12,7 +13,7 @@ module WaybackArchiver
       parsed_url = URI.parse(raw_url) rescue URI.parse('')  
       if parsed_url.relative?
         url_from_relative(raw_url, get_url)
-      elsif base_hostname.eql?(parsed_url.hostname)
+      elsif same_domain?(raw_url, @resolved_base_url)
         raw_url
       else
         nil
@@ -64,6 +65,10 @@ module WaybackArchiver
       dont_include.each { |pattern| return false if href.include?(pattern) }
       dont_end.each     { |pattern| return false if href.end_with?(pattern) }
       true
+    end
+
+    def same_domain?(first, second)
+      first.include?(second)
     end
   end
 end

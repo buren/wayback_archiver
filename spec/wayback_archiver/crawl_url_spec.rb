@@ -9,12 +9,12 @@ describe WaybackArchiver::CrawlUrl do
       url1 = crawl_url.send(:url_from_relative, '/path/to/resource', '')
       url3 = crawl_url.send(:url_from_relative, '', '')
       url4 = crawl_url.send(:url_from_relative, 'path/to/resource', '')
-      url5 = crawl_url.absolute_url_from('person', '')
-      expect(url).to  eq 'example.com/'
-      expect(url1).to eq 'example.com/path/to/resource'
-      expect(url3).to eq 'example.com/'
-      expect(url4).to eq 'example.com/path/to/resource'
-      expect(url5).to eq 'example.com/person'
+      url5 = crawl_url.send(:url_from_relative, 'person', '')
+      expect(url).to  eq 'http://example.com/'
+      expect(url1).to eq 'http://example.com/path/to/resource'
+      expect(url3).to eq 'http://example.com/'
+      expect(url4).to eq 'http://example.com/path/to/resource'
+      expect(url5).to eq 'http://example.com/person'
     end
 
     it 'returns correct path from current page relative url' do
@@ -24,6 +24,23 @@ describe WaybackArchiver::CrawlUrl do
       expect(url).to  eq 'http://example.com/some/path/to/resource'
       expect(url1).to eq 'http://example.com/path/to/resource'
       expect(url2).to eq 'http://example.com/path/to/resource'
+    end
+  end
+
+  describe '#absolute_url_from' do
+    it 'returns nil for urls from different domain' do
+      url = crawl_url.absolute_url_from('http://www.google.com/', '')
+      expect(url).to eq nil
+    end
+
+    it 'returns full path for relative url' do
+      url = crawl_url.absolute_url_from('/some/path', '')
+      expect(url).to eq 'http://example.com/some/path'
+    end
+
+    it 'returns full path for full url with same domain as base url' do
+      url = crawl_url.absolute_url_from('http://example.com/some/path', '')
+      expect(url).to eq 'http://example.com/some/path'
     end
   end
 
