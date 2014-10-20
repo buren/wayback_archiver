@@ -11,13 +11,14 @@ module WaybackArchiver
       all_urls.each_slice(group_size).to_a.each do |urls|
         threads << Thread.new do
           urls.each_with_index do |url, index|
-            request_url = "#{BASE_URL}#{url}"
+            resolved_url = Request.resolve_url(url)
+            request_url  = "#{BASE_URL}#{resolved_url}"
             begin
               res = Request.get_response(request_url)
-              print "#{url}    #{res.code} => #{res.message} \n"
+              puts "[#{res.code}, #{res.message}] #{resolved_url}"
             rescue Exception => e
               puts "Error message: #{e.message}"
-              puts "Failed to archive: #{url}"
+              puts "Failed to archive: #{resolved_url}"
             end
           end
         end
