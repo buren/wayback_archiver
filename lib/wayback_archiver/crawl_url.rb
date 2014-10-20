@@ -25,18 +25,18 @@ module WaybackArchiver
       if url.start_with?('/')
         "#{without_path_suffix(resolved_base_url)}#{url}"
       elsif url.start_with?('../')
-        "#{current_page_url}#{url_from_dotted_url(url, current_page_url)}"
+        "#{url_from_dotted_url(url, current_page_url)}"
       else
         "#{with_path_suffix(resolved_base_url)}#{url}"
       end
     end
 
     def url_from_dotted_url(url, current_page_url)
-      absolute_url = current_page_url.dup
+      absolute_url = with_path_suffix(current_page_url.dup)
       found_dots   = without_path_suffix(url).scan('../').length
       removed_dots = 0
       max_levels   = 4
-      while found_dots > removed_dots && max_levels > removed_dots
+      while found_dots >= removed_dots && max_levels > removed_dots
         index = absolute_url.rindex('/') or break
         absolute_url = absolute_url[0..(index - 1)]
         removed_dots += 1

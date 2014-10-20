@@ -24,6 +24,7 @@ module WaybackArchiver
         end
       end
       threads.each(&:join)
+      puts "#{all_urls.length} URLs sent to Internet archive"
       all_urls
     end
   end
