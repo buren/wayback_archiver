@@ -23,11 +23,13 @@ module WaybackArchiver
         end
       end
       threads.each_with_index do |thread, index|
+        print_index = index + 1
         progress = '['
-        progress << '#' * index
-        progress << ' ' * (threads.length - index)
+        progress << '#' * print_index
+        progress << ' ' * (threads.length - print_index)
         progress << ']'
-        puts "[PROGRESS] #{progress} (#{index}/#{threads.length})"
+        procent = ((print_index.to_f/threads.length.to_f) * 100).round(0)
+        puts "[PROGRESS] #{progress} #{procent}% (#{print_index}/#{threads.length})"
         thread.join
       end
       all_urls
