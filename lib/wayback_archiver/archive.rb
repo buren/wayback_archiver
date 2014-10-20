@@ -6,9 +6,8 @@ module WaybackArchiver
       puts "Request will be sent with max #{MAX_THREAD_COUNT} parallel threads"
   
       puts "Total urls to be sent: #{all_urls.length}"
-      threads    = Array.new
+      threads    = []
       group_size = (all_urls.length / MAX_THREAD_COUNT) + 1
-
       all_urls.each_slice(group_size).to_a.each do |urls|
         threads << Thread.new do
           urls.each_with_index do |url, index|
@@ -23,8 +22,17 @@ module WaybackArchiver
           end
         end
       end
-      threads.each(&:join)
+      threads.each_with_index do |thread, index|
+        print_index = index + 1
+        progress = '['
+        progress << '#' * print_index
+        progress << ' ' * (threads.length - print_index)
+        progress << ']'
+        procent = ((print_index.to_f/threads.length.to_f) * 100).round(0)
+        puts "[PROGRESS] #{progress} #{procent}% (#{print_index}/#{threads.length})"
+        thread.join
+      end
+      all_urls
     end
-
   end
 end

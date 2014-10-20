@@ -14,6 +14,7 @@ Gem::Specification.new do |spec|
   spec.homepage      = 'https://github.com/buren/wayback_archiver'
   spec.license       = 'MIT'
 
+  spec.add_dependency 'nokogiri'
   spec.files         = Dir.glob("{bin,lib}/**/*")
   spec.executables   = spec.files.grep(%r{^bin/}) { |f| File.basename(f) }
   spec.test_files    = spec.files.grep(%r{^(test|spec|features)/})
