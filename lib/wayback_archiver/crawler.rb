@@ -8,16 +8,12 @@ module WaybackArchiver
       'User-Agent' => "WaybackArchiver/#{VERSION} (+#{CRAWLER_INFO_LINK})"
     }
 
-    OPTIONS = {
-      resolve: false
-    }
-
-    def initialize(url, options = {})
+    def initialize(url, resolve: false)
       base_url     = Request.resolve_url(url)
+      @options     = { resolve: resolve }
       @crawl_url   = CrawlUrl.new(base_url)
       @fetch_queue = Set.new
       @procesed    = Set.new
-      @options     = OPTIONS.merge(options)
       @fetch_queue << @crawl_url.resolved_base_url
     end
 

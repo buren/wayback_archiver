@@ -3,7 +3,7 @@ module WaybackArchiver
     MAX_THREAD_COUNT = 8
 
     def self.post(all_urls)
-      puts "Request will be sent with max #{MAX_THREAD_COUNT} parallel threads"
+      puts "Request are sent with up to #{MAX_THREAD_COUNT} parallel threads"
   
       puts "Total urls to be sent: #{all_urls.length}"
       threads    = []
