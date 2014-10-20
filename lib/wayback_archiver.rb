@@ -18,7 +18,7 @@ module WaybackArchiver
       Array(source)
     when 'file'
       Collector.urls_from_file(source)
-    when 'crawler'
+    when 'crawl', 'crawler'
       Crawler.collect_urls(source)
     else
       raise ArgumentError, "Unknown type: '#{from}'. Allowed types: sitemap, url, file, crawler"
