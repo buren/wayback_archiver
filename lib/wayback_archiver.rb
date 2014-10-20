@@ -21,7 +21,7 @@ module WaybackArchiver
     when 'crawler'
       Crawler.collect_urls(source)
     else
-      raise ArgumentError, "Unknown type: '#{from}'. Allowed types: sitemal, url, file"
+      raise ArgumentError, "Unknown type: '#{from}'. Allowed types: sitemap, url, file, crawler"
     end
     Archive.post(urls)
   end

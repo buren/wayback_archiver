@@ -17,34 +17,34 @@ module WaybackArchiver
     end
 
     def collect_urls
-      puts 'Crawling urls'
       until @fetch_queue.empty?
         url = @fetch_queue.first
         @fetch_queue.delete(@fetch_queue.first)
-        @procesed << url
-        page_links(url).each do |page_url|
-          @fetch_queue << page_url unless @procesed.include?(page_url)
-        end
+        page_links(url)
       end
       puts "Crawling finished, #{@procesed.length
       } links found"
-      @procesed
+      @procesed.to_a
     end
 
     def page_links(url)
-      puts "Queue length: #{@fetch_queue.length}, #{url}"
-      links = Nokogiri::HTML(open(url)).css('a') rescue []
-      links.map    { |link| link.attr('href') }
-           .map    { |link| sanitize_url(link) }
-           .reject { |link| link.nil? }
+      puts "Queue length: #{@fetch_queue.length}, Parsing: #{url}"
+      link_elements = Nokogiri::HTML(open(url)).css('a') rescue []
+      @procesed << url
+      link_elements.each do |link|
+        href = sanitize_url(link.attr('href'))
+        @fetch_queue << href if href && !@procesed.include?(href)
+      end
     end
 
     def sanitize_url(raw_url)
       url = URI.parse(raw_url) rescue URI.parse('')  
       if url.host.nil?
-        "#{@base_url}#{url.path}?#{url.query}"
+        sanitized_url  = "#{@base_url}#{url.path}"
+        sanitized_url += "?#{url.query}" unless url.query.nil?
+        sanitized_url
       else
-        raw_url if raw_url.include?(@base_url)
+        raw_url if raw_url.include?(@base_url) && @hostname.eql?(url.hostname)
       end
     end
   end
