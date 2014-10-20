@@ -24,6 +24,7 @@ module WaybackArchiver
         end
       end
       threads.each(&:join)
+      all_urls
     end
 
   end
