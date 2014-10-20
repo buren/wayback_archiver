@@ -2,12 +2,9 @@ module WaybackArchiver
   class Collector
     class << self
       def urls_from_sitemap(url)
-        urls     = []
-        xml_data = Request.get_response(Request.resolve_url(url)).body
-        document = REXML::Document.new(xml_data)
-
-        document.elements.each('urlset/url/loc') { |element| urls << element.text }
-        urls
+        resolved = Request.resolve_url(url)
+        sitemap  = Request.get_page(resolved)
+        sitemap.css('loc').map { |element| element.text }
       end
 
       def urls_from_crawl(url)
