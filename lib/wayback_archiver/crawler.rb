@@ -22,8 +22,7 @@ module WaybackArchiver
         @fetch_queue.delete(@fetch_queue.first)
         page_links(url)
       end
-      puts "Crawling finished, #{@procesed.length
-      } links found"
+      puts "Crawling finished, #{@procesed.length} links found"
       @procesed.to_a
     end
 
