@@ -15,22 +15,22 @@ gem install wayback_archiver
 
 Command line usage:
 ```bash
-wayback_archiver example.com               # Send each URL defined in example.com/sitemap.xml
-wayback_archiver example.com crawl         # Crawl all found links on page that has with example.com domain
-wayback_archiver example.com/some/path url # Only send example.com/some/path
-wayback_archiver /path/to/file file        # With an URL on each line
+wayback_archiver example.com crawl    # Crawl all found links on page that has with example.com domain
+wayback_archiver example.com sitemap  # Send each URL defined in example.com/sitemap.xml
+wayback_archiver example.com/path url # Only send example.com/path
+wayback_archiver /path/to/file file   # With an URL on each line
 ```
 
 Ruby usage:
 ```ruby
 require 'wayback_archiver'
-WaybackArchiver.archive('example.com', :sitemap) # Send each URL defined in example.com/sitemap.xml
 WaybackArchiver.archive('example.com', :crawl)   # Crawl all found links on page that has with example.com domain
+WaybackArchiver.archive('example.com', :sitemap) # Send each URL defined in example.com/sitemap.xml
 WaybackArchiver.archive('example.com', :url)     # Only send http://example.com/some/path
 WaybackArchiver.archive('/path/to/file', :file)  # With an URL on each line
 ```
 
-View archive: https://web.archive.org/web/*/http://example.com
+View archive: [https://web.archive.org/web/*/http://example.com](https://web.archive.org/web/*/http://example.com)
 
 ## Contributing
 
