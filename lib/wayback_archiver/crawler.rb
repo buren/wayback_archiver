@@ -13,7 +13,7 @@ module WaybackArchiver
       @options     = { resolve: resolve }
       @crawl_url   = CrawlUrl.new(base_url)
       @fetch_queue = Set.new
-      @processed    = Set.new
+      @processed   = Set.new
       @fetch_queue << @crawl_url.resolved_base_url
     end
 
