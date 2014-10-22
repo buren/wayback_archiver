@@ -10,20 +10,23 @@ Gem::Specification.new do |spec|
   spec.email         = ['burenstam@gmail.com']
 
   spec.summary       = %q{Send URLs to Wayback Machine}
-  spec.description   = %q{Send URLs to Wayback Machine. From: sitemap, file or single URL.}
+  spec.description   = %q{Send URLs to Wayback Machine. By crawling, sitemap, file or single URL.}
   spec.homepage      = 'https://github.com/buren/wayback_archiver'
   spec.license       = 'MIT'
 
-  spec.add_runtime_dependency 'nokogiri'
-  spec.add_runtime_dependency 'url_resolver'
   spec.files         = Dir.glob("{bin,lib}/**/*")
   spec.executables   = spec.files.grep(%r{^bin/}) { |f| File.basename(f) }
   spec.test_files    = spec.files.grep(%r{^(test|spec|features)/})
   spec.require_paths = ['lib']
 
-  spec.add_development_dependency 'bundler', '~> 1.3'
-  spec.add_development_dependency 'rake'
-  spec.add_development_dependency 'rspec'
-  spec.add_development_dependency 'yard'
-  spec.add_development_dependency 'coveralls'
+  spec.required_ruby_version = '>= 1.9.3'
+
+  spec.add_runtime_dependency 'site_mapper',   '~> 0'
+  spec.add_runtime_dependency 'url_resolver',  '~> 0.1'
+
+  spec.add_development_dependency 'bundler',   '~> 1.3'
+  spec.add_development_dependency 'rake',      '~> 10.3'
+  spec.add_development_dependency 'rspec',     '~> 3.1'
+  spec.add_development_dependency 'yard',      '~> 0.8'
+  spec.add_development_dependency 'coveralls', '~> 0.7'
 end

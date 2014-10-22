@@ -3,7 +3,7 @@ require 'url_resolver' # TODO: Allow users to use any resolver
 module WaybackArchiver
   class Request
     INFO_LINK  = 'https://rubygems.org/gems/wayback_archiver'
-    USER_AGENT = "WaybackArchiver/#{VERSION} (+#{INFO_LINK})"
+    USER_AGENT = "WaybackArchiver/#{WaybackArchiver::VERSION} (+#{INFO_LINK})"
 
     class << self
       def get_page(url, document_type = :html)

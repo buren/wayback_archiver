@@ -7,7 +7,7 @@ module WaybackArchiver
       puts "Request are sent with up to #{MAX_THREAD_COUNT} parallel threads"
       puts "Total urls to be sent: #{urls.length}"
       group_size = (urls.length / MAX_THREAD_COUNT) + 1
-      urls.each_slice(group_size).to_a.map do |archive_urls|
+      urls.each_slice(group_size).to_a.map! do |archive_urls|
         Thread.new { archive_urls.each { |url| post_url(url) } }
       end.each(&:join)
       puts "#{urls.length} URLs sent to Internet archive"
