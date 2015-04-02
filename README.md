@@ -1,9 +1,8 @@
 # WaybackArchiver
-[![Code Climate](https://codeclimate.com/github/buren/wayback_archiver.png)](https://codeclimate.com/github/buren/wayback_archiver) [![Dependency Status](https://gemnasium.com/buren/wayback_archiver.svg)](https://gemnasium.com/buren/wayback_archiver)
+[![Code Climate](https://codeclimate.com/github/buren/wayback_archiver.png)](https://codeclimate.com/github/buren/wayback_archiver) [![Dependency Status](https://gemnasium.com/buren/wayback_archiver.svg)](https://gemnasium.com/buren/wayback_archiver) [![Coverage Status](https://img.shields.io/coveralls/buren/wayback_archiver.svg)](https://coveralls.io/r/buren/wayback_archiver)
  [![Gem Version](https://badge.fury.io/rb/wayback_archiver.svg)](http://badge.fury.io/rb/wayback_archiver)
 
 Send URLs to [Wayback Machine](https://archive.org/web/) from [/sitemap.xml](http://www.sitemaps.org), single URL or file with URLs. You can also ask `WaybackArchiver` to crawl your website for URLs.
-
 
 ## Installation
 Install the gem:
@@ -14,7 +13,9 @@ gem install wayback_archiver
 ## Usage
 
 Command line usage:
+
 ```bash
+wayback_archiver example.com          # Defaults to crawl
 wayback_archiver example.com crawl    # Crawl all found links on page that has with example.com domain
 wayback_archiver example.com sitemap  # Send each URL defined in example.com/sitemap.xml
 wayback_archiver example.com/path url # Only send example.com/path
@@ -22,6 +23,7 @@ wayback_archiver /path/to/file file   # With an URL on each line
 ```
 
 Ruby usage:
+
 ```ruby
 require 'wayback_archiver'
 WaybackArchiver.archive('example.com', :crawl)   # Crawl all found links on page that has with example.com domain
@@ -32,7 +34,17 @@ WaybackArchiver.archive('/path/to/file', :file)  # With an URL on each line
 
 View archive: [https://web.archive.org/web/*/http://example.com](https://web.archive.org/web/*/http://example.com)
 
+## Docs
+
+This gem is documented using `yard` (run from the root of this respository).
+
+```bash
+yard # Generates documentation to doc/
+```
+
 ## Contributing
+
+Contributions, feedback and suggestions are very welcome.
 
 1. Fork it
 2. Create your feature branch (`git checkout -b my-new-feature`)
@@ -42,5 +54,5 @@ View archive: [https://web.archive.org/web/*/http://example.com](https://web.arc
 
 ---------
 
-* Don't know what the Wayback Machine is? [Wayback Machine](https://archive.org/web/)  
+* Don't know what the Wayback Machine is? [Wayback Machine](https://archive.org/web/)
 * Don't know what a sitemap is? [http://sitemaps.org](http://www.sitemaps.org)
