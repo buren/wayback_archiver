@@ -36,7 +36,7 @@ View archive: [https://web.archive.org/web/*/http://example.com](https://web.arc
 
 ## Docs
 
-You can find the docs online on [RubyDoc](http://www.rubydoc.info/github/buren/wayback_archiver/master/WaybackArchiver/Archive).
+You can find the docs online on [RubyDoc](http://www.rubydoc.info/github/buren/wayback_archiver/master).
 
 This gem is documented using `yard` (run from the root of this respository).
 
@@ -53,6 +53,10 @@ Contributions, feedback and suggestions are very welcome.
 3. Commit your changes (`git commit -am 'Add some feature'`)
 4. Push to the branch (`git push origin my-new-feature`)
 5. Create new Pull Request
+
+## License
+
+[MIT License](LICENSE)
 
 ---------
 
