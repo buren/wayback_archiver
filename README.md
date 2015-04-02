@@ -1,6 +1,6 @@
 # WaybackArchiver
-[![Code Climate](https://codeclimate.com/github/buren/wayback_archiver.png)](https://codeclimate.com/github/buren/wayback_archiver) [![Dependency Status](https://gemnasium.com/buren/wayback_archiver.svg)](https://gemnasium.com/buren/wayback_archiver) [![Coverage Status](https://img.shields.io/coveralls/buren/wayback_archiver.svg)](https://coveralls.io/r/buren/wayback_archiver)
- [![Gem Version](https://badge.fury.io/rb/wayback_archiver.svg)](http://badge.fury.io/rb/wayback_archiver)
+[![Code Climate](https://codeclimate.com/github/buren/wayback_archiver.png)](https://codeclimate.com/github/buren/wayback_archiver) [![Docs badge](https://inch-ci.org/github/buren/wayback_archiver.svg?branch=master)](http://www.rubydoc.info/github/buren/wayback_archiver/master)
+ [![Dependency Status](https://gemnasium.com/buren/wayback_archiver.svg)](https://gemnasium.com/buren/wayback_archiver) [![Gem Version](https://badge.fury.io/rb/wayback_archiver.svg)](http://badge.fury.io/rb/wayback_archiver)
 
 Send URLs to [Wayback Machine](https://archive.org/web/) from [/sitemap.xml](http://www.sitemaps.org), single URL or file with URLs. You can also ask `WaybackArchiver` to crawl your website for URLs.
 
@@ -35,6 +35,8 @@ WaybackArchiver.archive('/path/to/file', :file)  # With an URL on each line
 View archive: [https://web.archive.org/web/*/http://example.com](https://web.archive.org/web/*/http://example.com)
 
 ## Docs
+
+You can find the docs online on [RubyDoc](http://www.rubydoc.info/github/buren/wayback_archiver/master/WaybackArchiver/Archive).
 
 This gem is documented using `yard` (run from the root of this respository).
 
