@@ -1,4 +1,4 @@
-require 'site_mapper'
+require 'spidr'
 
 require 'uri'
 require 'net/http'

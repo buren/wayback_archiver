@@ -1,3 +1,5 @@
+require 'robots'
+
 module WaybackArchiver
   # Retrive URLs from different sources
   class UrlCollector
@@ -19,7 +21,18 @@ module WaybackArchiver
       # @example Crawl URLs defined on example.com
       #    UrlCollector.crawl('http://example.com')
       def crawl(url)
-        SiteMapper.map(url, user_agent: WaybackArchiver::USER_AGENT) { |new_url| yield(new_url) if block_given? }
+        robots = ::Robots.new(WaybackArchiver::USER_AGENT)
+        urls = []
+        Spidr.site(url, ignore_exts: %w(js css jpg jpeg gif png txt)) do |spider|
+          spider.visit_urls_like { |url| robots.allowed?(url) ? true : false }
+
+          spider.every_url do |found_url|
+            url = found_url.to_s
+            urls << url
+            yield(url) if block_given?
+          end
+        end
+        urls
       end
 
       # Retrieve URLs listed in file.
