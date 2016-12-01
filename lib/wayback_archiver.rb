@@ -11,9 +11,9 @@ require 'wayback_archiver/request'
 # WaybackArchiver, send URLs to Wayback Machine. By crawling, sitemap, file or single URL.
 module WaybackArchiver
   # Link to gem on rubygems.org, part of the sent User-Agent
-  INFO_LINK  = 'https://rubygems.org/gems/wayback_archiver'
+  INFO_LINK  = 'https://rubygems.org/gems/wayback_archiver'.freeze
   # WaybackArchiver User-Agent
-  USER_AGENT = "WaybackArchiver/#{WaybackArchiver::VERSION} (+#{INFO_LINK})"
+  USER_AGENT = "WaybackArchiver/#{WaybackArchiver::VERSION} (+#{INFO_LINK})".freeze
 
   # Send URLs to Wayback Machine.
   # @return [Array] with URLs sent to the Wayback Machine.

@@ -9,7 +9,7 @@ module WaybackArchiver
     def self.sitemap(url)
       resolved = Request.resolve_url("#{url}/sitemap.xml")
       sitemap  = Request.document(resolved)
-      sitemap.css('loc').map { |element| element.text }
+      sitemap.css('loc').map(&:text)
     end
 
     # Retrieve URLs by crawling.
@@ -30,8 +30,8 @@ module WaybackArchiver
       raise ArgumentError, "No such file: #{path}" unless File.exist?(path)
       urls = []
       File.open(path).read
-        .gsub(/\r\n?/, "\n")
-        .each_line { |line| urls << line.gsub(/\n/, '').strip }
+          .gsub(/\r\n?/, "\n")
+          .each_line { |line| urls << line.delete("\n").strip }
       urls.reject(&:empty?)
     end
   end

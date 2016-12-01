@@ -41,23 +41,21 @@ module WaybackArchiver
     #    Request.resolve_url('example.com')
     def self.resolve_url(url)
       resolved = UrlResolver.resolve(url)
-      resolved = resolved.prepend('http://') unless has_protocol?(resolved)
+      resolved = resolved.prepend('http://') unless protocol?(resolved)
       resolved
     end
-
-    private
 
     # Resolve the URL, follows redirects.
     # @return [Boolean] true if string includes protocol.
     # @param [String] url to check.
     # @example Check if string includes protocol
-    #    Request.has_protocol?('example.com')
+    #    Request.protocol?('example.com')
     #    # => false
-    #    Request.has_protocol?('https://example.com')
+    #    Request.protocol?('https://example.com')
     #    # => true
-    #    Request.has_protocol?('http://example.com')
+    #    Request.protocol?('http://example.com')
     #    # => true
-    def self.has_protocol?(url)
+    def self.protocol?(url)
       url.start_with?('http://') || url.start_with?('https://')
     end
   end

@@ -2,7 +2,7 @@ module WaybackArchiver
   # Post URL(s) to Wayback Machine
   class Archive
     # Wayback Machine base URL.
-    WAYBACK_BASE_URL    = 'https://web.archive.org/save/'
+    WAYBACK_BASE_URL    = 'https://web.archive.org/save/'.freeze
     # Default concurrency for archiving URLs
     DEFAULT_CONCURRENCY = 10
     # Send URLs to Wayback Machine.
@@ -16,12 +16,15 @@ module WaybackArchiver
     def self.post(urls, options = {})
       options     = { concurrency: DEFAULT_CONCURRENCY }.merge!(options)
       concurrency = options[:concurrency]
+
       puts "Request are sent with up to #{concurrency} parallel threads"
       puts "Total urls to be sent: #{urls.length}"
+
       group_size = (urls.length / concurrency) + 1
-      urls.each_slice(group_size).to_a.map! do |archive_urls|
+      urls.each_slice(group_size).to_a.map do |archive_urls|
         Thread.new { archive_urls.each { |url| post_url(url) } }
       end.each(&:join)
+
       puts "#{urls.length} URLs sent to Internet archive"
       urls
     end
