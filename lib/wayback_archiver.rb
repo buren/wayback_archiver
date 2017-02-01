@@ -1,5 +1,3 @@
-require 'spidr'
-
 require 'uri'
 require 'net/http'
 

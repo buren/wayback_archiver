@@ -1,3 +1,4 @@
+require 'spidr'
 require 'robots'
 
 module WaybackArchiver
