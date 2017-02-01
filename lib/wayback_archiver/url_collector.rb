@@ -18,7 +18,9 @@ module WaybackArchiver
     # @example Crawl URLs defined on example.com
     #    UrlCollector.crawl('http://example.com')
     def self.crawl(url)
-      SiteMapper.map(url, user_agent: WaybackArchiver::USER_AGENT) { |new_url| yield(new_url) if block_given? }
+      SiteMapper.map(url, user_agent: WaybackArchiver::USER_AGENT) do |new_url|
+        yield(new_url) if block_given?
+      end
     end
 
     # Retrieve URLs listed in file.

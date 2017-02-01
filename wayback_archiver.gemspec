@@ -21,6 +21,9 @@ Gem::Specification.new do |spec|
 
   spec.required_ruby_version = '>= 1.9.3'
 
+  spec.add_runtime_dependency 'spidr',         '~> 0.6'
+  spec.add_runtime_dependency 'robots',        '~> 0.10'
+  spec.add_runtime_dependency 'spidr',         '~> 0.6'
   spec.add_runtime_dependency 'site_mapper',   '~> 0'
   spec.add_runtime_dependency 'url_resolver',  '~> 0.1'
 
