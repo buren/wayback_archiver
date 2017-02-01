@@ -19,16 +19,14 @@ module WaybackArchiver
     # @param [String] url domain to crawl URLs from.
     # @example Crawl URLs defined on example.com
     #    UrlCollector.crawl('http://example.com')
-    def crawl(url)
-      robots = ::Robots.new(WaybackArchiver::USER_AGENT)
+    def self.crawl(url)
       urls = []
-      Spidr.site(url, ignore_exts: %w(js css jpg jpeg gif png txt)) do |spider|
-        spider.visit_urls_like { |url| robots.allowed?(url) ? true : false }
-
-        spider.every_url do |found_url|
-          url = found_url.to_s
-          urls << url
-          yield(url) if block_given?
+      resolved_url = Request.resolve_url(url)
+      Spidr.site(resolved_url, robots: true) do |spider|
+        spider.every_html_page do |page|
+          page_url = page.url.to_s
+          urls << page_url
+          yield(page_url) if block_given?
         end
       end
       urls
