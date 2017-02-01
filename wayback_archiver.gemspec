@@ -9,12 +9,12 @@ Gem::Specification.new do |spec|
   spec.authors       = ['Jacob Burenstam']
   spec.email         = ['burenstam@gmail.com']
 
-  spec.summary       = %q{Send URLs to Wayback Machine}
-  spec.description   = %q{Send URLs to Wayback Machine. By crawling, sitemap, file or single URL.}
+  spec.summary       = 'Send URLs to Wayback Machine'
+  spec.description   = 'Send URLs to Wayback Machine. By crawling, sitemap, file or single URL.'
   spec.homepage      = 'https://github.com/buren/wayback_archiver'
   spec.license       = 'MIT'
 
-  spec.files         = Dir.glob("{bin,lib}/**/*")
+  spec.files         = Dir.glob('{bin,lib}/**/*')
   spec.executables   = spec.files.grep(%r{^bin/}) { |f| File.basename(f) }
   spec.test_files    = spec.files.grep(%r{^(test|spec|features)/})
   spec.require_paths = ['lib']
