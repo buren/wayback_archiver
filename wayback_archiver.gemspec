@@ -21,7 +21,8 @@ Gem::Specification.new do |spec|
 
   spec.required_ruby_version = '>= 1.9.3'
 
-  spec.add_runtime_dependency 'site_mapper',   '~> 0'
+  spec.add_runtime_dependency 'spidr',         '~> 0.6.0' # Crawl sites
+  spec.add_runtime_dependency 'robots',        '~> 0.1' # Needed for spidr robots support
   spec.add_runtime_dependency 'url_resolver',  '~> 0.1'
 
   spec.add_development_dependency 'bundler',   '~> 1.3'
@@ -30,4 +31,5 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency 'yard',      '~> 0.8'
   spec.add_development_dependency 'coveralls', '~> 0.7'
   spec.add_development_dependency 'redcarpet', '~> 3.2'
+  spec.add_development_dependency 'byebug', '> 0'
 end

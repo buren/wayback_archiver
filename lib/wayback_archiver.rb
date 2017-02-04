@@ -1,5 +1,3 @@
-require 'site_mapper'
-
 require 'uri'
 require 'net/http'
 

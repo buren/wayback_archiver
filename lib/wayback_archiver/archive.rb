@@ -35,14 +35,13 @@ module WaybackArchiver
     # @example Archive example.com, with default options
     #    Archive.post_url('http://example.com')
     def self.post_url(url)
-      resolved_url = Request.resolve_url(url)
-      request_url  = "#{WAYBACK_BASE_URL}#{resolved_url}"
+      request_url  = "#{WAYBACK_BASE_URL}#{url}"
       response     = Request.response(request_url)
-      puts "[#{response.code}, #{response.message}] #{resolved_url}"
-      resolved_url
+      puts "[#{response.code}, #{response.message}] #{url}"
+      url
     rescue Exception => e
       puts "Error message:     #{e.message}"
-      puts "Failed to archive: #{resolved_url}"
+      puts "Failed to archive: #{url}"
     end
   end
 end
