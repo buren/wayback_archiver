@@ -17,13 +17,11 @@ module WaybackArchiver
       options     = { concurrency: DEFAULT_CONCURRENCY }.merge!(options)
       concurrency = options[:concurrency]
 
+      puts "=== WAYBACK ARCHIVER ==="
       puts "Request are sent with up to #{concurrency} parallel threads"
       puts "Total urls to be sent: #{urls.length}"
 
-      group_size = (urls.length / concurrency) + 1
-      urls.each_slice(group_size).to_a.map do |archive_urls|
-        Thread.new { archive_urls.each { |url| post_url(url) } }
-      end.each(&:join)
+      ProcessQueue.process(urls, threads_count: concurrency) { |url| post_url(url) }
 
       puts "#{urls.length} URLs sent to Internet archive"
       urls

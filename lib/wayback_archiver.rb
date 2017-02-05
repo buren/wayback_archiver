@@ -5,6 +5,7 @@ require 'wayback_archiver/version'
 require 'wayback_archiver/url_collector'
 require 'wayback_archiver/archive'
 require 'wayback_archiver/request'
+require 'wayback_archiver/process_queue'
 
 # WaybackArchiver, send URLs to Wayback Machine. By crawling, sitemap, file or single URL.
 module WaybackArchiver
@@ -27,7 +28,7 @@ module WaybackArchiver
   def self.archive(source, type = :crawl)
     case type.to_s
     when 'file'    then Archive.post(UrlCollector.file(source))
-    when 'crawl'   then UrlCollector.crawl(source) { |url| Archive.post_url(url) }
+    when 'crawl'   then Archive.post(UrlCollector.crawl(source))
     when 'sitemap' then Archive.post(UrlCollector.sitemap(source))
     when 'url'     then Archive.post_url(Request.resolve_url(source))
     else
