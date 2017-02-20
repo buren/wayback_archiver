@@ -2,7 +2,7 @@
 [![Code Climate](https://codeclimate.com/github/buren/wayback_archiver.png)](https://codeclimate.com/github/buren/wayback_archiver) [![Docs badge](https://inch-ci.org/github/buren/wayback_archiver.svg?branch=master)](http://www.rubydoc.info/github/buren/wayback_archiver/master)
  [![Dependency Status](https://gemnasium.com/buren/wayback_archiver.svg)](https://gemnasium.com/buren/wayback_archiver) [![Gem Version](https://badge.fury.io/rb/wayback_archiver.svg)](http://badge.fury.io/rb/wayback_archiver)
 
-Send URLs to [Wayback Machine](https://archive.org/web/) from [/sitemap.xml](http://www.sitemaps.org), single URL or file with URLs. You can also ask `WaybackArchiver` to crawl your website for URLs.
+Send URLs to [Wayback Machine](https://archive.org/web/) (Internet Archive) from [/sitemap.xml](http://www.sitemaps.org), single URL or file with URLs. You can also ask `WaybackArchiver` to crawl your website for URLs.
 
 ## Installation
 Install the gem:
@@ -60,5 +60,5 @@ Contributions, feedback and suggestions are very welcome.
 
 ---------
 
-* Don't know what the Wayback Machine is? [Wayback Machine](https://archive.org/web/)
+* Don't know what the Wayback Machine (Internet Archive) is? [Wayback Machine](https://archive.org/web/)
 * Don't know what a sitemap is? [http://sitemaps.org](http://www.sitemaps.org)
