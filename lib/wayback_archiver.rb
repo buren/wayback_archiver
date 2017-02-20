@@ -28,7 +28,7 @@ module WaybackArchiver
   def self.archive(source, type = :crawl)
     case type.to_s
     when 'file'    then Archive.post(UrlCollector.file(source))
-    when 'crawl'   then Archive.post(UrlCollector.crawl(source))
+    when 'crawl'   then UrlCollector.crawl(source) { |url| Archive.post_url(url) }
     when 'sitemap' then Archive.post(UrlCollector.sitemap(source))
     when 'url'     then Archive.post_url(Request.resolve_url(source))
     else
