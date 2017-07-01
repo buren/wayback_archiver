@@ -3,6 +3,7 @@ require 'net/http'
 
 require 'concurrent'
 
+require 'wayback_archiver/null_logger'
 require 'wayback_archiver/version'
 require 'wayback_archiver/url_collector'
 require 'wayback_archiver/archive'
@@ -35,5 +36,13 @@ module WaybackArchiver
     else
       raise ArgumentError, "Unknown type: '#{type}'. Allowed types: sitemap, url, file, crawl"
     end
+  end
+
+  def self.logger=(logger)
+    @logger = logger
+  end
+
+  def self.logger
+    @logger ||= NullLogger.new
   end
 end

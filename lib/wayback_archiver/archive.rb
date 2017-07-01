@@ -14,16 +14,16 @@ module WaybackArchiver
     # @example Archive urls, using only 1 thread
     #    Archive.post(['http://example.com'], concurrency: 1)
     def self.post(urls, concurrency: DEFAULT_CONCURRENCY)
-      puts "=== WAYBACK ARCHIVER ==="
-      puts "Request are sent with up to #{concurrency} parallel threads"
-      puts "Total urls to be sent: #{urls.length}"
+      WaybackArchiver.logger.info "=== WAYBACK ARCHIVER ==="
+      WaybackArchiver.logger.info "Request are sent with up to #{concurrency} parallel threads"
+      WaybackArchiver.logger.info "Total urls to be sent: #{urls.length}"
 
       pool = Concurrent::FixedThreadPool.new(concurrency)
       urls.each do |url|
         pool.post { Archive.post_url(url) }
       end
 
-      puts "#{urls.length} URLs sent to Internet archive"
+      WaybackArchiver.logger.info "#{urls.length} URLs sent to Internet archive"
       urls
     end
 
@@ -51,11 +51,11 @@ module WaybackArchiver
     def self.post_url(url)
       request_url  = "#{WAYBACK_BASE_URL}#{url}"
       response     = Request.response(request_url)
-      puts "[#{response.code}, #{response.message}] #{url}"
+      WaybackArchiver.logger.info "[#{response.code}, #{response.message}] #{url}"
       url
     rescue Exception => e
-      puts "Error message:     #{e.message}"
-      puts "Failed to archive: #{url}"
+      WaybackArchiver.logger.error "Error message:     #{e.message}"
+      WaybackArchiver.logger.error "Failed to archive: #{url}"
     end
   end
 end
