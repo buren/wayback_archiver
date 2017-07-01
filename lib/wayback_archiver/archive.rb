@@ -4,7 +4,7 @@ module WaybackArchiver
     # Wayback Machine base URL.
     WAYBACK_BASE_URL    = 'https://web.archive.org/save/'.freeze
     # Default concurrency for archiving URLs
-    DEFAULT_CONCURRENCY = 10
+    DEFAULT_CONCURRENCY = 5
     # Send URLs to Wayback Machine.
     # @return [Array] with sent URLs.
     # @param [Array] urls URLs to send.
@@ -35,7 +35,7 @@ module WaybackArchiver
     #    WaybackArchiver.crawl('example.com')
     # @example Crawl example.com and send all URLs of the same domain with low concurrency
     #    WaybackArchiver.crawl('example.com', concurrency: 1)
-    def self.crawl(source, concurrency: 5)
+    def self.crawl(source, concurrency: DEFAULT_CONCURRENCY)
       pool = Concurrent::FixedThreadPool.new(concurrency) # X threads
 
       UrlCollector.crawl(source) do |url|
