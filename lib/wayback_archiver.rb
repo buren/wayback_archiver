@@ -7,7 +7,6 @@ require 'wayback_archiver/version'
 require 'wayback_archiver/url_collector'
 require 'wayback_archiver/archive'
 require 'wayback_archiver/request'
-require 'wayback_archiver/process_queue'
 
 # WaybackArchiver, send URLs to Wayback Machine. By crawling, sitemap, file or single URL.
 module WaybackArchiver

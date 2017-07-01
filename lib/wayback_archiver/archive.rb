@@ -9,19 +9,19 @@ module WaybackArchiver
     # @return [Array] with sent URLs.
     # @param [Array] urls URLs to send.
     # @param [Hash] options
-    # @example Archive example.com, with default options
+    # @example Archive urls, asynchronously
     #    Archive.post(['http://example.com'])
-    # @example Archive example.com, using only 1 thread
+    # @example Archive urls, using only 1 thread
     #    Archive.post(['http://example.com'], concurrency: 1)
-    def self.post(urls, options = {})
-      options     = { concurrency: DEFAULT_CONCURRENCY }.merge!(options)
-      concurrency = options[:concurrency]
-
+    def self.post(urls, concurrency: DEFAULT_CONCURRENCY)
       puts "=== WAYBACK ARCHIVER ==="
       puts "Request are sent with up to #{concurrency} parallel threads"
       puts "Total urls to be sent: #{urls.length}"
 
-      ProcessQueue.process(urls, threads_count: concurrency) { |url| post_url(url) }
+      pool = Concurrent::FixedThreadPool.new(concurrency)
+      urls.each do |url|
+        pool.post { Archive.post_url(url) }
+      end
 
       puts "#{urls.length} URLs sent to Internet archive"
       urls
