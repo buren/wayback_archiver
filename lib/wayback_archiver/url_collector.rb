@@ -27,7 +27,7 @@ module WaybackArchiver
         spider.every_html_page do |page|
           page_url = page.url.to_s
           urls << page_url
-          puts "Found: #{page_url}"
+          WaybackArchiver.logger.info "Found: #{page_url}"
           yield(page_url) if block_given?
         end
       end
