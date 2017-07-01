@@ -24,6 +24,7 @@ Gem::Specification.new do |spec|
   spec.add_runtime_dependency 'spidr',         '~> 0.6.0' # Crawl sites
   spec.add_runtime_dependency 'robots',        '~> 0.1' # Needed for spidr robots support
   spec.add_runtime_dependency 'url_resolver',  '~> 0.1'
+  spec.add_runtime_dependency 'concurrent-ruby' ,  '~> 1.0'
 
   spec.add_development_dependency 'bundler',   '~> 1.3'
   spec.add_development_dependency 'rake',      '~> 10.3'
