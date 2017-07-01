@@ -19,7 +19,7 @@ Gem::Specification.new do |spec|
   spec.test_files    = spec.files.grep(%r{^(test|spec|features)/})
   spec.require_paths = ['lib']
 
-  spec.required_ruby_version = '>= 1.9.3'
+  spec.required_ruby_version = '>= 2.0.0'
 
   spec.add_runtime_dependency 'spidr',         '~> 0.6.0' # Crawl sites
   spec.add_runtime_dependency 'robots',        '~> 0.1' # Needed for spidr robots support
