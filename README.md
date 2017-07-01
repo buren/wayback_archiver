@@ -32,6 +32,15 @@ WaybackArchiver.archive('example.com', :url)     # Only send http://example.com/
 WaybackArchiver.archive('/path/to/file', :file)  # With an URL on each line
 ```
 
+
+__Crawl__
+
+```ruby
+require 'wayback_archiver'
+WaybackArchiver.crawl('example.com') # Crawl all found links on page that has with example.com domain
+WaybackArchiver.crawl('example.com', concurrency: 3) # Crawl with specified concurrency
+```
+
 View archive: [https://web.archive.org/web/*/http://example.com](https://web.archive.org/web/*/http://example.com)
 
 ## Docs

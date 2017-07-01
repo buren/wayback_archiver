@@ -30,12 +30,24 @@ module WaybackArchiver
   def self.archive(source, type = :crawl)
     case type.to_s
     when 'file'    then Archive.post(UrlCollector.file(source))
-    when 'crawl'   then Archive.crawl(source)
+    when 'crawl'   then crawl(source)
     when 'sitemap' then Archive.post(UrlCollector.sitemap(source))
     when 'url'     then Archive.post_url(Request.resolve_url(source))
     else
       raise ArgumentError, "Unknown type: '#{type}'. Allowed types: sitemap, url, file, crawl"
     end
+  end
+
+  # Crawl site for URLs to send to the Wayback Machine.
+  # @return [Array] with URLs sent to the Wayback Machine.
+  # @param [String] source for URL(s).
+  # @param [Integer] concurrency.
+  # @example Crawl example.com and send all URLs of the same domain
+  #    WaybackArchiver.crawl('example.com') # Default concurrency is 5
+  # @example Crawl example.com and send all URLs of the same domain with low concurrency
+  #    WaybackArchiver.crawl('example.com', concurrency: 1)
+  def self.crawl(source, concurrency: Archive::DEFAULT_CONCURRENCY)
+    Archive.crawl(source, concurrency: concurrency)
   end
 
   def self.logger=(logger)
