@@ -4,27 +4,43 @@ module WaybackArchiver
     # Wayback Machine base URL.
     WAYBACK_BASE_URL    = 'https://web.archive.org/save/'.freeze
     # Default concurrency for archiving URLs
-    DEFAULT_CONCURRENCY = 10
+    DEFAULT_CONCURRENCY = 5
     # Send URLs to Wayback Machine.
     # @return [Array] with sent URLs.
     # @param [Array] urls URLs to send.
     # @param [Hash] options
-    # @example Archive example.com, with default options
+    # @example Archive urls, asynchronously
     #    Archive.post(['http://example.com'])
-    # @example Archive example.com, using only 1 thread
+    # @example Archive urls, using only 1 thread
     #    Archive.post(['http://example.com'], concurrency: 1)
-    def self.post(urls, options = {})
-      options     = { concurrency: DEFAULT_CONCURRENCY }.merge!(options)
-      concurrency = options[:concurrency]
-
+    def self.post(urls, concurrency: DEFAULT_CONCURRENCY)
       puts "=== WAYBACK ARCHIVER ==="
       puts "Request are sent with up to #{concurrency} parallel threads"
       puts "Total urls to be sent: #{urls.length}"
 
-      ProcessQueue.process(urls, threads_count: concurrency) { |url| post_url(url) }
+      pool = Concurrent::FixedThreadPool.new(concurrency)
+      urls.each do |url|
+        pool.post { Archive.post_url(url) }
+      end
 
       puts "#{urls.length} URLs sent to Internet archive"
       urls
+    end
+
+    # Send URLs to Wayback Machine by crawling the site.
+    # @return [Array] with URLs sent to the Wayback Machine.
+    # @param [String] source for URL to crawl.
+    # @param [Integer] concurrency (default is 5).
+    # @example Crawl example.com and send all URLs of the same domain
+    #    WaybackArchiver.crawl('example.com')
+    # @example Crawl example.com and send all URLs of the same domain with low concurrency
+    #    WaybackArchiver.crawl('example.com', concurrency: 1)
+    def self.crawl(source, concurrency: DEFAULT_CONCURRENCY)
+      pool = Concurrent::FixedThreadPool.new(concurrency) # X threads
+
+      UrlCollector.crawl(source) do |url|
+        pool.post { Archive.post_url(url) }
+      end
     end
 
     # Send URL to Wayback Machine.
