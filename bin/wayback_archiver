@@ -5,6 +5,8 @@ require 'wayback_archiver'
 url  = ARGV[0]
 from = ARGV[1]
 
+WaybackArchiver.logger = Logger.new(STDOUT)
+
 if from.nil?
   WaybackArchiver.archive(url)
 else
