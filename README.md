@@ -26,10 +26,10 @@ Ruby usage:
 
 ```ruby
 require 'wayback_archiver'
-WaybackArchiver.archive('example.com', :crawl)   # Crawl all found links on page that has with example.com domain
-WaybackArchiver.archive('example.com', :sitemap) # Send each URL defined in example.com/sitemap.xml
-WaybackArchiver.archive('example.com', :url)     # Only send http://example.com/some/path
-WaybackArchiver.archive('/path/to/file', :file)  # With an URL on each line
+WaybackArchiver.crawl('example.com')   # Crawl all found links on page that has with example.com domain
+WaybackArchiver.sitemap('example.com') # Send each URL defined in example.com/sitemap.xml
+WaybackArchiver.urls('example.com')    # Only send http://example.com/some/path
+WaybackArchiver.file('/path/to/file')  # With an URL on each line
 ```
 
 

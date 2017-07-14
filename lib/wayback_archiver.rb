@@ -16,8 +16,10 @@ module WaybackArchiver
   # WaybackArchiver User-Agent
   USER_AGENT = "WaybackArchiver/#{WaybackArchiver::VERSION} (+#{INFO_LINK})".freeze
 
+  class UnknownSourceTypeError < ::ArgumentError;end
+
   # Send URLs to Wayback Machine.
-  # @return [Array] with URLs sent to the Wayback Machine.
+  # @return [Array] of URLs sent to the Wayback Machine.
   # @param [String] source for URL(s).
   # @param [String/Symbol] type of source. Supported types: ['crawl', 'sitemap', 'url', 'file'].
   # @example Crawl example.com and send all URLs of the same domain
@@ -29,17 +31,18 @@ module WaybackArchiver
   #    WaybackArchiver.archive('/path/to/file', :file)
   def self.archive(source, type = :crawl)
     case type.to_s
-    when 'file'    then Archive.post(UrlCollector.file(source))
+    when 'file'    then file(source)
     when 'crawl'   then crawl(source)
-    when 'sitemap' then Archive.post(UrlCollector.sitemap(source))
-    when 'url'     then Archive.post_url(Request.resolve_url(source))
+    when 'sitemap' then sitemap(source)
+    when 'urls'    then urls(source)
+    when 'url'     then urls(source)
     else
-      raise ArgumentError, "Unknown type: '#{type}'. Allowed types: sitemap, url, file, crawl"
+      raise UnknownSourceTypeError.new("Unknown type: '#{type}'. Allowed types: sitemap, urls, url, file, crawl")
     end
   end
 
   # Crawl site for URLs to send to the Wayback Machine.
-  # @return [Array] with URLs sent to the Wayback Machine.
+  # @return [Array] of URLs sent to the Wayback Machine.
   # @param [String] source for URL(s).
   # @param [Integer] concurrency.
   # @example Crawl example.com and send all URLs of the same domain
@@ -48,6 +51,42 @@ module WaybackArchiver
   #    WaybackArchiver.crawl('example.com', concurrency: 1)
   def self.crawl(source, concurrency: Archive::DEFAULT_CONCURRENCY)
     Archive.crawl(source, concurrency: concurrency)
+  end
+
+  # Get URLs from sitemap and send found URLs to the Wayback Machine.
+  # @return [Array] of URLs sent to the Wayback Machine.
+  # @param [String] source of sitemap.
+  # @param [Integer] concurrency.
+  # @example Get example.com sitemap and archive all found URLs
+  #    WaybackArchiver.sitemap('example.com') # Default concurrency is 5
+  # @example Get example.com sitemap and archive all found URLs with low concurrency
+  #    WaybackArchiver.sitemap('example.com', concurrency: 1)
+  def self.sitemap(source, concurrency: Archive::DEFAULT_CONCURRENCY)
+    Archive.post(UrlCollector.sitemap(source), concurrency: concurrency)
+  end
+
+  # Send URL to the Wayback Machine.
+  # @return [Array] of URLs sent to the Wayback Machine.
+  # @param [Array] of URLs.
+  # @param [Integer] concurrency.
+  # @example Archive example.com
+  #    WaybackArchiver.urls('example.com')
+  # @example Archive example.com and google.com
+  #    WaybackArchiver.urls(%w(example.com google.com))
+  def self.urls(urls, concurrency: Archive::DEFAULT_CONCURRENCY)
+    Archive.post(Array(urls), concurrency: concurrency)
+  end
+
+  # Send URLs in file to the Wayback Machine.
+  # @return [Array] of URLs sent to the Wayback Machine.
+  # @param [String] of sitemap.
+  # @param [Integer] concurrency.
+  # @example Archive all URLs in file
+  #    WaybackArchiver.file('/path/to/file')
+  # @example Archive all URLs in file with low concurrency
+  #    WaybackArchiver.file(('/path/to/file', concurrency: 1)
+  def self.file(urls, concurrency: Archive::DEFAULT_CONCURRENCY)
+    Archive.post(UrlCollector.file(source))
   end
 
   def self.logger=(logger)
