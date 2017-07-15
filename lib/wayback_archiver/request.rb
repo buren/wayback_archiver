@@ -1,20 +1,8 @@
 require 'url_resolver' # TODO: Allow users to use any resolver
 
 module WaybackArchiver
-  # Request and parse HTML & XML documents
+  # Make simple HTTP requests
   class Request
-    # Get and parse HTML & XML documents.
-    # @return [Array] with links sent to the Wayback Machine.
-    # @param [String] url to retrieve and parse.
-    # @example Request and parse example.com
-    #    Request.document('example.com')
-    # @example Request and parse google.com/sitemap.xml
-    #    Request.document('google.com/sitemap.xml')
-    def self.document(url)
-      response_body = Request.response(url).body
-      Nokogiri::HTML(response_body)
-    end
-
     # Get reponse.
     # @return [Net::HTTP*] the http response.
     # @param [String] url URL to retrieve.

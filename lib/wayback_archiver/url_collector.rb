@@ -10,9 +10,15 @@ module WaybackArchiver
     # @example Get URLs defined in Sitemap for google.com
     #    UrlCollector.sitemap('https://google.com')
     def self.sitemap(url)
-      resolved = Request.resolve_url("#{url}/sitemap.xml")
-      sitemap  = Request.document(resolved)
-      sitemap.css('loc').map(&:text)
+      require 'rexml/document'
+
+      resolved_url = Request.resolve_url("#{url}/sitemap.xml")
+      xml = Request.response(resolved_url).body
+      document = REXML::Document.new(xml)
+
+      [].tap do |urls|
+        document.root.elements.each('url/loc') { |element| urls << element.text }
+      end
     end
 
     # Retrieve URLs by crawling.
