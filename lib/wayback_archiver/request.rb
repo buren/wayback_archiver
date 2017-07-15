@@ -1,4 +1,4 @@
-require 'url_resolver' # TODO: Allow users to use any resolver
+require 'url_resolver'
 
 module WaybackArchiver
   # Make simple HTTP requests

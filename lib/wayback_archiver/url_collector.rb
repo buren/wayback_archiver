@@ -1,6 +1,8 @@
 require 'spidr'
 require 'robots'
 
+require 'wayback_archiver/sitemapper'
+
 module WaybackArchiver
   # Retrive URLs from different sources
   class UrlCollector
@@ -10,15 +12,8 @@ module WaybackArchiver
     # @example Get URLs defined in Sitemap for google.com
     #    UrlCollector.sitemap('https://google.com')
     def self.sitemap(url)
-      require 'rexml/document'
-
       resolved_url = Request.resolve_url("#{url}/sitemap.xml")
-      xml = Request.response(resolved_url).body
-      document = REXML::Document.new(xml)
-
-      [].tap do |urls|
-        document.root.elements.each('url/loc') { |element| urls << element.text }
-      end
+      Sitemapper.urls(resolved_url)
     end
 
     # Retrieve URLs by crawling.
