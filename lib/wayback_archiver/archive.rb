@@ -1,46 +1,68 @@
+require 'concurrent'
+
+require 'wayback_archiver/thread_pool'
+require 'wayback_archiver/request'
+
 module WaybackArchiver
   # Post URL(s) to Wayback Machine
   class Archive
     # Wayback Machine base URL.
     WAYBACK_BASE_URL    = 'https://web.archive.org/save/'.freeze
-    # Default concurrency for archiving URLs
-    DEFAULT_CONCURRENCY = 5
+
     # Send URLs to Wayback Machine.
-    # @return [Array] with sent URLs.
-    # @param [Array] urls URLs to send.
-    # @param [Hash] options
+    # @return [Array<String>] with sent URLs.
+    # @param [Array<String>] urls to send to the Wayback Machine.
+    # @param concurrency [Integer] the default is 5
     # @example Archive urls, asynchronously
     #    Archive.post(['http://example.com'])
     # @example Archive urls, using only 1 thread
     #    Archive.post(['http://example.com'], concurrency: 1)
-    def self.post(urls, concurrency: DEFAULT_CONCURRENCY)
-      WaybackArchiver.logger.info "=== WAYBACK ARCHIVER ==="
+    def self.post(urls, concurrency: WaybackArchiver.concurrency)
+      WaybackArchiver.logger.info "Total URLs to be sent: #{urls.length}"
       WaybackArchiver.logger.info "Request are sent with up to #{concurrency} parallel threads"
-      WaybackArchiver.logger.info "Total urls to be sent: #{urls.length}"
 
-      pool = Concurrent::FixedThreadPool.new(concurrency)
+      posted_urls = Concurrent::Array.new
+      pool = ThreadPool.build(concurrency)
       urls.each do |url|
-        pool.post { Archive.post_url(url) }
+        pool.post do
+          posted_url = post_url(url)
+          posted_urls << posted_url if posted_url
+        end
       end
 
-      WaybackArchiver.logger.info "#{urls.length} URLs sent to Internet archive"
-      urls
+      pool.shutdown
+      pool.wait_for_termination
+
+      WaybackArchiver.logger.info "#{posted_urls.length} URL(s) posted to Wayback Machine"
+      posted_urls
     end
 
     # Send URLs to Wayback Machine by crawling the site.
-    # @return [Array] with URLs sent to the Wayback Machine.
+    # @return [Array<String>] with URLs sent to the Wayback Machine.
     # @param [String] source for URL to crawl.
-    # @param [Integer] concurrency (default is 5).
+    # @param concurrency [Integer] the default is 5
     # @example Crawl example.com and send all URLs of the same domain
     #    WaybackArchiver.crawl('example.com')
     # @example Crawl example.com and send all URLs of the same domain with low concurrency
     #    WaybackArchiver.crawl('example.com', concurrency: 1)
-    def self.crawl(source, concurrency: DEFAULT_CONCURRENCY)
-      pool = Concurrent::FixedThreadPool.new(concurrency) # X threads
+    def self.crawl(source, concurrency: WaybackArchiver.concurrency)
+      WaybackArchiver.logger.info "Request are sent with up to #{concurrency} parallel threads"
 
-      UrlCollector.crawl(source) do |url|
-        pool.post { Archive.post_url(url) }
+      posted_urls = Concurrent::Array.new
+      pool = ThreadPool.build(concurrency)
+
+      found_urls = URLCollector.crawl(source) do |url|
+        pool.post do
+          posted_url = post_url(url)
+          posted_urls << posted_url if posted_url
+        end
       end
+      WaybackArchiver.logger.info "Crawling of #{source} finished, found #{found_urls.length} URL(s)"
+      pool.shutdown
+      pool.wait_for_termination
+
+      WaybackArchiver.logger.info "#{posted_urls.length} URL(s) posted to Wayback Machine"
+      posted_urls
     end
 
     # Send URL to Wayback Machine.
@@ -50,12 +72,12 @@ module WaybackArchiver
     #    Archive.post_url('http://example.com')
     def self.post_url(url)
       request_url  = "#{WAYBACK_BASE_URL}#{url}"
-      response     = Request.response(request_url)
-      WaybackArchiver.logger.info "[#{response.code}, #{response.message}] #{url}"
+      response     = Request.get(request_url, follow_redirects: false)
+      WaybackArchiver.logger.info "Posted [#{response.code}, #{response.message}] #{url}"
       url
-    rescue Exception => e
-      WaybackArchiver.logger.error "Error message:     #{e.message}"
-      WaybackArchiver.logger.error "Failed to archive: #{url}"
+    rescue Request::Error => e
+      WaybackArchiver.logger.error "Failed to archive #{url}: #{e.class}, #{e.message}"
+      nil
     end
   end
 end

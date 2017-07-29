@@ -2,51 +2,41 @@ require 'spidr'
 require 'robots'
 
 require 'wayback_archiver/sitemapper'
+require 'wayback_archiver/request'
 
 module WaybackArchiver
   # Retrive URLs from different sources
-  class UrlCollector
+  class URLCollector
     # Retrieve URLs from Sitemap.
-    # @return [Array] of URLs defined in Sitemap.
+    # @return [Array<String>] of URLs defined in Sitemap.
     # @param [String] url domain to retrieve Sitemap from.
     # @example Get URLs defined in Sitemap for google.com
-    #    UrlCollector.sitemap('https://google.com')
+    #    URLCollector.sitemap('https://google.com/sitemap.xml')
     def self.sitemap(url)
-      resolved_url = Request.resolve_url("#{url}/sitemap.xml")
-      Sitemapper.urls(resolved_url)
+      Sitemapper.urls(url: Request.build_uri(url))
     end
 
     # Retrieve URLs by crawling.
-    # @return [Array] of URLs defined found during crawl.
+    # @return [Array<String>] of URLs defined found during crawl.
     # @param [String] url domain to crawl URLs from.
     # @example Crawl URLs defined on example.com
-    #    UrlCollector.crawl('http://example.com')
+    #    URLCollector.crawl('http://example.com')
     def self.crawl(url)
       urls = []
-      resolved_url = Request.resolve_url(url)
-      Spidr.site(resolved_url, robots: true) do |spider|
+      start_at_url = Request.build_uri(url).to_s
+      options = {
+        robots: true,
+        user_agent: WaybackArchiver.user_agent
+      }
+      Spidr.site(start_at_url, options) do |spider|
         spider.every_html_page do |page|
           page_url = page.url.to_s
           urls << page_url
-          WaybackArchiver.logger.info "Found: #{page_url}"
+          WaybackArchiver.logger.debug "Found: #{page_url}"
           yield(page_url) if block_given?
         end
       end
       urls
-    end
-
-    # Retrieve URLs listed in file.
-    # @return [Array] of URLs defined in file.
-    # @param [String] path to get URLs from.
-    # @example Get URLs defined in /path/to/file
-    #    UrlCollector.file('/path/to/file')
-    def self.file(path)
-      raise ArgumentError, "No such file: #{path}" unless File.exist?(path)
-      urls = []
-      File.open(path).read
-          .gsub(/\r\n?/, "\n")
-          .each_line { |line| urls << line.delete("\n").strip }
-      urls.reject(&:empty?)
     end
   end
 end
