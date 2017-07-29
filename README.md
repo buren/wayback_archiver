@@ -1,53 +1,199 @@
 # WaybackArchiver
-[![Code Climate](https://codeclimate.com/github/buren/wayback_archiver.png)](https://codeclimate.com/github/buren/wayback_archiver) [![Docs badge](https://inch-ci.org/github/buren/wayback_archiver.svg?branch=master)](http://www.rubydoc.info/github/buren/wayback_archiver/master)
+
+Post URLs to [Wayback Machine](https://archive.org/web/) (Internet Archive), using a crawler, from [Sitemap(s)](http://www.sitemaps.org), or a list of URLs.
+
+> The Wayback Machine is a digital archive of the World Wide Web [...]
+> The service enables users to see archived versions of web pages across time ...  
+> \- [Wikipedia](https://en.wikipedia.org/wiki/Wayback_Machine)
+
+[![Build Status](https://travis-ci.org/buren/wayback_archiver.svg?branch=master)](https://travis-ci.org/buren/wayback_archiver) [![Code Climate](https://codeclimate.com/github/buren/wayback_archiver.png)](https://codeclimate.com/github/buren/wayback_archiver) [![Docs badge](https://inch-ci.org/github/buren/wayback_archiver.svg?branch=master)](http://www.rubydoc.info/github/buren/wayback_archiver/master)
  [![Dependency Status](https://gemnasium.com/buren/wayback_archiver.svg)](https://gemnasium.com/buren/wayback_archiver) [![Gem Version](https://badge.fury.io/rb/wayback_archiver.svg)](http://badge.fury.io/rb/wayback_archiver)
 
-Send URLs to [Wayback Machine](https://archive.org/web/) (Internet Archive) from [/sitemap.xml](http://www.sitemaps.org), single URL or file with URLs. You can also ask `WaybackArchiver` to crawl your website for URLs.
+__Index__
+
+* [Installation](#installation)
+* [Usage](#usage)
+  - [Ruby](#ruby)
+  - [CLI](#cli)
+* [RubyDoc](#docs)
+* [Contributing](#contributing)
+* [MIT License](#license)
+* [References](#references)
 
 ## Installation
+
 Install the gem:
-```bash
-gem install wayback_archiver
+```
+$ gem install wayback_archiver
+```
+
+Or add this line to your application's Gemfile:
+
+```ruby
+gem 'wayback_archiver'
+```
+
+And then execute:
+
+```
+$ bundle
 ```
 
 ## Usage
 
-Command line usage:
+* [Ruby](#ruby)
+* [CLI](#cli)
+
+__Strategies__:
+
+* `auto` (the default) - Will try to
+    1. Find Sitemap(s) defined in `/robots.txt`
+    2. Then in common sitemap locations `/sitemap-index.xml`, `/sitemap.xml` etc.
+    3. Fallback to crawling (using the excellent [spidr](https://github.com/postmodern/spidr/) gem)
+* `sitemap` - Parse Sitemap(s), supports [index files](https://www.sitemaps.org/protocol.html#index) (and gzip)
+* `urls` - Post URL(s)
+
+## Ruby
+
+First require the gem
+
+```ruby
+require 'wayback_archiver'
+```
+
+Configuration (the below values are the defaults)
+
+```ruby
+WaybackArchiver.concurrency = 5
+WaybackArchiver.user_agent = WaybackArchiver::USER_AGENT
+WaybackArchiver.logger = Logger.new(STDOUT)
+```
+
+For a more verbose log you can configure `WaybackArchiver` as such:
+
+```ruby
+WaybackArchiver.logger = Logger.new(STDOUT).tap do |logger|
+  logger.level = Logger::DEBUG
+end
+```
+
+_Examples_:
+
+Auto
+
+```ruby
+# auto is the default
+WaybackArchiver.archive('example.com')
+
+# or explicitly
+WaybackArchiver.archive('example.com', strategy: :auto)
+```
+
+Crawl
+
+```ruby
+WaybackArchiver.archive('example.com',  strategy: :crawl)
+```
+
+Only send one single URL
+
+```ruby
+WaybackArchiver.archive('example.com', strategy: :url)
+```
+
+Send multiple URLs
+
+```ruby
+WaybackArchiver.archive(%w[example.com www.example.com], strategy: :urls)
+```
+
+Send all URL(s) found in Sitemap
+
+```ruby
+WaybackArchiver.archive('example.com/sitemap.xml', strategy: :sitemap)
+
+# works with Sitemap index files too
+WaybackArchiver.archive('example.com/sitemap-index.xml.gz', strategy: :sitemap)
+```
+
+Specify concurrency
+
+```ruby
+WaybackArchiver.archive('example.com', strategy: :auto, concurrency: 10)
+```
+
+## CLI
+
+__Usage__:
+
+```
+wayback_archiver [<url>] [options]
+```
+
+Print full usage instructions
+
+```
+wayback_archiver --help
+```
+
+_Examples_:
+
+Auto
+
+```
+# auto is the default
+wayback_archiver example.com
+
+# or explicitly
+wayback_archiver example.com --auto
+```
+
+Crawl
 
 ```bash
-wayback_archiver example.com          # Defaults to crawl
-wayback_archiver example.com crawl    # Crawl all found links on page that has with example.com domain
-wayback_archiver example.com sitemap  # Send each URL defined in example.com/sitemap.xml
-wayback_archiver example.com/path url # Only send example.com/path
-wayback_archiver /path/to/file file   # With an URL on each line
+wayback_archiver example.com --crawl
 ```
 
-Ruby usage:
+Only send one single URL
 
-```ruby
-require 'wayback_archiver'
-WaybackArchiver.crawl('example.com')   # Crawl all found links on page that has with example.com domain
-WaybackArchiver.sitemap('example.com') # Send each URL defined in example.com/sitemap.xml
-WaybackArchiver.urls('example.com')    # Only send http://example.com/some/path
-WaybackArchiver.file('/path/to/file')  # With an URL on each line
+```bash
+wayback_archiver example.com --url
 ```
 
+Send multiple URLs
 
-__Crawl__
-
-```ruby
-require 'wayback_archiver'
-WaybackArchiver.crawl('example.com') # Crawl all found links on page that has with example.com domain
-WaybackArchiver.crawl('example.com', concurrency: 3) # Crawl with specified concurrency
+```bash
+wayback_archiver example.com www.example.com --urls
 ```
 
-View archive: [https://web.archive.org/web/*/http://example.com](https://web.archive.org/web/*/http://example.com)
+Crawl multiple URLs
+
+```bash
+wayback_archiver example.com www.example.com --crawl
+```
+
+Send all URL(s) found in Sitemap
+
+```bash
+wayback_archiver example.com/sitemap.xml
+
+# works with Sitemap index files too
+wayback_archiver example.com/sitemap-index.xml.gz
+```
+
+Most options
+
+```bash
+wayback_archiver example.com www.example.com --auto --concurrency=10 --log=output.log --verbose
+```
+
+View archive: [https://web.archive.org/web/*/http://example.com](https://web.archive.org/web/*/http://example.com) (replace `http://example.com` with to your desired domain).
 
 ## Docs
 
 You can find the docs online on [RubyDoc](http://www.rubydoc.info/github/buren/wayback_archiver/master).
 
-This gem is documented using `yard` (run from the root of this respository).
+This gem is documented using `yard` (run from the root of this repository).
 
 ```bash
 yard # Generates documentation to doc/
@@ -67,7 +213,8 @@ Contributions, feedback and suggestions are very welcome.
 
 [MIT License](LICENSE)
 
----------
+## References
 
 * Don't know what the Wayback Machine (Internet Archive) is? [Wayback Machine](https://archive.org/web/)
-* Don't know what a sitemap is? [http://sitemaps.org](http://www.sitemaps.org)
+* Don't know what a Sitemap is? [sitemaps.org](http://www.sitemaps.org)
+* Don't know what robot.txt is? [www.robotstxt.org](http://www.robotstxt.org/robotstxt.html)
