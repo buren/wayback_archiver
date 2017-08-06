@@ -38,7 +38,11 @@ module WaybackArchiver
         WaybackArchiver.logger.info "Looking for Sitemap at #{path}"
         sitemap_url = [url, path].join(url.end_with?('/') ? '' : '/')
         response = Request.get(sitemap_url, raise_on_http_error: false)
-        return urls(xml: response.body) if response.success?
+
+        if response.success?
+          WaybackArchiver.logger.info "Sitemap found at #{sitemap_url}"
+          return urls(xml: response.body)
+        end
       end
 
       WaybackArchiver.logger.info "Looking for Sitemap at #{url}"

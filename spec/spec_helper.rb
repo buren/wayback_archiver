@@ -26,5 +26,7 @@ RSpec.configure do |config|
     # Set defalt concurrency to 1, so we don't have to deal with concurrency
     # issues in Webmock and rspec-mocks
     WaybackArchiver.concurrency = 1
+
+    WaybackArchiver.max_limit = WaybackArchiver::DEFAULT_MAX_LIMIT
   end
 end

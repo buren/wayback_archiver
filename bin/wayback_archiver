@@ -9,6 +9,7 @@ strategy = 'auto'
 log = STDOUT
 log_level = Logger::INFO
 concurrency = WaybackArchiver.concurrency
+limit = WaybackArchiver.max_limit
 
 optparse = OptionParser.new do |parser|
   parser.banner = 'Usage: wayback_archiver [<url>] [options]'
@@ -31,6 +32,10 @@ optparse = OptionParser.new do |parser|
 
   parser.on('--concurrency=5', Integer, 'Concurrency') do |value|
     concurrency = value
+  end
+
+  parser.on('--limit=5', Integer, 'Max number of URLs to archive') do |value|
+    limit = value
   end
 
   parser.on('--log=output.log', String, 'Path to desired log file (if no argument is given it defaults to STDOUT)') do |path|
@@ -74,5 +79,10 @@ end
 # If no strategy has explicitly been given, then default to 'auto'
 strategy ||= 'auto'
 urls.each do |url|
-  WaybackArchiver.archive(url, strategy: strategy, concurrency: concurrency)
+  WaybackArchiver.archive(
+    url,
+    strategy: strategy,
+    concurrency: concurrency,
+    limit: limit
+  )
 end

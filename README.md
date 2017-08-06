@@ -67,15 +67,19 @@ Configuration (the below values are the defaults)
 WaybackArchiver.concurrency = 5
 WaybackArchiver.user_agent = WaybackArchiver::USER_AGENT
 WaybackArchiver.logger = Logger.new(STDOUT)
+WaybackArchiver.max_limit = -1 # unlimited
 ```
 
 For a more verbose log you can configure `WaybackArchiver` as such:
 
 ```ruby
 WaybackArchiver.logger = Logger.new(STDOUT).tap do |logger|
+  logger.progname = 'WaybackArchiver'
   logger.level = Logger::DEBUG
 end
 ```
+
+_Pro tip_: If you're using the gem in a Rails app you can set `WaybackArchiver.logger = Rails.logger`.
 
 _Examples_:
 
@@ -120,6 +124,12 @@ Specify concurrency
 
 ```ruby
 WaybackArchiver.archive('example.com', strategy: :auto, concurrency: 10)
+```
+
+Specify max number of URLs to be archived
+
+```ruby
+WaybackArchiver.archive('example.com', strategy: :auto, limit: 10)
 ```
 
 ## CLI
@@ -184,7 +194,7 @@ wayback_archiver example.com/sitemap-index.xml.gz
 Most options
 
 ```bash
-wayback_archiver example.com www.example.com --auto --concurrency=10 --log=output.log --verbose
+wayback_archiver example.com www.example.com --auto --concurrency=10 --limit=100 --log=output.log --verbose
 ```
 
 View archive: [https://web.archive.org/web/*/http://example.com](https://web.archive.org/web/*/http://example.com) (replace `http://example.com` with to your desired domain).

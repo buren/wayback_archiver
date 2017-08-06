@@ -17,6 +17,14 @@ RSpec.describe WaybackArchiver::Archive do
 
       expect(described_class).to have_received(:post_url).twice
     end
+
+    it 'calls ::post_url for each URL with support for an max limit' do
+      allow(described_class).to receive(:post_url).and_return(nil)
+
+      result = described_class.post(%w[https://example.com https://example.com/path], limit: 1)
+
+      expect(described_class).to have_received(:post_url).once
+    end
   end
 
   describe '::crawl' do

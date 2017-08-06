@@ -15,6 +15,9 @@ module WaybackArchiver
   # Default concurrency for archiving URLs
   DEFAULT_CONCURRENCY = 5
 
+  # Maxmium number of links posted (-1 is no limit)
+  DEFAULT_MAX_LIMIT = -1
+
   # Send URLs to Wayback Machine.
   # @return [Array<String>] of URLs sent to the Wayback Machine.
   # @param [String/Array<String>] source for URL(s).
@@ -23,28 +26,32 @@ module WaybackArchiver
   #    WaybackArchiver.archive('example.com') # Default strategy is :auto
   #    WaybackArchiver.archive('example.com', strategy: :auto)
   #    WaybackArchiver.archive('example.com', strategy: :auto, concurrency: 10)
+  #    WaybackArchiver.archive('example.com', strategy: :auto, limit: 100) # send max 100 URLs
   #    WaybackArchiver.archive('example.com', :auto)
   # @example Crawl example.com and send all URLs of the same domain
   #    WaybackArchiver.archive('example.com', strategy: :crawl)
   #    WaybackArchiver.archive('example.com', strategy: :crawl, concurrency: 10)
+  #    WaybackArchiver.archive('example.com', strategy: :crawl, limit: 100) # send max 100 URLs
   #    WaybackArchiver.archive('example.com', :crawl)
   # @example Send example.com Sitemap URLs
   #    WaybackArchiver.archive('example.com', strategy: :sitemap)
   #    WaybackArchiver.archive('example.com', strategy: :sitemap, concurrency: 10)
+  #    WaybackArchiver.archive('example.com', strategy: :sitemap, limit: 100) # send max 100 URLs
   #    WaybackArchiver.archive('example.com', :sitemap)
   # @example Send only example.com
   #    WaybackArchiver.archive('example.com', strategy: :url)
   #    WaybackArchiver.archive('example.com', strategy: :url, concurrency: 10)
+  #    WaybackArchiver.archive('example.com', strategy: :url, limit: 100) # send max 100 URLs
   #    WaybackArchiver.archive('example.com', :url)
-  def self.archive(source, legacy_strategy = nil, strategy: :auto, concurrency: WaybackArchiver.concurrency)
+  def self.archive(source, legacy_strategy = nil, strategy: :auto, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit)
     strategy = legacy_strategy || strategy
 
     case strategy.to_s
-    when 'crawl'   then crawl(source, concurrency: concurrency)
-    when 'auto'    then auto(source, concurrency: concurrency)
-    when 'sitemap' then sitemap(source, concurrency: concurrency)
-    when 'urls'    then urls(source, concurrency: concurrency)
-    when 'url'     then urls(source, concurrency: concurrency)
+    when 'crawl'   then crawl(source, concurrency: concurrency, limit: limit)
+    when 'auto'    then auto(source, concurrency: concurrency, limit: limit)
+    when 'sitemap' then sitemap(source, concurrency: concurrency, limit: limit)
+    when 'urls'    then urls(source, concurrency: concurrency, limit: limit)
+    when 'url'     then urls(source, concurrency: concurrency, limit: limit)
     else
       raise ArgumentError, "Unknown strategy: '#{strategy}'. Allowed strategies: sitemap, urls, url, crawl"
     end
@@ -59,8 +66,10 @@ module WaybackArchiver
   #    WaybackArchiver.auto('example.com') # Default concurrency is 5
   # @example Auto archive example.com with low concurrency
   #    WaybackArchiver.auto('example.com', concurrency: 1)
+  # @example Auto archive example.com and archive max 100 URLs
+  #    WaybackArchiver.auto('example.com', limit: 100)
   # @see http://www.sitemaps.org
-  def self.auto(source, concurrency: WaybackArchiver.concurrency)
+  def self.auto(source, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit)
     urls = Sitemapper.autodiscover(source)
     return urls(urls, concurrency: concurrency) if urls.any?
 
@@ -75,9 +84,11 @@ module WaybackArchiver
   #    WaybackArchiver.crawl('example.com') # Default concurrency is 5
   # @example Crawl example.com and send all URLs of the same domain with low concurrency
   #    WaybackArchiver.crawl('example.com', concurrency: 1)
-  def self.crawl(url, concurrency: WaybackArchiver.concurrency)
+  # @example Crawl example.com and archive max 100 URLs
+  #    WaybackArchiver.crawl('example.com', limit: 100)
+  def self.crawl(url, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit)
     WaybackArchiver.logger.info "Crawling #{url}"
-    Archive.crawl(url, concurrency: concurrency)
+    Archive.crawl(url, concurrency: concurrency, limit: limit)
   end
 
   # Get URLs from sitemap and send found URLs to the Wayback Machine.
@@ -88,10 +99,12 @@ module WaybackArchiver
   #    WaybackArchiver.sitemap('example.com/sitemap.xml') # Default concurrency is 5
   # @example Get example.com sitemap and archive all found URLs with low concurrency
   #    WaybackArchiver.sitemap('example.com/sitemap.xml', concurrency: 1)
+  # @example Get example.com sitemap archive max 100 URLs
+  #    WaybackArchiver.sitemap('example.com/sitemap.xml', limit: 100)
   # @see http://www.sitemaps.org
-  def self.sitemap(url, concurrency: WaybackArchiver.concurrency)
+  def self.sitemap(url, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit)
     WaybackArchiver.logger.info "Fetching Sitemap"
-    Archive.post(URLCollector.sitemap(url), concurrency: concurrency)
+    Archive.post(URLCollector.sitemap(url), concurrency: concurrency, limit: limit)
   end
 
   # Send URL to the Wayback Machine.
@@ -102,7 +115,9 @@ module WaybackArchiver
   #    WaybackArchiver.urls('example.com')
   # @example Archive example.com and google.com
   #    WaybackArchiver.urls(%w(example.com google.com))
-  def self.urls(urls, concurrency: WaybackArchiver.concurrency)
+  # @example Archive example.com, max 100 URLs
+  #    WaybackArchiver.urls(%w(example.com www.example.com), limit: 100)
+  def self.urls(urls, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit)
     Archive.post(Array(urls), concurrency: concurrency)
   end
 
@@ -151,5 +166,18 @@ module WaybackArchiver
   # @return [Integer] the configured or the default concurrency
   def self.concurrency
     @concurrency ||= DEFAULT_CONCURRENCY
+  end
+
+  # Sets the default max_limit
+  # @return [Integer] the desired default max_limit
+  # @param [Integer] max_limit the desired default max_limit
+  def self.max_limit=(max_limit)
+    @max_limit = max_limit
+  end
+
+  # Returns the default max_limit
+  # @return [Integer] the configured or the default max_limit
+  def self.max_limit
+    @max_limit ||= DEFAULT_MAX_LIMIT
   end
 end

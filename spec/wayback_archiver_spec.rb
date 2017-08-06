@@ -165,4 +165,11 @@ RSpec.describe WaybackArchiver do
       expect(described_class.concurrency).to eq(1)
     end
   end
+
+  describe '::max_limit=' do
+    it 'can set max_limit' do
+      described_class.max_limit = 1
+      expect(described_class.max_limit).to eq(1)
+    end
+  end
 end

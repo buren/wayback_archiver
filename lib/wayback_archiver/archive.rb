@@ -17,13 +17,24 @@ module WaybackArchiver
     #    Archive.post(['http://example.com'])
     # @example Archive urls, using only 1 thread
     #    Archive.post(['http://example.com'], concurrency: 1)
-    def self.post(urls, concurrency: WaybackArchiver.concurrency)
+    # @example Stop after archiving 100 links
+    #    Archive.post(['http://example.com'], limit: 100)
+    # @example Explicitly set no limit on how many links are posted
+    #    Archive.post(['http://example.com'], limit: -1)
+    def self.post(urls, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit)
       WaybackArchiver.logger.info "Total URLs to be sent: #{urls.length}"
       WaybackArchiver.logger.info "Request are sent with up to #{concurrency} parallel threads"
 
+      urls_queue = if limit == -1
+                     urls
+                   else
+                     urls[0...limit]
+                   end
+
       posted_urls = Concurrent::Array.new
       pool = ThreadPool.build(concurrency)
-      urls.each do |url|
+
+      urls_queue.each do |url|
         pool.post do
           posted_url = post_url(url)
           posted_urls << posted_url if posted_url
@@ -45,13 +56,15 @@ module WaybackArchiver
     #    WaybackArchiver.crawl('example.com')
     # @example Crawl example.com and send all URLs of the same domain with low concurrency
     #    WaybackArchiver.crawl('example.com', concurrency: 1)
-    def self.crawl(source, concurrency: WaybackArchiver.concurrency)
+    # @example Stop after archiving 100 links
+    #    WaybackArchiver.crawl('example.com', limit: 100)
+    def self.crawl(source, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit)
       WaybackArchiver.logger.info "Request are sent with up to #{concurrency} parallel threads"
 
       posted_urls = Concurrent::Array.new
       pool = ThreadPool.build(concurrency)
 
-      found_urls = URLCollector.crawl(source) do |url|
+      found_urls = URLCollector.crawl(source, limit: limit) do |url|
         pool.post do
           posted_url = post_url(url)
           posted_urls << posted_url if posted_url
