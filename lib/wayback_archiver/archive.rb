@@ -100,10 +100,15 @@ module WaybackArchiver
       request_url  = "#{WAYBACK_BASE_URL}#{url}"
       response = Request.get(request_url, follow_redirects: false)
       WaybackArchiver.logger.info "Posted [#{response.code}, #{response.message}] #{url}"
-      ArchiveResult.new(url, response)
+      ArchiveResult.new(
+        url,
+        code: response.code,
+        request_url: response.uri,
+        response_error: response.error
+      )
     rescue Request::Error => e
       WaybackArchiver.logger.error "Failed to archive #{url}: #{e.class}, #{e.message}"
-      ArchiveResult.new(url, nil, e)
+      ArchiveResult.new(url, error: e)
     end
   end
 end
