@@ -5,6 +5,7 @@ require 'uri'
 require 'zlib'
 
 require 'wayback_archiver/http_code'
+require 'wayback_archiver/response'
 
 module WaybackArchiver
   # Make HTTP requests
@@ -31,18 +32,6 @@ module WaybackArchiver
 
     # Max number of redirects before an error is raised
     MAX_REDIRECTS = 10
-
-    # Response data struct
-    Response = Struct.new(:code, :message, :body, :uri, :error)
-    class Response
-      # Returns true if a successfull response
-      # @example check if Response was successfull
-      #    response = Response.new('200', 'OK', 'buren', 'http://example.com')
-      #    response.success? # => true
-      def success?
-        HTTPCode.success?(code)
-      end
-    end
 
     # Get reponse.
     # @return [Response] the http response representation.

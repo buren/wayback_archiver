@@ -97,7 +97,7 @@ RSpec.describe WaybackArchiver::Request do
 
   describe '::build_response' do
     it 'builds a Response object' do
-      expected = described_class::Response.new('200', 'OK', 'buren', 'http://example.com')
+      expected = WaybackArchiver::Response.new('200', 'OK', 'buren', 'http://example.com')
       response = described_class.build_response(
         'http://example.com',
         Struct.new(:code, :message, :body).new('200', 'OK', 'buren')

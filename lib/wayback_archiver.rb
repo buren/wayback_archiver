@@ -19,7 +19,7 @@ module WaybackArchiver
   DEFAULT_MAX_LIMIT = -1
 
   # Send URLs to Wayback Machine.
-  # @return [Array<String>] of URLs sent to the Wayback Machine.
+  # @return [Array<ArchiveResult>] of URLs sent to the Wayback Machine.
   # @param [String/Array<String>] source for URL(s).
   # @param [String/Symbol] strategy of source. Supported strategies: crawl, sitemap, url, urls, auto.
   # @example Crawl example.com and send all URLs of the same domain
@@ -59,7 +59,7 @@ module WaybackArchiver
 
   # Look for Sitemap(s) and if nothing is found fallback to crawling.
   # Then send found URLs to the Wayback Machine.
-  # @return [Array<String>] of URLs sent to the Wayback Machine.
+  # @return [Array<ArchiveResult>] of URLs sent to the Wayback Machine.
   # @param [String] source (must be a valid URL).
   # @param concurrency [Integer]
   # @example Auto archive example.com
@@ -77,7 +77,7 @@ module WaybackArchiver
   end
 
   # Crawl site for URLs to send to the Wayback Machine.
-  # @return [Array<String>] of URLs sent to the Wayback Machine.
+  # @return [Array<ArchiveResult>] of URLs sent to the Wayback Machine.
   # @param [String] url to start crawling from.
   # @param concurrency [Integer]
   # @example Crawl example.com and send all URLs of the same domain
@@ -92,7 +92,7 @@ module WaybackArchiver
   end
 
   # Get URLs from sitemap and send found URLs to the Wayback Machine.
-  # @return [Array<String>] of URLs sent to the Wayback Machine.
+  # @return [Array<ArchiveResult>] of URLs sent to the Wayback Machine.
   # @param [String] url to the sitemap.
   # @param concurrency [Integer]
   # @example Get example.com sitemap and archive all found URLs
@@ -108,7 +108,7 @@ module WaybackArchiver
   end
 
   # Send URL to the Wayback Machine.
-  # @return [Array<String>] of URLs sent to the Wayback Machine.
+  # @return [Array<ArchiveResult>] of URLs sent to the Wayback Machine.
   # @param [Array<String>/String] urls or url.
   # @param concurrency [Integer]
   # @example Archive example.com

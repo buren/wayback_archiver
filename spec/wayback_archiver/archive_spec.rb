@@ -11,7 +11,7 @@ RSpec.describe WaybackArchiver::Archive do
 
   describe '::post' do
     it 'calls ::post_url for each URL' do
-      allow(described_class).to receive(:post_url).and_return(nil)
+      allow(described_class).to receive(:post_url).and_return(WaybackArchiver::ArchiveResult.new)
 
       result = described_class.post(%w[https://example.com https://example.com/path])
 
@@ -19,7 +19,7 @@ RSpec.describe WaybackArchiver::Archive do
     end
 
     it 'calls ::post_url for each URL with support for an max limit' do
-      allow(described_class).to receive(:post_url).and_return(nil)
+      allow(described_class).to receive(:post_url).and_return(WaybackArchiver::ArchiveResult.new)
 
       result = described_class.post(%w[https://example.com https://example.com/path], limit: 1)
 
@@ -35,9 +35,9 @@ RSpec.describe WaybackArchiver::Archive do
         .and_yield(url)
         .and_return([url])
 
-      allow(described_class).to receive(:post_url).and_return(url)
+      allow(described_class).to receive(:post_url).and_return(WaybackArchiver::ArchiveResult.new(url))
 
-      expect(described_class.crawl(url)).to eq([url])
+      expect(described_class.crawl(url)[0].uri).to eq(url)
     end
   end
 
@@ -50,7 +50,10 @@ RSpec.describe WaybackArchiver::Archive do
         .with(headers: headers)
         .to_return(status: 301, body: 'buren', headers: {})
 
-      expect(described_class.post_url(url)).to eq(url)
+      result = described_class.post_url(url)
+
+      expect(result.uri).to eq(url)
+      expect(result.response.code).to eq('301')
       expect(WaybackArchiver.logger.debug_log.first).to include(expected_request_url)
       expect(WaybackArchiver.logger.info_log.last).to include(url)
     end
@@ -66,7 +69,11 @@ RSpec.describe WaybackArchiver::Archive do
         .with(headers: headers)
         .to_return(status: 301, body: 'buren', headers: {})
 
-      described_class.post_url(url)
+      result = described_class.post_url(url)
+
+      expect(result.uri).to eq(url)
+      expect(result.response).to be_nil
+      expect(result.error).to be_a(WaybackArchiver::Request::MaxRedirectError)
 
       last_error_log = WaybackArchiver.logger.error_log.last
       expect(last_error_log).to include(url)

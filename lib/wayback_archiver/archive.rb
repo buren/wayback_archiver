@@ -1,5 +1,6 @@
 require 'concurrent'
 
+require 'wayback_archiver/archive_result'
 require 'wayback_archiver/thread_pool'
 require 'wayback_archiver/request'
 
@@ -10,11 +11,16 @@ module WaybackArchiver
     WAYBACK_BASE_URL    = 'https://web.archive.org/save/'.freeze
 
     # Send URLs to Wayback Machine.
-    # @return [Array<String>] with sent URLs.
+    # @return [Array<ArchiveResult>] with sent URLs.
     # @param [Array<String>] urls to send to the Wayback Machine.
     # @param concurrency [Integer] the default is 5
+    # @yield [archive_result] If a block is given, each result will be yielded
+    # @yieldparam [ArchiveResult] archive_result
     # @example Archive urls, asynchronously
     #    Archive.post(['http://example.com'])
+    #    Archiver.post(['http://example.com']) do |result|
+    #      puts [result.code || 'error', result.url] # print response status and URL
+    #    end
     # @example Archive urls, using only 1 thread
     #    Archive.post(['http://example.com'], concurrency: 1)
     # @example Stop after archiving 100 links
@@ -36,8 +42,9 @@ module WaybackArchiver
 
       urls_queue.each do |url|
         pool.post do
-          posted_url = post_url(url)
-          posted_urls << posted_url if posted_url
+          result = post_url(url)
+          yield(result) if block_given?
+          posted_urls << result unless result.errored?
         end
       end
 
@@ -49,15 +56,20 @@ module WaybackArchiver
     end
 
     # Send URLs to Wayback Machine by crawling the site.
-    # @return [Array<String>] with URLs sent to the Wayback Machine.
+    # @return [Array<ArchiveResult>] with URLs sent to the Wayback Machine.
     # @param [String] source for URL to crawl.
     # @param concurrency [Integer] the default is 5
+    # @yield [archive_result] If a block is given, each result will be yielded
+    # @yieldparam [ArchiveResult] archive_result
     # @example Crawl example.com and send all URLs of the same domain
-    #    WaybackArchiver.crawl('example.com')
+    #    Archiver.crawl('example.com')
+    #    Archiver.crawl('example.com') do |result|
+    #      puts [result.code || 'error', result.url] # print response status and URL
+    #    end
     # @example Crawl example.com and send all URLs of the same domain with low concurrency
-    #    WaybackArchiver.crawl('example.com', concurrency: 1)
+    #    Archiver.crawl('example.com', concurrency: 1)
     # @example Stop after archiving 100 links
-    #    WaybackArchiver.crawl('example.com', limit: 100)
+    #    Archiver.crawl('example.com', limit: 100)
     def self.crawl(source, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit)
       WaybackArchiver.logger.info "Request are sent with up to #{concurrency} parallel threads"
 
@@ -66,8 +78,9 @@ module WaybackArchiver
 
       found_urls = URLCollector.crawl(source, limit: limit) do |url|
         pool.post do
-          posted_url = post_url(url)
-          posted_urls << posted_url if posted_url
+          result = post_url(url)
+          yield(result) if block_given?
+          posted_urls << result unless result.errored?
         end
       end
       WaybackArchiver.logger.info "Crawling of #{source} finished, found #{found_urls.length} URL(s)"
@@ -79,18 +92,18 @@ module WaybackArchiver
     end
 
     # Send URL to Wayback Machine.
-    # @return [String] the sent URL.
+    # @return [ArchiveResult] the sent URL.
     # @param [String] url to send.
     # @example Archive example.com, with default options
     #    Archive.post_url('http://example.com')
     def self.post_url(url)
       request_url  = "#{WAYBACK_BASE_URL}#{url}"
-      response     = Request.get(request_url, follow_redirects: false)
+      response = Request.get(request_url, follow_redirects: false)
       WaybackArchiver.logger.info "Posted [#{response.code}, #{response.message}] #{url}"
-      url
+      ArchiveResult.new(url, response)
     rescue Request::Error => e
       WaybackArchiver.logger.error "Failed to archive #{url}: #{e.class}, #{e.message}"
-      nil
+      ArchiveResult.new(url, nil, e)
     end
   end
 end
