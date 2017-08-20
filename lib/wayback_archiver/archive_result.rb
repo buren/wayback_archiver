@@ -16,6 +16,11 @@ module WaybackArchiver
       uri
     end
 
+    # @return [Boolean] true if success
+    def success?
+      !errored?
+    end
+
     # @return [Boolean] true if errored
     def errored?
       !!error

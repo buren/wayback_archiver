@@ -12,4 +12,10 @@ RSpec.describe WaybackArchiver::ArchiveResult do
       expect(described_class.new(nil, error: true).errored?).to eq(true)
     end
   end
+
+  describe '#success?' do
+    it 'returns true if success' do
+      expect(described_class.new(nil, error: nil).success?).to eq(true)
+    end
+  end
 end

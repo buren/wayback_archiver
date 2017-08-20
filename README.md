@@ -136,8 +136,12 @@ WaybackArchiver.archive('example.com', strategy: :auto, limit: 10)
 Each archive strategy can receive a block that will be called for each URL
 
 ```ruby
-WaybackArchiver.archive('example.com', strategy: :auto) do |posted_url|
-  # your code
+WaybackArchiver.archive('example.com', strategy: :auto) do |result|
+  if result.success?
+    puts "Successfully archived: #{result.archived_url}"
+  else
+    puts "Error (HTTP #{result.code}) when archiving: #{result.archived_url}"
+  end
 end
 ```
 
