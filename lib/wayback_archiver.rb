@@ -43,15 +43,15 @@ module WaybackArchiver
   #    WaybackArchiver.archive('example.com', strategy: :url, concurrency: 10)
   #    WaybackArchiver.archive('example.com', strategy: :url, limit: 100) # send max 100 URLs
   #    WaybackArchiver.archive('example.com', :url)
-  def self.archive(source, legacy_strategy = nil, strategy: :auto, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit)
+  def self.archive(source, legacy_strategy = nil, strategy: :auto, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, &block)
     strategy = legacy_strategy || strategy
 
     case strategy.to_s
-    when 'crawl'   then crawl(source, concurrency: concurrency, limit: limit)
-    when 'auto'    then auto(source, concurrency: concurrency, limit: limit)
-    when 'sitemap' then sitemap(source, concurrency: concurrency, limit: limit)
-    when 'urls'    then urls(source, concurrency: concurrency, limit: limit)
-    when 'url'     then urls(source, concurrency: concurrency, limit: limit)
+    when 'crawl'   then crawl(source, concurrency: concurrency, limit: limit, &block)
+    when 'auto'    then auto(source, concurrency: concurrency, limit: limit, &block)
+    when 'sitemap' then sitemap(source, concurrency: concurrency, limit: limit, &block)
+    when 'urls'    then urls(source, concurrency: concurrency, limit: limit, &block)
+    when 'url'     then urls(source, concurrency: concurrency, limit: limit, &block)
     else
       raise ArgumentError, "Unknown strategy: '#{strategy}'. Allowed strategies: sitemap, urls, url, crawl"
     end
@@ -69,11 +69,11 @@ module WaybackArchiver
   # @example Auto archive example.com and archive max 100 URLs
   #    WaybackArchiver.auto('example.com', limit: 100)
   # @see http://www.sitemaps.org
-  def self.auto(source, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit)
+  def self.auto(source, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, &block)
     urls = Sitemapper.autodiscover(source)
-    return urls(urls, concurrency: concurrency) if urls.any?
+    return urls(urls, concurrency: concurrency, &block) if urls.any?
 
-    crawl(source, concurrency: concurrency)
+    crawl(source, concurrency: concurrency, &block)
   end
 
   # Crawl site for URLs to send to the Wayback Machine.
@@ -86,9 +86,9 @@ module WaybackArchiver
   #    WaybackArchiver.crawl('example.com', concurrency: 1)
   # @example Crawl example.com and archive max 100 URLs
   #    WaybackArchiver.crawl('example.com', limit: 100)
-  def self.crawl(url, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit)
+  def self.crawl(url, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, &block)
     WaybackArchiver.logger.info "Crawling #{url}"
-    Archive.crawl(url, concurrency: concurrency, limit: limit)
+    Archive.crawl(url, concurrency: concurrency, limit: limit, &block)
   end
 
   # Get URLs from sitemap and send found URLs to the Wayback Machine.
@@ -102,9 +102,9 @@ module WaybackArchiver
   # @example Get example.com sitemap archive max 100 URLs
   #    WaybackArchiver.sitemap('example.com/sitemap.xml', limit: 100)
   # @see http://www.sitemaps.org
-  def self.sitemap(url, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit)
+  def self.sitemap(url, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, &block)
     WaybackArchiver.logger.info "Fetching Sitemap"
-    Archive.post(URLCollector.sitemap(url), concurrency: concurrency, limit: limit)
+    Archive.post(URLCollector.sitemap(url), concurrency: concurrency, limit: limit, &block)
   end
 
   # Send URL to the Wayback Machine.
@@ -117,8 +117,8 @@ module WaybackArchiver
   #    WaybackArchiver.urls(%w(example.com google.com))
   # @example Archive example.com, max 100 URLs
   #    WaybackArchiver.urls(%w(example.com www.example.com), limit: 100)
-  def self.urls(urls, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit)
-    Archive.post(Array(urls), concurrency: concurrency)
+  def self.urls(urls, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, &block)
+    Archive.post(Array(urls), concurrency: concurrency, &block)
   end
 
   # Set logger

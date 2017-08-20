@@ -2,6 +2,7 @@ require 'wayback_archiver/archive_result'
 require 'wayback_archiver/request'
 
 module WaybackArchiver
+  # WaybackMachine adapter
   class WaybackMachine
     # Wayback Machine base URL.
     BASE_URL    = 'https://web.archive.org/save/'.freeze

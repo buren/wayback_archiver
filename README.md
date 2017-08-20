@@ -133,10 +133,18 @@ Specify max number of URLs to be archived
 WaybackArchiver.archive('example.com', strategy: :auto, limit: 10)
 ```
 
-Use your own adapter
+Each archive strategy can receive a block that will be called for each URL
 
 ```ruby
- WaybackArchiver.adapter = ->(url) { puts url }
+WaybackArchiver.archive('example.com', strategy: :auto) do |posted_url|
+  # your code
+end
+```
+
+Use your own adapter for posting found URLs
+
+```ruby
+WaybackArchiver.adapter = ->(url) { puts url } # whatever that responds to #call
 ```
 
 ## CLI
