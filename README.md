@@ -68,6 +68,7 @@ WaybackArchiver.concurrency = 5
 WaybackArchiver.user_agent = WaybackArchiver::USER_AGENT
 WaybackArchiver.logger = Logger.new(STDOUT)
 WaybackArchiver.max_limit = -1 # unlimited
+WaybackArchiver.adapter = WaybackArchiver::WaybackMachine # must implement #call(url)
 ```
 
 For a more verbose log you can configure `WaybackArchiver` as such:
@@ -130,6 +131,12 @@ Specify max number of URLs to be archived
 
 ```ruby
 WaybackArchiver.archive('example.com', strategy: :auto, limit: 10)
+```
+
+Use your own adapter
+
+```ruby
+ WaybackArchiver.adapter = ->(url) { puts url }
 ```
 
 ## CLI

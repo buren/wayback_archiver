@@ -93,7 +93,7 @@ module WaybackArchiver
     # @example Archive example.com, with default options
     #    Archive.post_url('http://example.com')
     def self.post_url(url)
-      WaybackMachine.call(url)
+      WaybackArchiver.adapter.call(url)
     end
   end
 end

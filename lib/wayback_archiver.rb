@@ -180,4 +180,21 @@ module WaybackArchiver
   def self.max_limit
     @max_limit ||= DEFAULT_MAX_LIMIT
   end
+
+  # Sets the adapter
+  # @return [Object, #call>] the configured adapter
+  # @param [Object, #call>] the adapter
+  def self.adapter=(adapter)
+    unless adapter.respond_to?(:call)
+      raise(ArgumentError, 'adapter must implement #call')
+    end
+
+    @adapter = adapter
+  end
+
+  # Returns the configured adapter
+  # @return [Integer] the configured or the default adapter
+  def self.adapter
+    @adapter ||= WaybackMachine
+  end
 end
