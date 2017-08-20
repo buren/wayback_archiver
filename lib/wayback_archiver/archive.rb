@@ -1,15 +1,11 @@
 require 'concurrent'
 
-require 'wayback_archiver/archive_result'
 require 'wayback_archiver/thread_pool'
-require 'wayback_archiver/request'
+require 'wayback_archiver/adapters/wayback_machine'
 
 module WaybackArchiver
   # Post URL(s) to Wayback Machine
   class Archive
-    # Wayback Machine base URL.
-    WAYBACK_BASE_URL    = 'https://web.archive.org/save/'.freeze
-
     # Send URLs to Wayback Machine.
     # @return [Array<ArchiveResult>] with sent URLs.
     # @param [Array<String>] urls to send to the Wayback Machine.
@@ -97,18 +93,7 @@ module WaybackArchiver
     # @example Archive example.com, with default options
     #    Archive.post_url('http://example.com')
     def self.post_url(url)
-      request_url  = "#{WAYBACK_BASE_URL}#{url}"
-      response = Request.get(request_url, follow_redirects: false)
-      WaybackArchiver.logger.info "Posted [#{response.code}, #{response.message}] #{url}"
-      ArchiveResult.new(
-        url,
-        code: response.code,
-        request_url: response.uri,
-        response_error: response.error
-      )
-    rescue Request::Error => e
-      WaybackArchiver.logger.error "Failed to archive #{url}: #{e.class}, #{e.message}"
-      ArchiveResult.new(url, error: e)
+      WaybackArchiver.adapter.call(url)
     end
   end
 end

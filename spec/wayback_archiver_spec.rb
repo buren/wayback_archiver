@@ -172,4 +172,16 @@ RSpec.describe WaybackArchiver do
       expect(described_class.max_limit).to eq(1)
     end
   end
+
+  describe '::adapter=' do
+    it 'can set adapter' do
+      adapter = WaybackArchiver::WaybackMachine
+      described_class.adapter = adapter
+      expect(described_class.adapter).to match(adapter)
+    end
+
+    it 'raises error unless all adapter respond to #call' do
+      expect { described_class.adapter = 1 }.to raise_error(ArgumentError)
+    end
+  end
 end
