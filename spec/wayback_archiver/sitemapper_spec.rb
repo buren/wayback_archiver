@@ -11,6 +11,7 @@ RSpec.describe WaybackArchiver::Sitemapper do
 
   let(:robots_txt) { File.read('spec/data/robots.txt') }
   let(:sitemap_index_xml) { File.read('spec/data/sitemap_index.xml') }
+  let(:sitemap_index_with_duplicate_url_xml) { File.read('spec/data/sitemap_index_with_duplicate_url.xml') }
   let(:sitemap_xml) { File.read('spec/data/sitemap.xml') }
 
   describe '::autodiscover' do
@@ -80,6 +81,24 @@ RSpec.describe WaybackArchiver::Sitemapper do
   describe '::urls' do
     it 'can start with xml argument' do
       expect(described_class.urls(xml: sitemap_xml)).to eq(%w[http://www.example.com/])
+    end
+
+    it 'returns empty array if url already has been visited' do
+      start_url = 'http://www.example.com/sitemap_index.xml'
+
+      stub_request(:get, start_url)
+        .with(headers: headers)
+        .to_return(status: 200, body: sitemap_index_with_duplicate_url_xml, headers: {})
+
+      %w[http://www.example.com/sitemap1.xml.gz].each do |url|
+        stub_request(:get, url)
+          .with(headers: headers)
+          .to_return(status: 200, body: sitemap_xml, headers: {})
+      end
+
+      result = described_class.urls(url: start_url)
+      expect(WaybackArchiver.logger.debug_log).to include("Already visited http://www.example.com/sitemap1.xml.gz skipping..")
+      expect(result).to eq(%w[http://www.example.com/])
     end
 
     context 'with url argument and returned sitemap index' do
