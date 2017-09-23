@@ -1,12 +1,12 @@
-require 'simplecov'
-require 'coveralls'
+# require 'simplecov'
+# require 'coveralls'
 
-formatters = [
-  SimpleCov::Formatter::HTMLFormatter,
-  Coveralls::SimpleCov::Formatter
-]
-SimpleCov.formatter = SimpleCov::Formatter::MultiFormatter.new(formatters)
-SimpleCov.start
+# formatters = [
+#   SimpleCov::Formatter::HTMLFormatter,
+#   Coveralls::SimpleCov::Formatter
+# ]
+# SimpleCov.formatter = SimpleCov::Formatter::MultiFormatter.new(formatters)
+# SimpleCov.start
 
 Dir['./spec/support/**/*.rb'].each { |file| require file }
 

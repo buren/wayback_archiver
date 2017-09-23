@@ -1,3 +1,4 @@
+require 'set'
 require 'robots'
 
 require 'wayback_archiver/sitemap'
@@ -27,6 +28,7 @@ module WaybackArchiver
       WaybackArchiver.logger.info 'Looking for Sitemap(s) in /robots.txt'
       robots = Robots.new(WaybackArchiver.user_agent)
       sitemaps = robots.other_values(url)['Sitemap']
+
       if sitemaps
         return sitemaps.flat_map do |sitemap|
           WaybackArchiver.logger.info "Fetching Sitemap at #{sitemap}"
@@ -61,12 +63,21 @@ module WaybackArchiver
     # @example Get URLs defined in Sitemap
     #    Sitemapper.urls(xml: xml)
     # @see http://www.sitemaps.org
-    def self.urls(url: nil, xml: nil)
+    def self.urls(url: nil, xml: nil, visited: Set.new)
+      if visited.include?(url)
+        WaybackArchiver.logger.debug "Already visited #{url} skipping.."
+        return []
+      end
+
+      visited << url if url
+
       xml = Request.get(url).body unless xml
       sitemap = Sitemap.new(xml)
 
       if sitemap.sitemap_index?
-        sitemap.sitemaps.flat_map { |sitemap_url| urls(url: sitemap_url) }
+        sitemap.sitemaps.flat_map do |sitemap_url|
+          urls(url: sitemap_url, visited: visited)
+        end
       else
         sitemap.urls
       end
