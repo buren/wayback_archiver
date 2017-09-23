@@ -33,6 +33,19 @@ module WaybackArchiver
     # Max number of redirects before an error is raised
     MAX_REDIRECTS = 10
 
+    # Known request errors
+    REQUEST_ERRORS = {
+      # server
+      Timeout::Error => ServerError,
+      OpenSSL::SSL::SSLError => ServerError,
+      Net::HTTPBadResponse => ServerError,
+      Zlib::Error => ServerError,
+      # client
+      SystemCallError => ClientError,
+      SocketError => ClientError,
+      IOError => ClientError
+    }.freeze
+
     # Get reponse.
     # @return [Response] the http response representation.
     # @param [String, URI] uri to retrieve.
@@ -187,17 +200,8 @@ module WaybackArchiver
       # TODO: Consider retrying failed requests
       response = http.request(request)
       GETStruct.new(response)
-    rescue Timeout::Error,
-           OpenSSL::SSL::SSLError,
-           Net::HTTPBadResponse,
-           Zlib::Error => e
-
-      build_request_error(uri, e, ServerError)
-    rescue SystemCallError,
-           SocketError,
-           IOError => e
-
-      build_request_error(uri, e, ClientError)
+    rescue *REQUEST_ERRORS.keys => e
+      build_request_error(uri, e, REQUEST_ERRORS.fetch(e.class))
     end
 
     def self.build_request_error(uri, error, error_wrapper_klass)
