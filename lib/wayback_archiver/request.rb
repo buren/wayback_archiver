@@ -197,7 +197,7 @@ module WaybackArchiver
     private
 
     def self.perform_request(uri, http, request)
-      # TODO: Consider retrying failed requests
+      # TODO: Consider retrying on certain HTTP response codes, i.e 429, 503
       response = http.request(request)
       GETStruct.new(response)
     rescue *REQUEST_ERRORS.keys => e
