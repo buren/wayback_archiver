@@ -35,7 +35,7 @@ module WaybackArchiver
       options[:limit] = limit unless limit == -1
 
       Spidr.site(start_at_url, options) do |spider|
-        spider.every_page do |page|
+        spider.every_ok_page do |page|
           page_url = page.url.to_s
           urls << page_url
           WaybackArchiver.logger.debug "Found: #{page_url}"
