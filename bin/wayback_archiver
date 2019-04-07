@@ -10,6 +10,7 @@ log = STDOUT
 log_level = Logger::INFO
 concurrency = WaybackArchiver.concurrency
 limit = WaybackArchiver.max_limit
+hosts = []
 
 optparse = OptionParser.new do |parser|
   parser.banner = 'Usage: wayback_archiver [<url>] [options]'
@@ -28,6 +29,10 @@ optparse = OptionParser.new do |parser|
 
   parser.on('--urls', '--url', 'URL(s)') do |value|
     strategy = 'urls'
+  end
+
+  parser.on('--hosts=[example.com]', Array, 'Only spider links on certain hosts') do |value|
+    hosts = value.map { |v| Regexp.new(v) } if value
   end
 
   parser.on('--concurrency=5', Integer, 'Concurrency') do |value|
@@ -81,6 +86,7 @@ strategy ||= 'auto'
 urls.each do |url|
   WaybackArchiver.archive(
     url,
+    hosts: hosts,
     strategy: strategy,
     concurrency: concurrency,
     limit: limit
