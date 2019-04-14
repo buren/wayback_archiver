@@ -27,7 +27,7 @@ Gem::Specification.new do |spec|
   spec.add_runtime_dependency 'concurrent-ruby', '~> 1.0' # Concurrency primitivies
 
   spec.add_development_dependency 'bundler',   '~> 1.3'
-  spec.add_development_dependency 'rake',      '~> 10.3'
+  spec.add_development_dependency 'rake',      '~> 12.3'
   spec.add_development_dependency 'rspec',     '~> 3.1'
   spec.add_development_dependency 'yard',      '~> 0.9'
   spec.add_development_dependency 'simplecov', '~> 0.14.1'
