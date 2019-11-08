@@ -19,17 +19,27 @@ module WaybackArchiver
     # Retrieve URLs by crawling.
     # @return [Array<String>] of URLs defined found during crawl.
     # @param [String] url domain to crawl URLs from.
+    # @param [Array<String, Regexp>] hosts to crawl.
     # @example Crawl URLs defined on example.com
     #    URLCollector.crawl('http://example.com')
     # @example Crawl URLs defined on example.com and limit the number of visited pages to 100
     #    URLCollector.crawl('http://example.com', limit: 100)
     # @example Crawl URLs defined on example.com and explicitly set no upper limit on the number of visited pages to 100
     #    URLCollector.crawl('http://example.com', limit: -1)
-    def self.crawl(url, limit: WaybackArchiver.max_limit)
+    # @example Crawl multiple hosts
+    #    URLCollector.crawl(
+    #      'http://example.com',
+    #      hosts: [
+    #        'example.com',
+    #        /host[\d]+\.example\.com/
+    #      ]
+    #    )
+    def self.crawl(url, hosts: [], limit: WaybackArchiver.max_limit)
       urls = []
       start_at_url = Request.build_uri(url).to_s
       options = {
         robots: false,
+        hosts: hosts,
         user_agent: WaybackArchiver.user_agent
       }
       options[:limit] = limit unless limit == -1

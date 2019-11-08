@@ -55,6 +55,7 @@ module WaybackArchiver
     # @return [Array<ArchiveResult>] with URLs sent to the Wayback Machine.
     # @param [String] source for URL to crawl.
     # @param concurrency [Integer] the default is 5
+    # @param [Array<String, Regexp>] hosts to crawl
     # @yield [archive_result] If a block is given, each result will be yielded
     # @yieldparam [ArchiveResult] archive_result
     # @example Crawl example.com and send all URLs of the same domain
@@ -66,13 +67,21 @@ module WaybackArchiver
     #    Archiver.crawl('example.com', concurrency: 1)
     # @example Stop after archiving 100 links
     #    Archiver.crawl('example.com', limit: 100)
-    def self.crawl(source, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit)
+    # @example Crawl multiple hosts
+    #    URLCollector.crawl(
+    #      'http://example.com',
+    #      hosts: [
+    #        'example.com',
+    #        /host[\d]+\.example\.com/
+    #      ]
+    #    )
+    def self.crawl(source, hosts: [], concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit)
       WaybackArchiver.logger.info "Request are sent with up to #{concurrency} parallel threads"
 
       posted_urls = Concurrent::Array.new
       pool = ThreadPool.build(concurrency)
 
-      found_urls = URLCollector.crawl(source, limit: limit) do |url|
+      found_urls = URLCollector.crawl(source, hosts: hosts, limit: limit) do |url|
         pool.post do
           result = post_url(url)
           yield(result) if block_given?

@@ -22,6 +22,7 @@ module WaybackArchiver
   # @return [Array<ArchiveResult>] of URLs sent to the Wayback Machine.
   # @param [String/Array<String>] source for URL(s).
   # @param [String/Symbol] strategy of source. Supported strategies: crawl, sitemap, url, urls, auto.
+  # @param [Array<String, Regexp>] hosts to crawl.
   # @example Crawl example.com and send all URLs of the same domain
   #    WaybackArchiver.archive('example.com') # Default strategy is :auto
   #    WaybackArchiver.archive('example.com', strategy: :auto)
@@ -43,11 +44,19 @@ module WaybackArchiver
   #    WaybackArchiver.archive('example.com', strategy: :url, concurrency: 10)
   #    WaybackArchiver.archive('example.com', strategy: :url, limit: 100) # send max 100 URLs
   #    WaybackArchiver.archive('example.com', :url)
-  def self.archive(source, legacy_strategy = nil, strategy: :auto, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, &block)
+  # @example Crawl multiple hosts
+  #    WaybackArchiver.archive(
+  #      'http://example.com',
+  #      hosts: [
+  #        'example.com',
+  #        /host[\d]+\.example\.com/
+  #      ]
+  #    )
+  def self.archive(source, legacy_strategy = nil, strategy: :auto, hosts: [], concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, &block)
     strategy = legacy_strategy || strategy
 
     case strategy.to_s
-    when 'crawl'   then crawl(source, concurrency: concurrency, limit: limit, &block)
+    when 'crawl'   then crawl(source, concurrency: concurrency, limit: limit, hosts: hosts, &block)
     when 'auto'    then auto(source, concurrency: concurrency, limit: limit, &block)
     when 'sitemap' then sitemap(source, concurrency: concurrency, limit: limit, &block)
     when 'urls'    then urls(source, concurrency: concurrency, limit: limit, &block)
@@ -79,6 +88,7 @@ module WaybackArchiver
   # Crawl site for URLs to send to the Wayback Machine.
   # @return [Array<ArchiveResult>] of URLs sent to the Wayback Machine.
   # @param [String] url to start crawling from.
+  # @param [Array<String, Regexp>] hosts to crawl
   # @param concurrency [Integer]
   # @example Crawl example.com and send all URLs of the same domain
   #    WaybackArchiver.crawl('example.com') # Default concurrency is 5
@@ -86,9 +96,17 @@ module WaybackArchiver
   #    WaybackArchiver.crawl('example.com', concurrency: 1)
   # @example Crawl example.com and archive max 100 URLs
   #    WaybackArchiver.crawl('example.com', limit: 100)
-  def self.crawl(url, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, &block)
+  # @example Crawl multiple hosts
+  #    URLCollector.crawl(
+  #      'http://example.com',
+  #      hosts: [
+  #        'example.com',
+  #        /host[\d]+\.example\.com/
+  #      ]
+  #    )
+  def self.crawl(url, hosts: [], concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, &block)
     WaybackArchiver.logger.info "Crawling #{url}"
-    Archive.crawl(url, concurrency: concurrency, limit: limit, &block)
+    Archive.crawl(url, hosts: hosts, concurrency: concurrency, limit: limit, &block)
   end
 
   # Get URLs from sitemap and send found URLs to the Wayback Machine.
