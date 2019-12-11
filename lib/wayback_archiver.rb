@@ -13,7 +13,7 @@ module WaybackArchiver
   USER_AGENT = "WaybackArchiver/#{WaybackArchiver::VERSION} (+#{INFO_LINK})".freeze
 
   # Default concurrency for archiving URLs
-  DEFAULT_CONCURRENCY = 1
+  DEFAULT_CONCURRENCY = 5
 
   # Maxmium number of links posted (-1 is no limit)
   DEFAULT_MAX_LIMIT = -1
