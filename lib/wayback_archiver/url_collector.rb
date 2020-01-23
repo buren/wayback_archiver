@@ -46,7 +46,7 @@ module WaybackArchiver
 
       Spidr.site(start_at_url, options) do |spider|
         spider.every_page do |page|
-          sleep(2)
+          sleep(5)
           page_url = page.url.to_s
           urls << page_url
           WaybackArchiver.logger.debug "Found: #{page_url}"
