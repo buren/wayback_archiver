@@ -63,7 +63,7 @@ require 'wayback_archiver'
 Configuration (the below values are the defaults)
 
 ```ruby
-WaybackArchiver.concurrency = 5
+WaybackArchiver.concurrency = 1
 WaybackArchiver.user_agent = WaybackArchiver::USER_AGENT
 WaybackArchiver.logger = Logger.new(STDOUT)
 WaybackArchiver.max_limit = -1 # unlimited

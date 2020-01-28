@@ -35,7 +35,7 @@ optparse = OptionParser.new do |parser|
     hosts = value.map { |v| Regexp.new(v) } if value
   end
 
-  parser.on('--concurrency=5', Integer, 'Concurrency') do |value|
+  parser.on('--concurrency=1', Integer, 'Concurrency') do |value|
     concurrency = value
   end
 

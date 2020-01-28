@@ -9,7 +9,7 @@ module WaybackArchiver
     # Send URLs to Wayback Machine.
     # @return [Array<ArchiveResult>] with sent URLs.
     # @param [Array<String>] urls to send to the Wayback Machine.
-    # @param concurrency [Integer] the default is 5
+    # @param concurrency [Integer] the default is 1
     # @yield [archive_result] If a block is given, each result will be yielded
     # @yieldparam [ArchiveResult] archive_result
     # @example Archive urls, asynchronously
@@ -54,7 +54,7 @@ module WaybackArchiver
     # Send URLs to Wayback Machine by crawling the site.
     # @return [Array<ArchiveResult>] with URLs sent to the Wayback Machine.
     # @param [String] source for URL to crawl.
-    # @param concurrency [Integer] the default is 5
+    # @param concurrency [Integer] the default is 1
     # @param [Array<String, Regexp>] hosts to crawl
     # @yield [archive_result] If a block is given, each result will be yielded
     # @yieldparam [ArchiveResult] archive_result
