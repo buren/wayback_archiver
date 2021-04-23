@@ -14,6 +14,7 @@ __Index__
 * [Usage](#usage)
   - [Ruby](#ruby)
   - [CLI](#cli)
+* [Configuration](#configuration)
 * [RubyDoc](#docs)
 * [Contributing](#contributing)
 * [MIT License](#license)
@@ -59,27 +60,6 @@ First require the gem
 ```ruby
 require 'wayback_archiver'
 ```
-
-Configuration (the below values are the defaults)
-
-```ruby
-WaybackArchiver.concurrency = 1
-WaybackArchiver.user_agent = WaybackArchiver::USER_AGENT
-WaybackArchiver.logger = Logger.new(STDOUT)
-WaybackArchiver.max_limit = -1 # unlimited
-WaybackArchiver.adapter = WaybackArchiver::WaybackMachine # must implement #call(url)
-```
-
-For a more verbose log you can configure `WaybackArchiver` as such:
-
-```ruby
-WaybackArchiver.logger = Logger.new(STDOUT).tap do |logger|
-  logger.progname = 'WaybackArchiver'
-  logger.level = Logger::DEBUG
-end
-```
-
-_Pro tip_: If you're using the gem in a Rails app you can set `WaybackArchiver.logger = Rails.logger`.
 
 _Examples_:
 
@@ -218,6 +198,30 @@ wayback_archiver example.com www.example.com --auto --concurrency=10 --limit=100
 ```
 
 View archive: [https://web.archive.org/web/*/http://example.com](https://web.archive.org/web/*/http://example.com) (replace `http://example.com` with to your desired domain).
+
+## Configuration
+
+Configuration (the below values are the defaults)
+
+```ruby
+WaybackArchiver.concurrency = 1
+WaybackArchiver.user_agent = WaybackArchiver::USER_AGENT
+WaybackArchiver.respect_robots_txt = WaybackArchiver::DEFAULT_RESPECT_ROBOTS_TXT
+WaybackArchiver.logger = Logger.new(STDOUT)
+WaybackArchiver.max_limit = -1 # unlimited
+WaybackArchiver.adapter = WaybackArchiver::WaybackMachine # must implement #call(url)
+```
+
+For a more verbose log you can configure `WaybackArchiver` as such:
+
+```ruby
+WaybackArchiver.logger = Logger.new(STDOUT).tap do |logger|
+  logger.progname = 'WaybackArchiver'
+  logger.level = Logger::DEBUG
+end
+```
+
+_Pro tip_: If you're using the gem in a Rails app you can set `WaybackArchiver.logger = Rails.logger`.
 
 ## Docs
 
