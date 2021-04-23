@@ -130,8 +130,6 @@ Use your own adapter for posting found URLs
 WaybackArchiver.adapter = ->(url) { puts url } # whatever that responds to #call
 ```
 
-:information_source: This gem uses the `spidr` gem that has a bug in the version that is pushed to RubyGems, it's fixed in the `master` branch. Simply add `gem 'spidr', github: 'postmodern/spidr'` to your `Gemfile` to use the fixed version. See [#25](https://github.com/buren/wayback_archiver/issues/25) for details.
-
 ## CLI
 
 __Usage__:
