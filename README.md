@@ -199,6 +199,8 @@ View archive: [https://web.archive.org/web/*/http://example.com](https://web.arc
 
 ## Configuration
 
+:information_source: By default `wayback_archiver` doesn't respect robots.txt files, see [this Internet Archive blog post](https://blog.archive.org/2017/04/17/robots-txt-meant-for-search-engines-dont-work-well-for-web-archives/) for more information.
+
 Configuration (the below values are the defaults)
 
 ```ruby

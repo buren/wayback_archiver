@@ -12,7 +12,7 @@ module WaybackArchiver
   # WaybackArchiver User-Agent
   USER_AGENT = "WaybackArchiver/#{WaybackArchiver::VERSION} (+#{INFO_LINK})".freeze
   # Default for whether to respect robots txt files
-  DEFAULT_RESPECT_ROBOTS_TXT = true
+  DEFAULT_RESPECT_ROBOTS_TXT = false
 
   # Default concurrency for archiving URLs
   DEFAULT_CONCURRENCY = 1
