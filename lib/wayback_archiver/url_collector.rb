@@ -38,7 +38,7 @@ module WaybackArchiver
       urls = []
       start_at_url = Request.build_uri(url).to_s
       options = {
-        robots: true,
+        robots: WaybackArchiver.respect_robots_txt,
         hosts: hosts,
         user_agent: WaybackArchiver.user_agent
       }
