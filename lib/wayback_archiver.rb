@@ -11,6 +11,8 @@ module WaybackArchiver
   INFO_LINK  = 'https://rubygems.org/gems/wayback_archiver'.freeze
   # WaybackArchiver User-Agent
   USER_AGENT = "WaybackArchiver/#{WaybackArchiver::VERSION} (+#{INFO_LINK})".freeze
+  # Default for whether to respect robots txt files
+  DEFAULT_RESPECT_ROBOTS_TXT = true
 
   # Default concurrency for archiving URLs
   DEFAULT_CONCURRENCY = 1
@@ -171,6 +173,19 @@ module WaybackArchiver
   # @return [String] the configured or the default user agent
   def self.user_agent
     @user_agent ||= USER_AGENT
+  end
+
+  # Sets the default respect_robots_txt
+  # @return [Boolean] the desired default for respect_robots_txt
+  # @param [Boolean] respect_robots_txt the desired default
+  def self.respect_robots_txt=(respect_robots_txt)
+    @respect_robots_txt = respect_robots_txt
+  end
+
+  # Returns the default respect_robots_txt
+  # @return [Boolean] the configured or the default respect_robots_txt
+  def self.respect_robots_txt
+    @respect_robots_txt ||= DEFAULT_RESPECT_ROBOTS_TXT
   end
 
   # Sets the default concurrency
