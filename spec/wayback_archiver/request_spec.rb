@@ -118,7 +118,7 @@ RSpec.describe WaybackArchiver::Request do
 
   describe '::build_redirect_uri' do
     it 'raises InvalidRedirectError if no location header is found' do
-      response = Struct.new(:header).new(location: nil)
+      response = Struct.new(:header).new({ location: nil })
       redirect_error = WaybackArchiver::Request::InvalidRedirectError
 
       expect do
@@ -128,7 +128,7 @@ RSpec.describe WaybackArchiver::Request do
 
     it 'adds base URI if location header is relative' do
       base_uri = 'http://example.com'
-      response = Struct.new(:header).new('location' => '/path')
+      response = Struct.new(:header).new({ 'location' => '/path' })
       result = described_class.build_redirect_uri(base_uri, response)
 
       expect(result).to eq(URI.parse('http://example.com/path'))
@@ -136,7 +136,7 @@ RSpec.describe WaybackArchiver::Request do
 
     it 'returns location header' do
       base_uri = 'http://example.com'
-      response = Struct.new(:header).new('location' => 'https://example.com/path')
+      response = Struct.new(:header).new({ 'location' => 'https://example.com/path' })
       result = described_class.build_redirect_uri(base_uri, response)
 
       expect(result).to eq(URI.parse('https://example.com/path'))
