@@ -1,3 +1,4 @@
+require 'uri'
 require 'rexml/document'
 
 module WaybackArchiver
@@ -5,8 +6,9 @@ module WaybackArchiver
   class Sitemap
     attr_reader :document
 
-    def initialize(xml, strict: false)
-      @document = REXML::Document.new(xml)
+    def initialize(xml_or_string, strict: false)
+      @contents = xml_or_string
+      @document = REXML::Document.new(xml_or_string)
     rescue REXML::ParseException => _e
       raise if strict
 
@@ -65,9 +67,20 @@ module WaybackArchiver
 
     private
 
+    def valid_url?(url)
+      uri = URI.parse(url)
+      uri.is_a?(URI::HTTP) || uri.is_a?(URI::HTTPS)
+    rescue URI::InvalidURIError
+      false
+    end
+
     # Extract URLs from Sitemap
     def extract_urls(node_name)
-      return document.to_s.each_line.map(&:strip) if plain_document?
+      if plain_document?
+        return @contents.to_s
+          .each_line.map(&:strip)
+          .select(&method(:valid_url?))
+      end
 
       urls = []
       document.root.elements.each("#{node_name}/loc") do |element|
