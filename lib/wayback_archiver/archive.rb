@@ -38,6 +38,7 @@ module WaybackArchiver
 
       urls_queue.each do |url|
         pool.post do
+          sleep(12)
           result = post_url(url)
           yield(result) if block_given?
           posted_urls << result unless result.errored?
