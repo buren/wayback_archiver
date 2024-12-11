@@ -79,7 +79,7 @@ module WaybackArchiver
           urls(url: sitemap_url, visited: visited)
         end
       else
-        sitemap.urls
+        sitemap.urls.map { |url| url&.strip }
       end
     rescue Request::Error => e
       WaybackArchiver.logger.error "Error raised when requesting #{url}, #{e.class}, #{e.message}"

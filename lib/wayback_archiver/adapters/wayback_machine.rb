@@ -13,7 +13,7 @@ module WaybackArchiver
     # @example Archive example.com, with default options
     #    WaybackMachine.call('http://example.com')
     def self.call(url)
-      request_url  = "#{BASE_URL}#{url}"
+      request_url  = "#{BASE_URL}#{url&.strip}"
       response = Request.get(request_url, follow_redirects: false)
       WaybackArchiver.logger.info "Posted [#{response.code}, #{response.message}] #{url}"
       ArchiveResult.new(
