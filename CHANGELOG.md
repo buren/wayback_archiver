@@ -2,6 +2,13 @@
 
 ## HEAD
 
+## v1.5.0
+
+- Strip URLs found in Sitemaps
+- Inline `robots` dependency, closes [#51](https://github.com/buren/wayback_archiver/issues/51)
+- Update Sitemap XML parsing to work better with newer versions of REXML
+- Fix issue calling `Spidr` with option hash (i.e use double spat operator)
+
 ## v1.4.0
 
 * Don't respect robots.txt file by default, [PR#41](https://github.com/buren/wayback_archiver/pull/41)
