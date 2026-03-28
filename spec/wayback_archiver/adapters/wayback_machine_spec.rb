@@ -229,6 +229,80 @@ RSpec.describe WaybackArchiver::WaybackMachine do
     end
   end
 
+  describe '::submit' do
+    it 'POSTs to /save and returns url and job_id hash' do
+      stub_request(:post, save_url)
+        .with(body: hash_including('url' => url))
+        .to_return(status: 200, body: { url: url, job_id: job_id }.to_json)
+
+      result = described_class.submit(url)
+
+      expect(result).to eq({ 'url' => url, 'job_id' => job_id })
+    end
+
+    it 'includes SPN2 options in POST body' do
+      stub_request(:post, save_url)
+        .with(body: hash_including('url' => url, 'capture_all' => '1'))
+        .to_return(status: 200, body: { url: url, job_id: job_id }.to_json)
+
+      described_class.submit(url, capture_all: true)
+    end
+
+    it 'returns ArchiveResult with error on network failure' do
+      stub_request(:post, save_url).to_raise(Timeout::Error)
+
+      result = described_class.submit(url)
+
+      expect(result).to be_a(WaybackArchiver::ArchiveResult)
+      expect(result.errored?).to eq(true)
+    end
+
+    it 'sends auth headers when credentials configured' do
+      WaybackArchiver.access_key = 'test-access'
+      WaybackArchiver.secret_key = 'test-secret'
+
+      stub_request(:post, save_url)
+        .with(headers: { 'Authorization' => 'LOW test-access:test-secret' })
+        .to_return(status: 200, body: { url: url, job_id: job_id }.to_json)
+
+      described_class.submit(url)
+    end
+  end
+
+  describe '::poll_statuses' do
+    let(:job_id_2) { 'bbbb789b-f3ca-48d0-9ea6-1d1225e98695' }
+    let(:batch_status_url) { 'https://web.archive.org/save/status' }
+
+    it 'POSTs to /save/status with comma-separated job_ids' do
+      stub_request(:post, batch_status_url)
+        .with(body: hash_including('job_ids' => "#{job_id},#{job_id_2}"))
+        .to_return(
+          status: 200,
+          body: {
+            job_id => { 'status' => 'success', 'job_id' => job_id, 'timestamp' => '20260326120000' },
+            job_id_2 => { 'status' => 'pending', 'job_id' => job_id_2 }
+          }.to_json
+        )
+
+      result = described_class.poll_statuses([job_id, job_id_2])
+
+      expect(result.keys).to contain_exactly(job_id, job_id_2)
+      expect(result[job_id]['status']).to eq('success')
+      expect(result[job_id_2]['status']).to eq('pending')
+    end
+
+    it 'sends auth headers when credentials configured' do
+      WaybackArchiver.access_key = 'test-access'
+      WaybackArchiver.secret_key = 'test-secret'
+
+      stub_request(:post, batch_status_url)
+        .with(headers: { 'Authorization' => 'LOW test-access:test-secret' })
+        .to_return(status: 200, body: { job_id => { 'status' => 'success' } }.to_json)
+
+      described_class.poll_statuses([job_id])
+    end
+  end
+
   describe '::check_user_status' do
     it 'returns available and processing counts' do
       WaybackArchiver.access_key = 'test-access'

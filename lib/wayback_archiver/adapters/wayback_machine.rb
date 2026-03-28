@@ -54,6 +54,36 @@ module WaybackArchiver
       ArchiveResult.new(url, error: e, status_ext: e.message)
     end
 
+    # Submit a URL for capture without polling.
+    # @return [Hash, ArchiveResult] parsed JSON response {url, job_id} on success,
+    #   or ArchiveResult with error on failure.
+    # @param [String] url to archive.
+    # @param [Hash] options SPN2 capture options.
+    def self.submit(url, **options)
+      body = build_post_body(url, **options)
+      headers = build_headers
+
+      WaybackArchiver.logger.debug("Submitting #{url} to SPN2")
+      response = Request.post(SAVE_URL, body: body, headers: headers)
+      JSON.parse(response.body)
+    rescue Request::Error => e
+      WaybackArchiver.logger.error("Failed to submit #{url}: #{e.class}, #{e.message}")
+      ArchiveResult.new(url, error: e)
+    end
+
+    # Batch-poll the status of multiple capture jobs.
+    # @return [Hash<String, Hash>] job_id => status hash.
+    # @param [Array<String>] job_ids to check.
+    def self.poll_statuses(job_ids)
+      headers = build_headers
+      response = Request.post(
+        STATUS_URL,
+        body: { 'job_ids' => job_ids.join(',') },
+        headers: headers
+      )
+      JSON.parse(response.body)
+    end
+
     # Check the user's current session status.
     # @return [Hash] with 'available' and 'processing' keys.
     # @raise [AuthenticationError] if no credentials configured.
@@ -76,12 +106,8 @@ module WaybackArchiver
     end
 
     def self.submit_and_poll(url, **options)
-      body = build_post_body(url, **options)
-      headers = build_headers
-
-      WaybackArchiver.logger.debug("Submitting #{url} to SPN2")
-      response = Request.post(SAVE_URL, body: body, headers: headers)
-      data = JSON.parse(response.body)
+      data = submit(url, **options)
+      return data if data.is_a?(ArchiveResult) # submission failed
 
       job_id = data['job_id']
       WaybackArchiver.logger.info("Capture started for #{url}, job_id: #{job_id}")
