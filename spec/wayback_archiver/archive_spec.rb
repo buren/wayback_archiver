@@ -25,6 +25,30 @@ RSpec.describe WaybackArchiver::Archive do
 
       expect(described_class).to have_received(:post_url).once
     end
+
+    it 'returns ALL results including errored ones' do
+      success = WaybackArchiver::ArchiveResult.new('http://ok.com')
+      failure = WaybackArchiver::ArchiveResult.new('http://fail.com', error: StandardError.new('boom'))
+
+      call_count = 0
+      allow(described_class).to receive(:post_url) do
+        call_count += 1
+        call_count == 1 ? success : failure
+      end
+
+      results = described_class.post(%w[http://ok.com http://fail.com])
+
+      expect(results.length).to eq(2)
+      expect(results.map(&:uri)).to contain_exactly('http://ok.com', 'http://fail.com')
+    end
+
+    it 'passes **options through to post_url' do
+      allow(described_class).to receive(:post_url).and_return(WaybackArchiver::ArchiveResult.new(nil))
+
+      described_class.post(%w[https://example.com], capture_all: true, js_behavior_timeout: 10)
+
+      expect(described_class).to have_received(:post_url).with('https://example.com', capture_all: true, js_behavior_timeout: 10)
+    end
   end
 
   describe '::crawl' do
@@ -42,44 +66,52 @@ RSpec.describe WaybackArchiver::Archive do
   end
 
   describe '::post_url' do
-    it 'posts URL to the Wayback Machine' do
+    it 'delegates to the configured adapter' do
       url = 'https://example.com'
-      expected_request_url = "https://web.archive.org/save/#{url}"
+      expected_result = WaybackArchiver::ArchiveResult.new(url, job_id: 'test-123', timestamp: '20260326120000')
 
-      stub_request(:get, expected_request_url)
-        .with(headers: headers)
-        .to_return(status: 301, body: 'buren', headers: {})
+      allow(WaybackArchiver::WaybackMachine).to receive(:call).and_return(expected_result)
 
       result = described_class.post_url(url)
 
-      expect(result.uri).to eq(url)
-      expect(result.code).to eq('301')
-      expect(WaybackArchiver.logger.debug_log.first).to include(expected_request_url)
-      expect(WaybackArchiver.logger.info_log.last).to include(url)
+      expect(result).to eq(expected_result)
+      expect(WaybackArchiver::WaybackMachine).to have_received(:call).with(url)
     end
 
-    it 'rescues and logs Request::ServerError' do
-      allow(WaybackArchiver::Request).to receive(:get)
-        .and_raise(WaybackArchiver::Request::MaxRedirectError, 'too many redirects')
-
+    it 'passes kwargs to adapter when adapter accepts them' do
       url = 'https://example.com'
-      expected_request_url = "https://web.archive.org/save/#{url}"
+      expected_result = WaybackArchiver::ArchiveResult.new(url)
 
-      stub_request(:get, expected_request_url)
-        .with(headers: headers)
-        .to_return(status: 301, body: 'buren', headers: {})
+      allow(WaybackArchiver::WaybackMachine).to receive(:call).and_return(expected_result)
+
+      described_class.post_url(url, capture_all: true)
+
+      expect(WaybackArchiver::WaybackMachine).to have_received(:call).with(url, capture_all: true)
+    end
+
+    it 'calls adapter without kwargs when adapter does not accept them' do
+      url = 'https://example.com'
+      simple_adapter = ->(u) { WaybackArchiver::ArchiveResult.new(u) }
+
+      WaybackArchiver.adapter = simple_adapter
+
+      result = described_class.post_url(url, capture_all: true)
+
+      expect(result.uri).to eq(url)
+    ensure
+      WaybackArchiver.adapter = WaybackArchiver::WaybackMachine
+    end
+
+    it 'returns ArchiveResult with error when adapter fails' do
+      url = 'https://example.com'
+      error_result = WaybackArchiver::ArchiveResult.new(url, error: StandardError.new('boom'))
+
+      allow(WaybackArchiver::WaybackMachine).to receive(:call).and_return(error_result)
 
       result = described_class.post_url(url)
 
       expect(result.uri).to eq(url)
-      expect(result.response_error).to be_nil
-      expect(result.request_url).to be_nil
-      expect(result.error).to be_a(WaybackArchiver::Request::MaxRedirectError)
-
-      last_error_log = WaybackArchiver.logger.error_log.last
-      expect(last_error_log).to include(url)
-      expect(last_error_log).to include('MaxRedirectError')
-      expect(last_error_log).to include('too many redirects')
+      expect(result.errored?).to eq(true)
     end
   end
 end

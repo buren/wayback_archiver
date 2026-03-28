@@ -1,8 +1,10 @@
+require 'wayback_archiver/retry'
 require 'wayback_archiver/thread_pool'
 require 'wayback_archiver/null_logger'
 require 'wayback_archiver/version'
 require 'wayback_archiver/url_collector'
 require 'wayback_archiver/archive'
+require 'wayback_archiver/screenshot'
 require 'wayback_archiver/sitemapper'
 
 # WaybackArchiver, send URLs to Wayback Machine. By crawling, sitemap or by passing a list of URLs.
@@ -14,8 +16,8 @@ module WaybackArchiver
   # Default for whether to respect robots txt files
   DEFAULT_RESPECT_ROBOTS_TXT = false
 
-  # Default concurrency for archiving URLs
-  DEFAULT_CONCURRENCY = 1
+  # Default concurrency for archiving URLs (4/min anonymous SPN2 limit)
+  DEFAULT_CONCURRENCY = 4
 
   # Maxmium number of links posted (-1 is no limit)
   DEFAULT_MAX_LIMIT = -1
@@ -54,15 +56,15 @@ module WaybackArchiver
   #        /host[\d]+\.example\.com/
   #      ]
   #    )
-  def self.archive(source, legacy_strategy = nil, strategy: :auto, hosts: [], concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, &block)
+  def self.archive(source, legacy_strategy = nil, strategy: :auto, hosts: [], concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, **options, &block)
     strategy = legacy_strategy || strategy
 
     case strategy.to_s
-    when 'crawl'   then crawl(source, concurrency: concurrency, limit: limit, hosts: hosts, &block)
-    when 'auto'    then auto(source, concurrency: concurrency, limit: limit, &block)
-    when 'sitemap' then sitemap(source, concurrency: concurrency, limit: limit, &block)
-    when 'urls'    then urls(source, concurrency: concurrency, limit: limit, &block)
-    when 'url'     then urls(source, concurrency: concurrency, limit: limit, &block)
+    when 'crawl'   then crawl(source, concurrency: concurrency, limit: limit, hosts: hosts, **options, &block)
+    when 'auto'    then auto(source, concurrency: concurrency, limit: limit, **options, &block)
+    when 'sitemap' then sitemap(source, concurrency: concurrency, limit: limit, **options, &block)
+    when 'urls'    then urls(source, concurrency: concurrency, limit: limit, **options, &block)
+    when 'url'     then urls(source, concurrency: concurrency, limit: limit, **options, &block)
     else
       raise ArgumentError, "Unknown strategy: '#{strategy}'. Allowed strategies: sitemap, urls, url, crawl"
     end
@@ -80,11 +82,11 @@ module WaybackArchiver
   # @example Auto archive example.com and archive max 100 URLs
   #    WaybackArchiver.auto('example.com', limit: 100)
   # @see http://www.sitemaps.org
-  def self.auto(source, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, &block)
+  def self.auto(source, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, **options, &block)
     urls = Sitemapper.autodiscover(source)
-    return urls(urls, concurrency: concurrency, &block) if urls.any?
+    return urls(urls, concurrency: concurrency, **options, &block) if urls.any?
 
-    crawl(source, concurrency: concurrency, &block)
+    crawl(source, concurrency: concurrency, **options, &block)
   end
 
   # Crawl site for URLs to send to the Wayback Machine.
@@ -106,9 +108,9 @@ module WaybackArchiver
   #        /host[\d]+\.example\.com/
   #      ]
   #    )
-  def self.crawl(url, hosts: [], concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, &block)
+  def self.crawl(url, hosts: [], concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, **options, &block)
     WaybackArchiver.logger.info "Crawling #{url}"
-    Archive.crawl(url, hosts: hosts, concurrency: concurrency, limit: limit, &block)
+    Archive.crawl(url, hosts: hosts, concurrency: concurrency, limit: limit, **options, &block)
   end
 
   # Get URLs from sitemap and send found URLs to the Wayback Machine.
@@ -122,9 +124,9 @@ module WaybackArchiver
   # @example Get example.com sitemap archive max 100 URLs
   #    WaybackArchiver.sitemap('example.com/sitemap.xml', limit: 100)
   # @see http://www.sitemaps.org
-  def self.sitemap(url, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, &block)
+  def self.sitemap(url, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, **options, &block)
     WaybackArchiver.logger.info "Fetching Sitemap"
-    Archive.post(URLCollector.sitemap(url), concurrency: concurrency, limit: limit, &block)
+    Archive.post(URLCollector.sitemap(url), concurrency: concurrency, limit: limit, **options, &block)
   end
 
   # Send URL to the Wayback Machine.
@@ -137,8 +139,57 @@ module WaybackArchiver
   #    WaybackArchiver.urls(%w(example.com google.com))
   # @example Archive example.com, max 100 URLs
   #    WaybackArchiver.urls(%w(example.com www.example.com), limit: 100)
-  def self.urls(urls, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, &block)
-    Archive.post(Array(urls), concurrency: concurrency, &block)
+  def self.urls(urls, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, **options, &block)
+    Archive.post(Array(urls), concurrency: concurrency, limit: limit, **options, &block)
+  end
+
+  # Configure WaybackArchiver with a block.
+  # @yield [WaybackArchiver] the module itself for configuration.
+  # @return [WaybackArchiver]
+  # @example
+  #   WaybackArchiver.configure do |config|
+  #     config.access_key = 'your-access-key'
+  #     config.secret_key = 'your-secret-key'
+  #     config.concurrency = 8
+  #   end
+  def self.configure
+    yield self
+    self
+  end
+
+  # Error raised when authentication is required but credentials are missing
+  class AuthenticationError < StandardError; end
+
+  # Sets the Internet Archive S3 access key
+  # @return [String, nil] the configured access key
+  # @param [String, nil] key the access key
+  def self.access_key=(key)
+    @access_key = key
+  end
+
+  # Returns the configured access key, falling back to environment variables
+  # @return [String, nil] the access key
+  def self.access_key
+    @access_key || ENV['WAYBACK_ACCESS_KEY'] || ENV['IA_S3_ACCESS_KEY']
+  end
+
+  # Sets the Internet Archive S3 secret key
+  # @return [String, nil] the configured secret key
+  # @param [String, nil] key the secret key
+  def self.secret_key=(key)
+    @secret_key = key
+  end
+
+  # Returns the configured secret key, falling back to environment variables
+  # @return [String, nil] the secret key
+  def self.secret_key
+    @secret_key || ENV['WAYBACK_SECRET_KEY'] || ENV['IA_S3_SECRET_KEY']
+  end
+
+  # Returns whether both access_key and secret_key are configured
+  # @return [Boolean]
+  def self.credentials?
+    !access_key.nil? && !secret_key.nil?
   end
 
   # Set logger

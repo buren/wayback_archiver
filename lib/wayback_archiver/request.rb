@@ -77,11 +77,7 @@ module WaybackArchiver
       until redirect_count > max_redirects
         WaybackArchiver.logger.debug "Requesting #{uri}"
 
-        http = Net::HTTP.new(uri.host, uri.port)
-        if uri.scheme == 'https'
-          http.use_ssl = true
-          http.verify_mode = OpenSSL::SSL::VERIFY_NONE
-        end
+        http = build_http(uri)
 
         request = Net::HTTP::Get.new(uri.request_uri)
         request['User-Agent'] = WaybackArchiver.user_agent
@@ -192,6 +188,38 @@ module WaybackArchiver
       return true if value.strip.empty?
 
       false
+    end
+
+    # Build a Net::HTTP instance for the given URI.
+    # @return [Net::HTTP]
+    # @param [URI] uri the target URI.
+    def self.build_http(uri)
+      http = Net::HTTP.new(uri.host, uri.port)
+      if uri.scheme == 'https'
+        http.use_ssl = true
+        http.verify_mode = OpenSSL::SSL::VERIFY_PEER
+      end
+      http
+    end
+
+    # Send a POST request.
+    # @return [Response] the http response representation.
+    # @param [String, URI] uri to post to.
+    # @param body [Hash] form-encoded body parameters.
+    # @param headers [Hash] HTTP headers.
+    def self.post(uri, body: {}, headers: {})
+      uri = build_uri(uri)
+      http = build_http(uri)
+
+      request = Net::HTTP::Post.new(uri.request_uri)
+      request['User-Agent'] = WaybackArchiver.user_agent
+      headers.each { |k, v| request[k] = v }
+      request.set_form_data(body)
+
+      result = perform_request(uri, http, request)
+      raise result.error if result.error
+
+      build_response(uri, result.response)
     end
 
     private

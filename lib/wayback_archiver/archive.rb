@@ -23,7 +23,7 @@ module WaybackArchiver
     #    Archive.post(['http://example.com'], limit: 100)
     # @example Explicitly set no limit on how many links are posted
     #    Archive.post(['http://example.com'], limit: -1)
-    def self.post(urls, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit)
+    def self.post(urls, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, **options)
       WaybackArchiver.logger.info "Total URLs to be sent: #{urls.length}"
       WaybackArchiver.logger.info "Request are sent with up to #{concurrency} parallel threads"
 
@@ -33,22 +33,22 @@ module WaybackArchiver
                      urls[0...limit]
                    end
 
-      posted_urls = Concurrent::Array.new
+      results = Concurrent::Array.new
       pool = ThreadPool.build(concurrency)
 
       urls_queue.each do |url|
         pool.post do
-          result = post_url(url)
+          result = post_url(url, **options)
           yield(result) if block_given?
-          posted_urls << result unless result.errored?
+          results << result
         end
       end
 
       pool.shutdown
       pool.wait_for_termination
 
-      WaybackArchiver.logger.info "#{posted_urls.length} URL(s) posted to Wayback Machine"
-      posted_urls
+      WaybackArchiver.logger.info "#{results.count(&:success?)} of #{results.length} URL(s) posted to Wayback Machine"
+      results
     end
 
     # Send URLs to Wayback Machine by crawling the site.
@@ -75,25 +75,25 @@ module WaybackArchiver
     #        /host[\d]+\.example\.com/
     #      ]
     #    )
-    def self.crawl(source, hosts: [], concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit)
+    def self.crawl(source, hosts: [], concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, **options)
       WaybackArchiver.logger.info "Request are sent with up to #{concurrency} parallel threads"
 
-      posted_urls = Concurrent::Array.new
+      results = Concurrent::Array.new
       pool = ThreadPool.build(concurrency)
 
       found_urls = URLCollector.crawl(source, hosts: hosts, limit: limit) do |url|
         pool.post do
-          result = post_url(url)
+          result = post_url(url, **options)
           yield(result) if block_given?
-          posted_urls << result unless result.errored?
+          results << result
         end
       end
       WaybackArchiver.logger.info "Crawling of #{source} finished, found #{found_urls.length} URL(s)"
       pool.shutdown
       pool.wait_for_termination
 
-      WaybackArchiver.logger.info "#{posted_urls.length} URL(s) posted to Wayback Machine"
-      posted_urls
+      WaybackArchiver.logger.info "#{results.count(&:success?)} of #{results.length} URL(s) posted to Wayback Machine"
+      results
     end
 
     # Send URL to Wayback Machine.
@@ -101,8 +101,13 @@ module WaybackArchiver
     # @param [String] url to send.
     # @example Archive example.com, with default options
     #    Archive.post_url('http://example.com')
-    def self.post_url(url)
-      WaybackArchiver.adapter.call(url)
+    def self.post_url(url, **options)
+      adapter = WaybackArchiver.adapter
+      if options.any? && adapter.method(:call).parameters.any? { |type, _| %i[key keyrest].include?(type) }
+        adapter.call(url, **options)
+      else
+        adapter.call(url)
+      end
     end
   end
 end

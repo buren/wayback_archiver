@@ -11,9 +11,13 @@ log_level = Logger::INFO
 concurrency = WaybackArchiver.concurrency
 limit = WaybackArchiver.max_limit
 hosts = []
+options = {}
 
 optparse = OptionParser.new do |parser|
   parser.banner = 'Usage: wayback_archiver [<url>] [options]'
+
+  parser.separator ''
+  parser.separator 'Strategy options:'
 
   parser.on('--auto', 'Auto (default)') do |value|
     strategy = 'auto'
@@ -35,28 +39,79 @@ optparse = OptionParser.new do |parser|
     hosts = value.map { |v| Regexp.new(v) } if value
   end
 
-  parser.on('--concurrency=1', Integer, 'Concurrency') do |value|
+  parser.on('--concurrency=N', Integer, 'Concurrency (default: 4)') do |value|
     concurrency = value
   end
 
-  parser.on('--limit=5', Integer, 'Max number of URLs to archive') do |value|
+  parser.on('--limit=N', Integer, 'Max number of URLs to archive') do |value|
     limit = value
   end
 
-  parser.on('--log=output.log', String, 'Path to desired log file (if no argument is given it defaults to STDOUT)') do |path|
+  parser.separator ''
+  parser.separator 'Authentication (get keys at https://archive.org/account/s3.php):'
+
+  parser.on('--access-key=KEY', String, 'Internet Archive S3 access key') do |value|
+    WaybackArchiver.access_key = value
+  end
+
+  parser.on('--secret-key=KEY', String, 'Internet Archive S3 secret key') do |value|
+    WaybackArchiver.secret_key = value
+  end
+
+  parser.separator ''
+  parser.separator 'SPN2 capture options:'
+
+  parser.on('--capture-all', 'Capture error pages (HTTP 4xx/5xx)') do
+    options[:capture_all] = true
+  end
+
+  parser.on('--capture-outlinks', 'Auto-capture linked pages (up to 100, requires auth)') do
+    options[:capture_outlinks] = true
+  end
+
+  parser.on('--capture-screenshot', 'Generate PNG screenshot of the page') do
+    options[:capture_screenshot] = true
+  end
+
+  parser.on('--screenshot-dir=PATH', String, 'Save screenshots locally (requires auth + --capture-screenshot)') do |value|
+    options[:screenshot_dir] = value
+  end
+
+  parser.on('--force-get', 'Force HTTP GET instead of HEAD+browser') do
+    options[:force_get] = true
+  end
+
+  parser.on('--skip-first-archive', 'Skip initial duplicate check (faster)') do
+    options[:skip_first_archive] = true
+  end
+
+  parser.on('--delay-wb-availability', 'Delay public availability ~12h') do
+    options[:delay_wb_availability] = true
+  end
+
+  parser.on('--if-not-archived-within=TIMEDELTA', String, 'Skip if recent snapshot exists (e.g. "3d 5h 20m")') do |value|
+    options[:if_not_archived_within] = value
+  end
+
+  parser.on('--js-behavior-timeout=N', Integer, 'Run JS for N seconds after page load (max 30)') do |value|
+    options[:js_behavior_timeout] = value
+  end
+
+  parser.on('--use-user-agent=AGENT', String, 'Custom User-Agent for target page') do |value|
+    options[:use_user_agent] = value
+  end
+
+  parser.separator ''
+  parser.separator 'General options:'
+
+  parser.on('--log=output.log', String, 'Path to desired log file (defaults to STDOUT)') do |path|
     log = path
   end
 
-  parser.on('--[no-]verbose', 'Verboes logs') do |value|
+  parser.on('--[no-]verbose', 'Verbose logs') do |value|
     log_level = value ? Logger::DEBUG : Logger::WARN
   end
 
-  parser.on('-h', '--help', 'How to use') do
-    puts parser
-    exit
-  end
-
-  # No argument, shows at tail. This will print an options summary.
   parser.on_tail('-h', '--help', 'Show this message') do
     puts parser
     exit
@@ -89,6 +144,7 @@ urls.each do |url|
     hosts: hosts,
     strategy: strategy,
     concurrency: concurrency,
-    limit: limit
+    limit: limit,
+    **options
   )
 end

@@ -180,6 +180,67 @@ RSpec.describe WaybackArchiver::Request do
     end
   end
 
+  describe '::build_http' do
+    it 'returns Net::HTTP instance' do
+      uri = URI.parse('https://example.com')
+      http = described_class.build_http(uri)
+      expect(http).to be_a(Net::HTTP)
+    end
+
+    it 'enables SSL for https URIs' do
+      uri = URI.parse('https://example.com')
+      http = described_class.build_http(uri)
+      expect(http.use_ssl?).to eq(true)
+    end
+
+    it 'sets verify_mode to VERIFY_PEER for https' do
+      uri = URI.parse('https://example.com')
+      http = described_class.build_http(uri)
+      expect(http.verify_mode).to eq(OpenSSL::SSL::VERIFY_PEER)
+    end
+
+    it 'does not enable SSL for http URIs' do
+      uri = URI.parse('http://example.com')
+      http = described_class.build_http(uri)
+      expect(http.use_ssl?).to eq(false)
+    end
+  end
+
+  describe '::post' do
+    it 'sends a POST request and returns Response' do
+      stub_request(:post, 'https://example.com/save')
+        .with(
+          body: 'url=http%3A%2F%2Ftest.com',
+          headers: { 'Accept' => 'application/json' }
+        )
+        .to_return(status: 200, body: '{"job_id":"abc123"}', headers: {})
+
+      result = described_class.post(
+        'https://example.com/save',
+        body: { 'url' => 'http://test.com' },
+        headers: { 'Accept' => 'application/json' }
+      )
+      expect(result.code).to eq('200')
+      expect(result.body).to eq('{"job_id":"abc123"}')
+    end
+
+    it 'maps Timeout::Error to ServerError' do
+      allow_any_instance_of(Net::HTTP).to receive(:request).and_raise(Timeout::Error)
+
+      expect do
+        described_class.post('https://example.com/save', body: {}, headers: {})
+      end.to raise_error(described_class::ServerError)
+    end
+
+    it 'maps SocketError to ClientError' do
+      allow_any_instance_of(Net::HTTP).to receive(:request).and_raise(SocketError)
+
+      expect do
+        described_class.post('https://example.com/save', body: {}, headers: {})
+      end.to raise_error(described_class::ClientError)
+    end
+  end
+
   describe '::blank?' do
     it 'returns true if passed nil' do
       expect(described_class.blank?(nil)).to eq(true)

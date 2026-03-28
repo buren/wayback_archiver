@@ -1,18 +1,10 @@
 require 'simplecov'
-require 'coveralls'
-
-formatters = [
-  SimpleCov::Formatter::HTMLFormatter,
-  Coveralls::SimpleCov::Formatter
-]
-SimpleCov.formatter = SimpleCov::Formatter::MultiFormatter.new(formatters)
 SimpleCov.start
 
 Dir['./spec/support/**/*.rb'].each { |file| require file }
 
 require 'wayback_archiver'
 require 'webmock/rspec'
-require 'byebug'
 
 WebMock.disable_net_connect!
 
@@ -28,5 +20,8 @@ RSpec.configure do |config|
     WaybackArchiver.concurrency = 1
 
     WaybackArchiver.max_limit = WaybackArchiver::DEFAULT_MAX_LIMIT
+
+    WaybackArchiver.access_key = nil
+    WaybackArchiver.secret_key = nil
   end
 end

@@ -173,6 +173,94 @@ RSpec.describe WaybackArchiver do
     end
   end
 
+  describe '::access_key' do
+    it 'can set and get access_key' do
+      described_class.access_key = 'my-access-key'
+      expect(described_class.access_key).to eq('my-access-key')
+    end
+
+    it 'falls back to WAYBACK_ACCESS_KEY env var' do
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with('WAYBACK_ACCESS_KEY').and_return('env-key')
+      expect(described_class.access_key).to eq('env-key')
+    end
+
+    it 'falls back to IA_S3_ACCESS_KEY env var' do
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with('WAYBACK_ACCESS_KEY').and_return(nil)
+      allow(ENV).to receive(:[]).with('IA_S3_ACCESS_KEY').and_return('ia-key')
+      expect(described_class.access_key).to eq('ia-key')
+    end
+
+    it 'prefers programmatic value over env var' do
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with('WAYBACK_ACCESS_KEY').and_return('env-key')
+      described_class.access_key = 'programmatic-key'
+      expect(described_class.access_key).to eq('programmatic-key')
+    end
+  end
+
+  describe '::secret_key' do
+    it 'can set and get secret_key' do
+      described_class.secret_key = 'my-secret-key'
+      expect(described_class.secret_key).to eq('my-secret-key')
+    end
+
+    it 'falls back to WAYBACK_SECRET_KEY env var' do
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with('WAYBACK_SECRET_KEY').and_return('env-secret')
+      expect(described_class.secret_key).to eq('env-secret')
+    end
+
+    it 'falls back to IA_S3_SECRET_KEY env var' do
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with('WAYBACK_SECRET_KEY').and_return(nil)
+      allow(ENV).to receive(:[]).with('IA_S3_SECRET_KEY').and_return('ia-secret')
+      expect(described_class.secret_key).to eq('ia-secret')
+    end
+  end
+
+  describe '::credentials?' do
+    it 'returns true when both keys are present' do
+      described_class.access_key = 'key'
+      described_class.secret_key = 'secret'
+      expect(described_class.credentials?).to eq(true)
+    end
+
+    it 'returns false when access_key is missing' do
+      described_class.secret_key = 'secret'
+      expect(described_class.credentials?).to eq(false)
+    end
+
+    it 'returns false when secret_key is missing' do
+      described_class.access_key = 'key'
+      expect(described_class.credentials?).to eq(false)
+    end
+
+    it 'returns false when both keys are missing' do
+      expect(described_class.credentials?).to eq(false)
+    end
+  end
+
+  describe '::configure' do
+    it 'yields self for block-style configuration' do
+      described_class.configure do |config|
+        config.concurrency = 8
+        config.access_key = 'block-key'
+        config.secret_key = 'block-secret'
+      end
+
+      expect(described_class.concurrency).to eq(8)
+      expect(described_class.access_key).to eq('block-key')
+      expect(described_class.secret_key).to eq('block-secret')
+    end
+
+    it 'returns self' do
+      result = described_class.configure { |c| }
+      expect(result).to eq(described_class)
+    end
+  end
+
   describe '::adapter=' do
     it 'can set adapter' do
       adapter = WaybackArchiver::WaybackMachine

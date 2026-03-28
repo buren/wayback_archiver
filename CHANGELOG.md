@@ -2,6 +2,33 @@
 
 ## HEAD
 
+## v2.0.0
+
+**Breaking changes:**
+
+- Switched from SPN1 to **SPN2 API** — captures are now submitted via POST and polled for completion
+- `archive`, `crawl`, `sitemap`, `urls` now return **all results** (including failures), not just successes. Use `result.success?` to filter.
+- Default concurrency changed from 1 to 4
+- Ruby >= 3.1 required
+- SSL certificate verification enabled by default
+- Removed deprecated development dependencies (`coveralls`, `redcarpet`, `byebug`)
+
+**New features:**
+
+- **Authentication** — configure Internet Archive S3 API keys via `access_key`/`secret_key` (programmatic, env vars, or CLI flags) for higher rate limits (12/min vs 4/min)
+- **SPN2 capture options** — `capture_all`, `capture_outlinks`, `capture_screenshot`, `force_get`, `skip_first_archive`, `if_not_archived_within`, `js_behavior_timeout`, `use_user_agent`, `delay_wb_availability`
+- **Screenshot download** — save full-page PNG screenshots locally with `screenshot_dir:` option (requires auth)
+- **Rich results** — `ArchiveResult` now includes `job_id`, `timestamp`, `duration_sec`, `resources`, `outlinks`, `screenshot_url`, `original_url`, `status_ext`, `wayback_url`
+- **Retry with backoff** — transient SPN2 errors (rate limits, service unavailable) are retried automatically with exponential backoff
+- **`Request.post`** — new HTTP POST support in the request layer
+- **GitHub Actions CI** — replaced Travis CI, testing Ruby 3.1-3.4
+
+**Bug fixes:**
+
+- Fixed CLI typo: `Verboes` → `Verbose`
+- Removed duplicate `-h` flag in CLI
+- Added `logger` as explicit gem dependency (removed from Ruby 4.0 default gems)
+
 ## v1.5.0
 
 - Strip URLs found in Sitemaps
