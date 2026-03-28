@@ -1,5 +1,6 @@
 require 'spec_helper'
 require 'json'
+require 'tmpdir'
 
 RSpec.describe WaybackArchiver::WaybackMachine do
   let(:url) { 'https://example.com' }
@@ -225,6 +226,52 @@ RSpec.describe WaybackArchiver::WaybackMachine do
 
         result = described_class.call(url, capture_screenshot: true)
         expect(result.screenshot_url).to eq(screenshot_url)
+      end
+
+      it 'downloads screenshot when screenshot_dir is provided' do
+        Dir.mktmpdir do |dir|
+          screenshot_url = "http://web.archive.org/screenshot/#{url}"
+          png_data = "\x89PNG\r\n\x1a\nfake"
+
+          stub_request(:post, save_url)
+            .to_return(status: 200, body: { url: url, job_id: job_id }.to_json)
+
+          stub_request(:get, status_url)
+            .to_return(
+              status: 200,
+              body: {
+                status: 'success', job_id: job_id, timestamp: '20260326120000',
+                screenshot: screenshot_url, original_url: url
+              }.to_json
+            )
+
+          stub_request(:get, screenshot_url)
+            .to_return(status: 200, body: png_data)
+
+          result = described_class.call(url, capture_screenshot: true, screenshot_dir: dir)
+
+          expect(result.screenshot_path).to be_a(String)
+          expect(File.exist?(result.screenshot_path)).to eq(true)
+          expect(File.read(result.screenshot_path)).to eq(png_data)
+        end
+      end
+
+      it 'skips screenshot download when screenshot field is absent from response' do
+        Dir.mktmpdir do |dir|
+          stub_request(:post, save_url)
+            .to_return(status: 200, body: { url: url, job_id: job_id }.to_json)
+
+          stub_request(:get, status_url)
+            .to_return(
+              status: 200,
+              body: { status: 'success', job_id: job_id, timestamp: '20260326120000' }.to_json
+            )
+
+          result = described_class.call(url, capture_screenshot: true, screenshot_dir: dir)
+
+          expect(result.screenshot_path).to be_nil
+          expect(result.screenshot_url).to be_nil
+        end
       end
     end
   end

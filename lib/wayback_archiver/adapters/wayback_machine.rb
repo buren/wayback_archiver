@@ -3,6 +3,7 @@ require 'json'
 require 'wayback_archiver/archive_result'
 require 'wayback_archiver/request'
 require 'wayback_archiver/retry'
+require 'wayback_archiver/screenshot'
 
 module WaybackArchiver
   # WaybackMachine adapter using the SPN2 API
@@ -132,6 +133,10 @@ module WaybackArchiver
 
       WaybackArchiver.logger.info("Captured #{url} [#{status['timestamp']}]")
 
+      screenshot_path = maybe_download_screenshot(
+        status['screenshot'], status['original_url'] || url, options
+      )
+
       ArchiveResult.new(
         url,
         job_id: job_id,
@@ -140,6 +145,7 @@ module WaybackArchiver
         resources: status['resources'] || [],
         outlinks: status['outlinks'] || {},
         screenshot_url: status['screenshot'],
+        screenshot_path: screenshot_path,
         original_url: status['original_url'],
         code: '200'
       )
@@ -169,6 +175,16 @@ module WaybackArchiver
       end
     end
     private_class_method :poll_until_complete
+
+    def self.maybe_download_screenshot(screenshot_url, original_url, options)
+      return nil unless screenshot_url && options[:screenshot_dir]
+
+      Screenshot.download(screenshot_url, original_url, directory: options[:screenshot_dir])
+    rescue => e
+      WaybackArchiver.logger.error("Failed to download screenshot: #{e.message}")
+      nil
+    end
+    private_class_method :maybe_download_screenshot
 
     def self.build_post_body(url, **options)
       body = { 'url' => url.to_s.strip }
