@@ -2,14 +2,6 @@ require 'spec_helper'
 require 'tmpdir'
 
 RSpec.describe WaybackArchiver::Archive do
-  let(:headers) do
-    {
-      'Accept' => '*/*',
-      'Accept-Encoding' => 'gzip;q=1.0,deflate;q=0.6,identity;q=0.3',
-      'User-Agent' => WaybackArchiver.user_agent
-    }
-  end
-
   describe '::post (sequential fallback)' do
     # Use a simple adapter to test the sequential (non-batch) path
     let(:simple_adapter) { ->(u) { WaybackArchiver::ArchiveResult.new(u) } }
@@ -203,13 +195,11 @@ RSpec.describe WaybackArchiver::Archive do
     it 'falls back to per-URL call for adapters without submit' do
       simple_adapter = ->(u) { WaybackArchiver::ArchiveResult.new(u) }
       WaybackArchiver.adapter = simple_adapter
-
       results = described_class.post(%w[http://a.com])
+      WaybackArchiver.adapter = WaybackArchiver::WaybackMachine
 
       expect(results.length).to eq(1)
       expect(results.first.uri).to eq('http://a.com')
-    ensure
-      WaybackArchiver.adapter = WaybackArchiver::WaybackMachine
     end
   end
 
@@ -242,12 +232,10 @@ RSpec.describe WaybackArchiver::Archive do
       simple_adapter = ->(u) { WaybackArchiver::ArchiveResult.new(u) }
 
       WaybackArchiver.adapter = simple_adapter
-
       result = described_class.post_url(url, capture_all: true)
+      WaybackArchiver.adapter = WaybackArchiver::WaybackMachine
 
       expect(result.uri).to eq(url)
-    ensure
-      WaybackArchiver.adapter = WaybackArchiver::WaybackMachine
     end
 
     it 'returns ArchiveResult with error when adapter fails' do

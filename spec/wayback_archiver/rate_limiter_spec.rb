@@ -1,25 +1,20 @@
 require 'spec_helper'
 
 RSpec.describe WaybackArchiver::RateLimiter do
-  before do
-    allow_any_instance_of(described_class).to receive(:sleep)
-  end
-
   describe '#acquire' do
-    it 'allows first request immediately' do
+    it 'allows first request without sleeping' do
       limiter = described_class.new(rate_per_minute: 4)
 
-      expect_any_instance_of(described_class).not_to receive(:sleep)
+      expect(limiter).not_to receive(:sleep)
       limiter.acquire
     end
 
     it 'sleeps when requests exceed the rate' do
       limiter = described_class.new(rate_per_minute: 4)
+      allow(limiter).to receive(:sleep)
 
-      # Simulate 4 requests already made in the last minute
       4.times { limiter.acquire }
 
-      # 5th should sleep
       expect(limiter).to receive(:sleep).with(a_value > 0)
       limiter.acquire
     end
@@ -27,10 +22,8 @@ RSpec.describe WaybackArchiver::RateLimiter do
     it 'does not sleep when enough time has passed' do
       limiter = described_class.new(rate_per_minute: 4)
 
-      # Fill the window
       4.times { limiter.acquire }
 
-      # Advance time past the window
       allow(Process).to receive(:clock_gettime)
         .with(Process::CLOCK_MONOTONIC)
         .and_return(Time.now.to_f + 61)
@@ -41,17 +34,16 @@ RSpec.describe WaybackArchiver::RateLimiter do
 
     it 'is thread-safe' do
       limiter = described_class.new(rate_per_minute: 100)
+      allow(limiter).to receive(:sleep)
 
       threads = 10.times.map do
         Thread.new { 10.times { limiter.acquire } }
       end
       threads.each(&:join)
-
-      # No exceptions raised = pass
     end
   end
 
-  describe 'enabled: false' do
+  describe '#acquire with enabled: false' do
     it 'skips rate limiting entirely' do
       limiter = described_class.new(rate_per_minute: 1, enabled: false)
 

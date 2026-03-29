@@ -13,31 +13,29 @@ RSpec.describe WaybackArchiver::WaybackMachine do
     allow(WaybackArchiver::Retry).to receive(:sleep)
   end
 
+  def stub_submit(response_body = { url: url, job_id: job_id })
+    stub_request(:post, save_url)
+      .to_return(status: 200, body: response_body.to_json)
+  end
+
+  def stub_status(*responses)
+    stub_request(:get, status_url)
+      .to_return(responses.map { |r| { status: 200, body: r.to_json } })
+  end
+
+  def success_status(extra = {})
+    { status: 'success', job_id: job_id, timestamp: '20260326120000' }.merge(extra)
+  end
+
   describe '::call' do
     context 'without authentication' do
       it 'submits URL via POST and polls until success' do
-        stub_request(:post, save_url)
-          .with(body: hash_including('url' => url))
-          .to_return(
-            status: 200,
-            body: { url: url, job_id: job_id }.to_json,
-            headers: { 'Content-Type' => 'application/json' }
-          )
-
-        stub_request(:get, status_url)
-          .to_return(
-            status: 200,
-            body: {
-              status: 'success',
-              job_id: job_id,
-              original_url: url,
-              timestamp: '20260326120000',
-              duration_sec: 3.5,
-              resources: [url],
-              outlinks: {}
-            }.to_json,
-            headers: { 'Content-Type' => 'application/json' }
-          )
+        stub_submit(url: url, job_id: job_id)
+        stub_status(
+          status: 'success', job_id: job_id, original_url: url,
+          timestamp: '20260326120000', duration_sec: 3.5,
+          resources: [url], outlinks: {}
+        )
 
         result = described_class.call(url)
 
@@ -55,9 +53,7 @@ RSpec.describe WaybackArchiver::WaybackMachine do
         stub_request(:post, save_url)
           .with { |req| !req.headers.key?('Authorization') }
           .to_return(status: 200, body: { url: url, job_id: job_id }.to_json)
-
-        stub_request(:get, status_url)
-          .to_return(status: 200, body: { status: 'success', job_id: job_id, timestamp: '20260326120000' }.to_json)
+        stub_status(success_status)
 
         described_class.call(url)
       end
@@ -73,9 +69,7 @@ RSpec.describe WaybackArchiver::WaybackMachine do
         stub_request(:post, save_url)
           .with(headers: { 'Authorization' => 'LOW test-access:test-secret' })
           .to_return(status: 200, body: { url: url, job_id: job_id }.to_json)
-
-        stub_request(:get, status_url)
-          .to_return(status: 200, body: { status: 'success', job_id: job_id, timestamp: '20260326120000' }.to_json)
+        stub_status(success_status)
 
         described_class.call(url)
       end
@@ -83,15 +77,12 @@ RSpec.describe WaybackArchiver::WaybackMachine do
 
     context 'polling' do
       it 'handles pending then success' do
-        stub_request(:post, save_url)
-          .to_return(status: 200, body: { url: url, job_id: job_id }.to_json)
-
-        stub_request(:get, status_url)
-          .to_return(
-            { status: 200, body: { status: 'pending', job_id: job_id }.to_json },
-            { status: 200, body: { status: 'pending', job_id: job_id }.to_json },
-            { status: 200, body: { status: 'success', job_id: job_id, timestamp: '20260326120000', duration_sec: 5.0 }.to_json }
-          )
+        stub_submit
+        stub_status(
+          { status: 'pending', job_id: job_id },
+          { status: 'pending', job_id: job_id },
+          success_status(duration_sec: 5.0)
+        )
 
         result = described_class.call(url)
 
@@ -99,14 +90,10 @@ RSpec.describe WaybackArchiver::WaybackMachine do
         expect(result.timestamp).to eq('20260326120000')
       end
 
-      it 'raises PollTimeoutError when polling exceeds timeout' do
-        stub_request(:post, save_url)
-          .to_return(status: 200, body: { url: url, job_id: job_id }.to_json)
+      it 'returns PollTimeoutError when polling exceeds timeout' do
+        stub_submit
+        stub_status(status: 'pending', job_id: job_id)
 
-        stub_request(:get, status_url)
-          .to_return(status: 200, body: { status: 'pending', job_id: job_id }.to_json)
-
-        # Simulate time passing by making Process.clock_gettime return increasing values
         start_time = 100.0
         allow(Process).to receive(:clock_gettime).and_return(start_time, start_time + 130)
 
@@ -122,9 +109,7 @@ RSpec.describe WaybackArchiver::WaybackMachine do
         stub_request(:post, save_url)
           .with(body: hash_including('url' => url, 'capture_all' => '1', 'capture_outlinks' => '1'))
           .to_return(status: 200, body: { url: url, job_id: job_id }.to_json)
-
-        stub_request(:get, status_url)
-          .to_return(status: 200, body: { status: 'success', job_id: job_id, timestamp: '20260326120000' }.to_json)
+        stub_status(success_status)
 
         described_class.call(url, capture_all: true, capture_outlinks: true)
       end
@@ -133,9 +118,7 @@ RSpec.describe WaybackArchiver::WaybackMachine do
         stub_request(:post, save_url)
           .with(body: hash_including('url' => url, 'if_not_archived_within' => '3d 5h'))
           .to_return(status: 200, body: { url: url, job_id: job_id }.to_json)
-
-        stub_request(:get, status_url)
-          .to_return(status: 200, body: { status: 'success', job_id: job_id, timestamp: '20260326120000' }.to_json)
+        stub_status(success_status)
 
         described_class.call(url, if_not_archived_within: '3d 5h')
       end
@@ -144,9 +127,7 @@ RSpec.describe WaybackArchiver::WaybackMachine do
         stub_request(:post, save_url)
           .with(body: hash_including('url' => url, 'js_behavior_timeout' => '10'))
           .to_return(status: 200, body: { url: url, job_id: job_id }.to_json)
-
-        stub_request(:get, status_url)
-          .to_return(status: 200, body: { status: 'success', job_id: job_id, timestamp: '20260326120000' }.to_json)
+        stub_status(success_status)
 
         described_class.call(url, js_behavior_timeout: 10)
       end
@@ -154,19 +135,8 @@ RSpec.describe WaybackArchiver::WaybackMachine do
 
     context 'error handling' do
       it 'returns ArchiveResult with error fields for non-retryable errors' do
-        stub_request(:post, save_url)
-          .to_return(status: 200, body: { url: url, job_id: job_id }.to_json)
-
-        stub_request(:get, status_url)
-          .to_return(
-            status: 200,
-            body: {
-              status: 'error',
-              job_id: job_id,
-              status_ext: 'error:invalid-host-resolution',
-              message: "Couldn't resolve host"
-            }.to_json
-          )
+        stub_submit
+        stub_status(status: 'error', job_id: job_id, status_ext: 'error:invalid-host-resolution', message: "Couldn't resolve host")
 
         result = described_class.call(url)
 
@@ -176,8 +146,7 @@ RSpec.describe WaybackArchiver::WaybackMachine do
       end
 
       it 'retries on retryable status_ext errors' do
-        stub_request(:post, save_url)
-          .to_return(status: 200, body: { url: url, job_id: job_id }.to_json)
+        stub_submit
 
         call_count = 0
         stub_request(:get, status_url)
@@ -186,7 +155,7 @@ RSpec.describe WaybackArchiver::WaybackMachine do
             if call_count <= 1
               { status: 200, body: { status: 'error', job_id: job_id, status_ext: 'error:too-many-requests', message: 'Rate limited' }.to_json }
             else
-              { status: 200, body: { status: 'success', job_id: job_id, timestamp: '20260326120000' }.to_json }
+              { status: 200, body: success_status.to_json }
             end
           end
 
@@ -210,44 +179,23 @@ RSpec.describe WaybackArchiver::WaybackMachine do
         WaybackArchiver.secret_key = 'test-secret'
       end
 
+      let(:screenshot_remote_url) { "http://web.archive.org/screenshot/#{url}" }
+
       it 'includes screenshot_url in result when capture_screenshot is used' do
-        screenshot_url = "http://web.archive.org/screenshot/#{url}"
-
-        stub_request(:post, save_url)
-          .to_return(status: 200, body: { url: url, job_id: job_id }.to_json)
-
-        stub_request(:get, status_url)
-          .to_return(
-            status: 200,
-            body: {
-              status: 'success', job_id: job_id, timestamp: '20260326120000',
-              screenshot: screenshot_url
-            }.to_json
-          )
+        stub_submit
+        stub_status(success_status(screenshot: screenshot_remote_url))
 
         result = described_class.call(url, capture_screenshot: true)
-        expect(result.screenshot_url).to eq(screenshot_url)
+        expect(result.screenshot_url).to eq(screenshot_remote_url)
       end
 
       it 'downloads screenshot when screenshot_dir is provided' do
         Dir.mktmpdir do |dir|
-          screenshot_url = "http://web.archive.org/screenshot/#{url}"
           png_data = "\x89PNG\r\n\x1a\nfake"
 
-          stub_request(:post, save_url)
-            .to_return(status: 200, body: { url: url, job_id: job_id }.to_json)
-
-          stub_request(:get, status_url)
-            .to_return(
-              status: 200,
-              body: {
-                status: 'success', job_id: job_id, timestamp: '20260326120000',
-                screenshot: screenshot_url, original_url: url
-              }.to_json
-            )
-
-          stub_request(:get, screenshot_url)
-            .to_return(status: 200, body: png_data)
+          stub_submit
+          stub_status(success_status(screenshot: screenshot_remote_url, original_url: url))
+          stub_request(:get, screenshot_remote_url).to_return(status: 200, body: png_data)
 
           result = described_class.call(url, capture_screenshot: true, screenshot_dir: dir)
 
@@ -257,16 +205,10 @@ RSpec.describe WaybackArchiver::WaybackMachine do
         end
       end
 
-      it 'skips screenshot download when screenshot field is absent from response' do
+      it 'skips screenshot download when screenshot field is absent' do
         Dir.mktmpdir do |dir|
-          stub_request(:post, save_url)
-            .to_return(status: 200, body: { url: url, job_id: job_id }.to_json)
-
-          stub_request(:get, status_url)
-            .to_return(
-              status: 200,
-              body: { status: 'success', job_id: job_id, timestamp: '20260326120000' }.to_json
-            )
+          stub_submit
+          stub_status(success_status)
 
           result = described_class.call(url, capture_screenshot: true, screenshot_dir: dir)
 
@@ -279,12 +221,8 @@ RSpec.describe WaybackArchiver::WaybackMachine do
 
   describe '::submit' do
     it 'POSTs to /save and returns url and job_id hash' do
-      stub_request(:post, save_url)
-        .with(body: hash_including('url' => url))
-        .to_return(status: 200, body: { url: url, job_id: job_id }.to_json)
-
+      stub_submit
       result = described_class.submit(url)
-
       expect(result).to eq({ 'url' => url, 'job_id' => job_id })
     end
 
@@ -300,7 +238,6 @@ RSpec.describe WaybackArchiver::WaybackMachine do
       stub_request(:post, save_url).to_raise(Timeout::Error)
 
       result = described_class.submit(url)
-
       expect(result).to be_a(WaybackArchiver::ArchiveResult)
       expect(result.errored?).to eq(true)
     end
