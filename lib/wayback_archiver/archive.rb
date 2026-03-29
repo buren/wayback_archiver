@@ -144,7 +144,7 @@ module WaybackArchiver
           next if status['status'] == 'pending'
 
           url = pending.delete(job_id)
-          result = build_result_from_status(url, job_id, status)
+          result = build_result_from_status(url, job_id, status, **options)
           yield(result) if block
           results << result
         end
@@ -156,7 +156,7 @@ module WaybackArchiver
     private_class_method :batch_post
 
     # Build an ArchiveResult from a batch poll status hash.
-    def self.build_result_from_status(url, job_id, status)
+    def self.build_result_from_status(url, job_id, status, **options)
       if status['status'] == 'error'
         ArchiveResult.new(
           url,
@@ -165,6 +165,10 @@ module WaybackArchiver
           response_error: status['message']
         )
       else
+        screenshot_path = maybe_download_screenshot(
+          status['screenshot'], status['original_url'] || url, options
+        )
+
         ArchiveResult.new(
           url,
           job_id: job_id,
@@ -173,11 +177,22 @@ module WaybackArchiver
           resources: status['resources'] || [],
           outlinks: status['outlinks'] || {},
           screenshot_url: status['screenshot'],
+          screenshot_path: screenshot_path,
           original_url: status['original_url'],
           code: '200'
         )
       end
     end
     private_class_method :build_result_from_status
+
+    def self.maybe_download_screenshot(screenshot_url, original_url, options)
+      return nil unless screenshot_url && options[:screenshot_dir]
+
+      Screenshot.download(screenshot_url, original_url, directory: options[:screenshot_dir])
+    rescue => e
+      WaybackArchiver.logger.error("Failed to download screenshot: #{e.message}")
+      nil
+    end
+    private_class_method :maybe_download_screenshot
   end
 end

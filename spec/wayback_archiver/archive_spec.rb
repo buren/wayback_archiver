@@ -1,4 +1,5 @@
 require 'spec_helper'
+require 'tmpdir'
 
 RSpec.describe WaybackArchiver::Archive do
   let(:headers) do
@@ -164,6 +165,39 @@ RSpec.describe WaybackArchiver::Archive do
       expect(results.length).to eq(1)
       expect(results.first.errored?).to eq(true)
       expect(results.first.error).to be_a(WaybackArchiver::WaybackMachine::PollTimeoutError)
+    end
+
+    it 'downloads screenshots in batch mode when screenshot_dir is provided' do
+      Dir.mktmpdir do |dir|
+        WaybackArchiver.access_key = 'key'
+        WaybackArchiver.secret_key = 'secret'
+
+        screenshot_url = 'http://web.archive.org/screenshot/http://a.com'
+        png_data = "\x89PNG\r\n\x1a\nfake"
+
+        allow(adapter).to receive(:submit)
+          .with('http://a.com', capture_screenshot: true, screenshot_dir: dir)
+          .and_return({ 'url' => 'http://a.com', 'job_id' => job1 })
+
+        allow(adapter).to receive(:poll_statuses).and_return(
+          job1 => {
+            'status' => 'success', 'job_id' => job1, 'timestamp' => '20260326120000',
+            'original_url' => 'http://a.com', 'screenshot' => screenshot_url
+          }
+        )
+
+        stub_request(:get, screenshot_url)
+          .to_return(status: 200, body: png_data)
+
+        results = described_class.post(
+          %w[http://a.com],
+          capture_screenshot: true, screenshot_dir: dir
+        )
+
+        expect(results.first.screenshot_url).to eq(screenshot_url)
+        expect(results.first.screenshot_path).to be_a(String)
+        expect(File.exist?(results.first.screenshot_path)).to eq(true)
+      end
     end
 
     it 'falls back to per-URL call for adapters without submit' do
