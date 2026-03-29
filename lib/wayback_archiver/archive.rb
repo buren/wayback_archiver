@@ -112,7 +112,16 @@ module WaybackArchiver
             yield(response) if block
             results << response
           else
-            submissions[response['job_id']] = url
+            job_id = response['job_id']
+            if job_id.nil?
+              error = Request::ServerError.new("Missing job_id in submit response for #{url}")
+              WaybackArchiver.logger.error(error.message)
+              result = ArchiveResult.new(url, error: error)
+              yield(result) if block
+              results << result
+            else
+              submissions[job_id] = url
+            end
           end
         end
       end
@@ -155,33 +164,8 @@ module WaybackArchiver
     end
     private_class_method :batch_post
 
-    # Build an ArchiveResult from a batch poll status hash.
     def self.build_result_from_status(url, job_id, status, **options)
-      if status['status'] == 'error'
-        ArchiveResult.new(
-          url,
-          job_id: job_id,
-          status_ext: status['status_ext'],
-          response_error: status['message']
-        )
-      else
-        screenshot_path = Screenshot.maybe_download(
-          status['screenshot'], status['original_url'] || url, options
-        )
-
-        ArchiveResult.new(
-          url,
-          job_id: job_id,
-          timestamp: status['timestamp'],
-          duration_sec: status['duration_sec'],
-          resources: status['resources'] || [],
-          outlinks: status['outlinks'] || {},
-          screenshot_url: status['screenshot'],
-          screenshot_path: screenshot_path,
-          original_url: status['original_url'],
-          code: '200'
-        )
-      end
+      ArchiveResult.from_status(url, job_id, status, **options)
     end
     private_class_method :build_result_from_status
 

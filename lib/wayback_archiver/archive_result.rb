@@ -41,6 +41,40 @@ module WaybackArchiver
       !!error || (status_ext.is_a?(String) && status_ext.start_with?('error:'))
     end
 
+    # Build an ArchiveResult from a poll status hash.
+    # @param url [String] the original URL that was archived.
+    # @param job_id [String] the SPN2 job ID.
+    # @param status [Hash] the status hash from the SPN2 API.
+    # @param options [Hash] capture options (used for screenshot download).
+    # @return [ArchiveResult]
+    def self.from_status(url, job_id, status, **options)
+      if status['status'] == 'error'
+        new(
+          url,
+          job_id: job_id,
+          status_ext: status['status_ext'],
+          response_error: status['message']
+        )
+      else
+        screenshot_path = Screenshot.maybe_download(
+          status['screenshot'], status['original_url'] || url, options
+        )
+
+        new(
+          url,
+          job_id: job_id,
+          timestamp: status['timestamp'],
+          duration_sec: status['duration_sec'],
+          resources: status['resources'] || [],
+          outlinks: status['outlinks'] || {},
+          screenshot_url: status['screenshot'],
+          screenshot_path: screenshot_path,
+          original_url: status['original_url'],
+          code: '200'
+        )
+      end
+    end
+
     # @return [String, nil] URL to view the archived snapshot on the Wayback Machine
     def wayback_url
       return nil unless timestamp

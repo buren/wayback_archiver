@@ -59,7 +59,7 @@ module WaybackArchiver
       Retry.with_backoff do
         submit_and_poll(url, **options)
       end
-    rescue PollTimeoutError, Request::Error => e
+    rescue PollTimeoutError, Request::Error, JSON::ParserError => e
       WaybackArchiver.logger.error("Failed to archive #{url}: #{e.class}, #{e.message}")
       ArchiveResult.new(url, error: e)
     rescue RetryableError => e
@@ -81,7 +81,7 @@ module WaybackArchiver
       WaybackArchiver.logger.debug("Submitting #{url} to SPN2")
       response = Request.post(SAVE_URL, body: body, headers: headers)
       JSON.parse(response.body)
-    rescue Request::Error => e
+    rescue Request::Error, JSON::ParserError => e
       WaybackArchiver.logger.error("Failed to submit #{url}: #{e.class}, #{e.message}")
       ArchiveResult.new(url, error: e)
     end
@@ -97,6 +97,8 @@ module WaybackArchiver
         headers: headers
       )
       JSON.parse(response.body)
+    rescue JSON::ParserError => e
+      raise Request::ServerError, "Invalid JSON in status response: #{e.message}"
     end
 
     # Check the user's current session status.
@@ -111,6 +113,8 @@ module WaybackArchiver
         follow_redirects: false
       )
       JSON.parse(response.body)
+    rescue JSON::ParserError => e
+      raise Request::ServerError, "Invalid JSON in user status response: #{e.message}"
     end
 
     # Check system status.
@@ -118,6 +122,8 @@ module WaybackArchiver
     def self.system_status
       response = Request.get("#{STATUS_URL}/system", follow_redirects: false)
       JSON.parse(response.body)
+    rescue JSON::ParserError => e
+      raise Request::ServerError, "Invalid JSON in system status response: #{e.message}"
     end
 
     def self.submit_and_poll(url, **options)
@@ -125,6 +131,10 @@ module WaybackArchiver
       return data if data.is_a?(ArchiveResult) # submission failed
 
       job_id = data['job_id']
+      unless job_id
+        raise Request::ServerError, "Missing job_id in submit response for #{url}"
+      end
+
       WaybackArchiver.logger.info("Capture started for #{url}, job_id: #{job_id}")
 
       status = poll_until_complete(job_id)
@@ -137,32 +147,11 @@ module WaybackArchiver
         end
 
         WaybackArchiver.logger.error("Capture failed for #{url}: #{status_ext} - #{status['message']}")
-        return ArchiveResult.new(
-          url,
-          job_id: job_id,
-          status_ext: status_ext,
-          response_error: status['message']
-        )
+      else
+        WaybackArchiver.logger.info("Captured #{url} [#{status['timestamp']}]")
       end
 
-      WaybackArchiver.logger.info("Captured #{url} [#{status['timestamp']}]")
-
-      screenshot_path = Screenshot.maybe_download(
-        status['screenshot'], status['original_url'] || url, options
-      )
-
-      ArchiveResult.new(
-        url,
-        job_id: job_id,
-        timestamp: status['timestamp'],
-        duration_sec: status['duration_sec'],
-        resources: status['resources'] || [],
-        outlinks: status['outlinks'] || {},
-        screenshot_url: status['screenshot'],
-        screenshot_path: screenshot_path,
-        original_url: status['original_url'],
-        code: '200'
-      )
+      ArchiveResult.from_status(url, job_id, status, **options)
     end
     private_class_method :submit_and_poll
 
