@@ -29,6 +29,18 @@ module WaybackArchiver
       path
     end
 
+    # Download a screenshot if the URL and directory are present.
+    # Returns nil silently on failure (logs the error).
+    # @return [String, nil] saved file path or nil.
+    def self.maybe_download(screenshot_url, original_url, options)
+      return nil unless screenshot_url && options[:screenshot_dir]
+
+      download(screenshot_url, original_url, directory: options[:screenshot_dir])
+    rescue => e
+      WaybackArchiver.logger.error("Failed to download screenshot: #{e.message}")
+      nil
+    end
+
     def self.sanitize_filename(url)
       url.to_s
         .sub(%r{^https?://}, '')

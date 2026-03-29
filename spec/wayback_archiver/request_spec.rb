@@ -241,21 +241,4 @@ RSpec.describe WaybackArchiver::Request do
     end
   end
 
-  describe '::blank?' do
-    it 'returns true if passed nil' do
-      expect(described_class.blank?(nil)).to eq(true)
-    end
-
-    it 'returns true if passed empty string' do
-      expect(described_class.blank?('')).to eq(true)
-    end
-
-    it 'returns true if passed string with only spaces' do
-      expect(described_class.blank?('  ')).to eq(true)
-    end
-
-    it 'returns false if passed non-string empty' do
-      expect(described_class.blank?('buren')).to eq(false)
-    end
-  end
 end

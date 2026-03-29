@@ -1,5 +1,5 @@
 module WaybackArchiver
-  # Convience class for HTTP response codes
+  # Convenience class for HTTP response codes
   class HTTPCode
     # Type of code as symbol
     # @return [Symbol] code type
@@ -25,7 +25,7 @@ module WaybackArchiver
     # @example
     #    HttpCode.success?(nil) # => false
     def self.success?(code)
-      !!code.to_s.match(/2\d\d/)
+      code.to_s.match?(/2\d\d/)
     end
 
     # Whether the code is a redirect type
@@ -34,7 +34,7 @@ module WaybackArchiver
     # @example
     #    HttpCode.redirect?('301')
     def self.redirect?(code)
-      !!code.to_s.match(/3\d\d/)
+      code.to_s.match?(/3\d\d/)
     end
 
     # Whether the code is a error type
@@ -43,7 +43,7 @@ module WaybackArchiver
     # @example
     #    HttpCode.error?('301')
     def self.error?(code)
-      !!code.to_s.match(/4\d\d/) || !!code.to_s.match(/5\d\d/)
+      code.to_s.match?(/[45]\d\d/)
     end
   end
 end

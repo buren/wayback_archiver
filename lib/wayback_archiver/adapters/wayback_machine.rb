@@ -147,7 +147,7 @@ module WaybackArchiver
 
       WaybackArchiver.logger.info("Captured #{url} [#{status['timestamp']}]")
 
-      screenshot_path = maybe_download_screenshot(
+      screenshot_path = Screenshot.maybe_download(
         status['screenshot'], status['original_url'] || url, options
       )
 
@@ -190,15 +190,6 @@ module WaybackArchiver
     end
     private_class_method :poll_until_complete
 
-    def self.maybe_download_screenshot(screenshot_url, original_url, options)
-      return nil unless screenshot_url && options[:screenshot_dir]
-
-      Screenshot.download(screenshot_url, original_url, directory: options[:screenshot_dir])
-    rescue => e
-      WaybackArchiver.logger.error("Failed to download screenshot: #{e.message}")
-      nil
-    end
-    private_class_method :maybe_download_screenshot
 
     def self.build_post_body(url, **options)
       body = { 'url' => url.to_s.strip }

@@ -1,12 +1,12 @@
 require 'logger'
 
 module WaybackArchiver
-  # Don't log anyting / Send the logs to the abyss
+  # Don't log anything / Send the logs to the abyss
   class NullLogger < Logger
     # Allow any and all params
     def initialize(*args); end
 
-    # Allow any and alls params and don't do anyting
+    # Accept any params and discard
     def add(*args, &block); end
   end
 end

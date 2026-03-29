@@ -174,22 +174,6 @@ module WaybackArchiver
       response_body
     end
 
-    # Return whether a value is blank or not.
-    # @return [Boolean] whether the value is blank or not.
-    # @param [Object] value the value to check if its blank or not.
-    # @example Returns false for nil.
-    #    Request.blank?(nil)
-    # @example Returns false for empty string.
-    #    Request.blank?('')
-    # @example Returns false for string with only spaces.
-    #    Request.blank?('  ')
-    def self.blank?(value)
-      return true unless value
-      return true if value.strip.empty?
-
-      false
-    end
-
     # Build a Net::HTTP instance for the given URI.
     # @return [Net::HTTP]
     # @param [URI] uri the target URI.
