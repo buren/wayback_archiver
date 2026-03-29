@@ -1,5 +1,4 @@
 require 'spidr'
-require 'robots'
 
 require 'wayback_archiver/sitemapper'
 require 'wayback_archiver/feed_parser'

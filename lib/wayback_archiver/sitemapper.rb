@@ -1,5 +1,5 @@
 require 'set'
-require 'robots'
+require 'webrobots'
 
 require 'wayback_archiver/sitemap'
 require 'wayback_archiver/request'
@@ -26,10 +26,10 @@ module WaybackArchiver
     # @see http://www.sitemaps.org
     def self.autodiscover(url)
       WaybackArchiver.logger.info 'Looking for Sitemap(s) in /robots.txt'
-      robots = Robots.new(WaybackArchiver.user_agent)
-      sitemaps = robots.other_values(url)['Sitemap']
+      robots = WebRobots.new(WaybackArchiver.user_agent)
+      sitemaps = robots.sitemaps(url)
 
-      if sitemaps
+      if sitemaps.any?
         return sitemaps.flat_map do |sitemap|
           WaybackArchiver.logger.info "Fetching Sitemap at #{sitemap}"
           urls(url: sitemap)
