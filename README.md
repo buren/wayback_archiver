@@ -85,6 +85,8 @@ results.select(&:success?).each do |r|
 end
 ```
 
+See the [examples/](examples/) directory for more detailed, runnable scripts.
+
 ### CLI
 
 ```bash
@@ -233,3 +235,10 @@ Contributions, feedback and suggestions are very welcome.
 - [SPN2 API docs](https://docs.google.com/document/d/1Nsv52MvSjbLb2PCpHlat0gkzw0EvtSgpKHu4mk0MnrA/edit)
 - [sitemaps.org](http://www.sitemaps.org)
 - [robotstxt.org](http://www.robotstxt.org/robotstxt.html)
+
+## Alternatives
+
+- [Save Page Now for Google Sheets](https://archive.org/services/wayback-gsheets/) — Internet Archive's Google Sheets integration for archiving pages
+- [wayback-machine-spn-scripts](https://github.com/overcast07/wayback-machine-spn-scripts) — Bash scripts for SPN2 with auth, outlinks, rate limiting, and resumable sessions
+- [wayback-machine-archiver](https://github.com/agude/wayback-machine-archiver) — Python CLI using SPN2 with sitemaps, screenshots, and outlinks
+- [savepagenow](https://github.com/palewire/savepagenow) — Python package with library and CLI interface
