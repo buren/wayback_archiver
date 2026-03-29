@@ -109,6 +109,13 @@ wayback_archiver example.com www.example.com --urls
 # Sitemap
 wayback_archiver example.com/sitemap.xml --sitemap
 
+# Write results to CSV or JSON report
+wayback_archiver example.com --report=results.csv
+wayback_archiver example.com --report=results.json
+
+# Quiet mode (suppress logs) with summary
+wayback_archiver example.com --quiet
+
 # Kitchen sink
 wayback_archiver example.com --concurrency=10 --limit=100 --capture-all --verbose
 ```
@@ -201,11 +208,12 @@ v2.0 uses the SPN2 API, replacing the old fire-and-forget SPN1 approach. Capture
   ```
 - **Rich result objects** with SPN2 fields (`job_id`, `timestamp`, `wayback_url`, `duration_sec`, `resources`, `outlinks`, `screenshot_url`, `status_ext`)
 - **Default concurrency** changed from 1 to 4
+- **`:auto` strategy enhanced** — now also checks for RSS/Atom feeds before falling back to crawling
 - **Ruby >= 3.1** required (was >= 2.0)
 - **CI moved** from Travis CI to GitHub Actions
 - **SSL verification** enabled by default
 
-The public API (`archive`, `crawl`, `sitemap`, `urls`) is unchanged. v2 also adds an `rss` strategy for archiving URLs from RSS/Atom feeds. Existing code that calls `WaybackArchiver.archive(url, strategy: :auto)` will continue to work.
+The public API (`archive`, `crawl`, `sitemap`, `urls`) is unchanged. Existing code that calls `WaybackArchiver.archive(url, strategy: :auto)` will continue to work — see [Auto discovery](#auto-discovery) for the updated behavior. See the [CHANGELOG](CHANGELOG.md) for all new features.
 
 ## Docs
 

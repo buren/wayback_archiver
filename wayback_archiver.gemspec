@@ -26,6 +26,7 @@ Gem::Specification.new do |spec|
   spec.add_runtime_dependency 'concurrent-ruby', '~> 1.3' # Concurrency primitives
   spec.add_runtime_dependency 'rexml',         '~> 3.3'
   spec.add_runtime_dependency 'rss',            '~> 0.3'      # RSS/Atom feed parsing
+  spec.add_runtime_dependency 'csv'                           # CSV report output
 
   spec.add_development_dependency 'bundler',   '>= 2.1'
   spec.add_development_dependency 'rake',      '~> 13.0'

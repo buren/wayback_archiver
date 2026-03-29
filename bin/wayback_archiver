@@ -12,6 +12,8 @@ concurrency = WaybackArchiver.concurrency
 limit = WaybackArchiver.max_limit
 hosts = []
 options = {}
+show_summary = true
+report_path = nil
 
 optparse = OptionParser.new do |parser|
   parser.banner = 'Usage: wayback_archiver [<url>] [options]'
@@ -116,6 +118,18 @@ optparse = OptionParser.new do |parser|
     log_level = value ? Logger::DEBUG : Logger::WARN
   end
 
+  parser.on('--quiet', 'Suppress all log output') do
+    log_level = Logger::FATAL
+  end
+
+  parser.on('--[no-]summary', 'Print summary after archiving (default: true)') do |value|
+    show_summary = value
+  end
+
+  parser.on('--report=PATH', String, 'Write report to file (CSV or JSON, detected from extension)') do |value|
+    report_path = value
+  end
+
   parser.on_tail('-h', '--help', 'Show this message') do
     puts parser
     exit
@@ -142,7 +156,7 @@ end
 
 # If no strategy has explicitly been given, then default to 'auto'
 strategy ||= 'auto'
-urls.each do |url|
+all_results = urls.flat_map do |url|
   WaybackArchiver.archive(
     url,
     hosts: hosts,
@@ -151,4 +165,21 @@ urls.each do |url|
     limit: limit,
     **options
   )
+end
+
+if report_path
+  require 'wayback_archiver/report'
+  WaybackArchiver::Report.write(all_results, report_path)
+  WaybackArchiver.logger.info("Report written to #{report_path}")
+end
+
+if show_summary
+  succeeded = all_results.count(&:success?)
+  failed = all_results.count(&:errored?)
+  total = all_results.length
+  total_duration = all_results.sum { |r| r.duration_sec || 0 }.round(1)
+
+  puts "\n--- Summary ---"
+  puts "Total: #{total}  Succeeded: #{succeeded}  Failed: #{failed}"
+  puts "Duration: #{total_duration}s"
 end

@@ -20,14 +20,22 @@
 - **Screenshot download** — save full-page PNG screenshots locally with `screenshot_dir:` option (requires auth)
 - **Rich results** — `ArchiveResult` now includes `job_id`, `timestamp`, `duration_sec`, `resources`, `outlinks`, `screenshot_url`, `original_url`, `status_ext`, `wayback_url`
 - **Retry with backoff** — transient SPN2 errors (rate limits, service unavailable) are retried automatically with exponential backoff
+- **Proactive rate limiter** — token bucket rate limiting to stay within SPN2 limits proactively
+- **Batch status polling** — efficient bulk archiving via `POST /save/status` with multiple job IDs
+- **RSS/Atom feed strategy** — new `strategy: :rss` for archiving URLs from RSS and Atom feeds
+- **Feed autodiscovery in `:auto`** — detects RSS/Atom feeds via HTML `<link>` tags and common feed paths before falling back to crawling (see [Auto discovery](README.md#auto-discovery))
+- **Report export** — `--report=results.csv` or `--report=results.json` from the CLI
+- **CLI improvements** — summary after archiving (`--[no-]summary`), `--quiet` mode, `--rss` flag
 - **`Request.post`** — new HTTP POST support in the request layer
 - **GitHub Actions CI** — replaced Travis CI, testing Ruby 3.1-3.4
+- **Examples directory** — runnable scripts for all common use cases
 
 **Bug fixes:**
 
 - Fixed CLI typo: `Verboes` → `Verbose`
 - Removed duplicate `-h` flag in CLI
-- Added `logger` as explicit gem dependency (removed from Ruby 4.0 default gems)
+- Fixed `:auto` strategy not passing `limit:` to all code paths
+- Added `logger`, `rss`, `csv` as explicit gem dependencies (removed from Ruby stdlib)
 
 ## v1.5.0
 

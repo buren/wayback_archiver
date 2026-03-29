@@ -12,4 +12,5 @@ Runnable scripts demonstrating common WaybackArchiver use cases.
 | [streaming_results.rb](streaming_results.rb) | Using a block for progress reporting |
 | [track_outlinks.rb](track_outlinks.rb) | Manually polling outlink job IDs |
 | [screenshots.rb](screenshots.rb) | Downloading screenshots of archived pages |
+| [report.rb](report.rb) | Writing CSV and JSON report files |
 | [custom_adapter.rb](custom_adapter.rb) | Lambda and class-based custom adapters |
