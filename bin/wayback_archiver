@@ -35,6 +35,10 @@ optparse = OptionParser.new do |parser|
     strategy = 'urls'
   end
 
+  parser.on('--rss', 'RSS/Atom feed') do |value|
+    strategy = 'rss'
+  end
+
   parser.on('--hosts=[example.com]', Array, 'Only spider links on certain hosts') do |value|
     hosts = value.map { |v| Regexp.new(v) } if value
   end

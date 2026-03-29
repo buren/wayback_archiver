@@ -9,6 +9,14 @@ RSpec.describe WaybackArchiver::URLCollector do
     end
   end
 
+  describe '::feed' do
+    it 'calls FeedParser::urls' do
+      expected = %w[http://example.com/post/1]
+      allow(WaybackArchiver::FeedParser).to receive(:urls).and_return(expected)
+      expect(described_class.feed('http://example.com/feed.xml')).to eq(expected)
+    end
+  end
+
   describe '::crawl' do
     let(:headers) do
       {

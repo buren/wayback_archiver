@@ -2,6 +2,7 @@ require 'spidr'
 require 'robots'
 
 require 'wayback_archiver/sitemapper'
+require 'wayback_archiver/feed_parser'
 require 'wayback_archiver/request'
 
 module WaybackArchiver
@@ -14,6 +15,15 @@ module WaybackArchiver
     #    URLCollector.sitemap('https://google.com/sitemap.xml')
     def self.sitemap(url)
       Sitemapper.urls(url: Request.build_uri(url))
+    end
+
+    # Retrieve URLs from an RSS or Atom feed.
+    # @return [Array<String>] of URLs found in the feed.
+    # @param [String] url to the RSS or Atom feed.
+    # @example Get URLs from an RSS feed
+    #    URLCollector.feed('https://example.com/feed.xml')
+    def self.feed(url)
+      FeedParser.urls(url: Request.build_uri(url).to_s)
     end
 
     # Retrieve URLs by crawling.

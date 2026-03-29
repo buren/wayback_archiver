@@ -1,6 +1,6 @@
 # WaybackArchiver
 
-Post URLs to the [Wayback Machine](https://archive.org/web/) (Internet Archive) using the [SPN2 API](https://docs.google.com/document/d/1Nsv52MvSjbLb2PCpHlat0gkzw0EvtSgpKHu4mk0MnrA/edit). Discover URLs via crawler, [Sitemap(s)](http://www.sitemaps.org), or provide them directly.
+Post URLs to the [Wayback Machine](https://archive.org/web/) (Internet Archive) using the [SPN2 API](https://docs.google.com/document/d/1Nsv52MvSjbLb2PCpHlat0gkzw0EvtSgpKHu4mk0MnrA/edit). Discover URLs via crawler, [Sitemap(s)](http://www.sitemaps.org), RSS/Atom feeds, or provide them directly.
 
 [![CI](https://github.com/buren/wayback_archiver/actions/workflows/ci.yml/badge.svg)](https://github.com/buren/wayback_archiver/actions/workflows/ci.yml) [![Gem Version](https://badge.fury.io/rb/wayback_archiver.svg)](http://badge.fury.io/rb/wayback_archiver)
 
@@ -25,7 +25,7 @@ Requires Ruby >= 3.1.
 ```ruby
 require 'wayback_archiver'
 
-# Auto (default) - tries sitemaps, falls back to crawling
+# Auto (default) - see "Auto discovery" section below
 WaybackArchiver.archive('example.com')
 
 # Crawl - spider the site for URLs
@@ -33,6 +33,9 @@ WaybackArchiver.archive('example.com', strategy: :crawl)
 
 # Sitemap - parse sitemap XML (supports index files and gzip)
 WaybackArchiver.archive('example.com/sitemap.xml', strategy: :sitemap)
+
+# RSS/Atom feed - extract URLs from a feed
+WaybackArchiver.archive('example.com/feed.xml', strategy: :rss)
 
 # Single URL or multiple URLs
 WaybackArchiver.archive('example.com', strategy: :url)
@@ -95,6 +98,9 @@ wayback_archiver example.com --access-key=KEY --secret-key=SECRET \
 # Crawl with concurrency
 wayback_archiver example.com --crawl --concurrency=8
 
+# RSS/Atom feed
+wayback_archiver example.com/feed.xml --rss
+
 # Multiple URLs
 wayback_archiver example.com www.example.com --urls
 
@@ -155,6 +161,29 @@ The adapter handles how URLs are sent to the archive. Any object responding to `
 WaybackArchiver.adapter = ->(url) { puts url }
 ```
 
+## Auto discovery
+
+The default `:auto` strategy tries multiple discovery methods in order, using the first one that finds URLs:
+
+```mermaid
+flowchart TD
+    A[Fetch source URL] --> B{Is it an RSS/Atom feed?}
+    B -- Yes --> Z[Archive extracted URLs]
+    B -- No --> C{Sitemap found?}
+    C -- Yes --> Z
+    C -- No --> D{Feed discovered via\nHTML link tags or\ncommon paths?}
+    D -- Yes --> Z
+    D -- No --> E[Crawl the site]
+    E --> Z
+```
+
+1. **Direct feed detection** -- fetches the source URL and checks if it is itself an RSS or Atom feed
+2. **Sitemap discovery** -- looks for sitemaps via `robots.txt` and common sitemap paths
+3. **Feed autodiscovery** -- looks for `<link>` tags with `type="application/rss+xml"` or `type="application/atom+xml"` in the page HTML, then falls back to probing common feed paths (`/feed`, `/feed.xml`, `/rss.xml`, `/atom.xml`, `/index.xml`)
+4. **Crawl** -- spiders the site following same-domain links
+
+This means pointing WaybackArchiver at a blog with an RSS feed will automatically find and archive all posts without needing to specify a strategy.
+
 ## Migrating from v1.x
 
 v2.0 uses the SPN2 API, replacing the old fire-and-forget SPN1 approach. Captures are now submitted asynchronously and polled for completion (handled transparently by the gem).
@@ -174,7 +203,7 @@ v2.0 uses the SPN2 API, replacing the old fire-and-forget SPN1 approach. Capture
 - **CI moved** from Travis CI to GitHub Actions
 - **SSL verification** enabled by default
 
-The public API (`archive`, `crawl`, `sitemap`, `urls`) is unchanged. Existing code that calls `WaybackArchiver.archive(url, strategy: :auto)` will continue to work.
+The public API (`archive`, `crawl`, `sitemap`, `urls`) is unchanged. v2 also adds an `rss` strategy for archiving URLs from RSS/Atom feeds. Existing code that calls `WaybackArchiver.archive(url, strategy: :auto)` will continue to work.
 
 ## Docs
 
