@@ -171,6 +171,38 @@ RSpec.describe WaybackArchiver::WaybackMachine do
         expect(result.errored?).to eq(true)
         expect(result.error).to be_a(WaybackArchiver::Request::ServerError)
       end
+
+      it 'returns ArchiveResult with error when submit returns non-JSON' do
+        stub_request(:post, save_url)
+          .to_return(status: 200, body: '<html>Service Unavailable</html>')
+
+        result = described_class.call(url)
+
+        expect(result.errored?).to eq(true)
+        expect(result.error).to be_a(JSON::ParserError)
+      end
+
+      it 'returns ArchiveResult with error when poll returns non-JSON' do
+        stub_submit
+        stub_request(:get, status_url)
+          .to_return(status: 200, body: '<html>Bad Gateway</html>')
+
+        result = described_class.call(url)
+
+        expect(result.errored?).to eq(true)
+        expect(result.error).to be_a(JSON::ParserError)
+      end
+
+      it 'returns ArchiveResult with error when submit response has no job_id' do
+        stub_request(:post, save_url)
+          .to_return(status: 200, body: { 'message' => 'something unexpected' }.to_json)
+
+        result = described_class.call(url)
+
+        expect(result.errored?).to eq(true)
+        expect(result.error).to be_a(WaybackArchiver::Request::ServerError)
+        expect(result.error.message).to include('Missing job_id')
+      end
     end
 
     context 'screenshot' do
@@ -242,6 +274,16 @@ RSpec.describe WaybackArchiver::WaybackMachine do
       expect(result.errored?).to eq(true)
     end
 
+    it 'returns ArchiveResult with error when response is not JSON' do
+      stub_request(:post, save_url)
+        .to_return(status: 200, body: '<html>Error</html>')
+
+      result = described_class.submit(url)
+      expect(result).to be_a(WaybackArchiver::ArchiveResult)
+      expect(result.errored?).to eq(true)
+      expect(result.error).to be_a(JSON::ParserError)
+    end
+
     it 'sends auth headers when credentials configured' do
       WaybackArchiver.access_key = 'test-access'
       WaybackArchiver.secret_key = 'test-secret'
@@ -285,6 +327,14 @@ RSpec.describe WaybackArchiver::WaybackMachine do
         .to_return(status: 200, body: { job_id => { 'status' => 'success' } }.to_json)
 
       described_class.poll_statuses([job_id])
+    end
+
+    it 'raises ServerError when response is not JSON' do
+      stub_request(:post, batch_status_url)
+        .to_return(status: 200, body: '<html>Bad Gateway</html>')
+
+      expect { described_class.poll_statuses([job_id]) }
+        .to raise_error(WaybackArchiver::Request::ServerError, /Invalid JSON/)
     end
   end
 

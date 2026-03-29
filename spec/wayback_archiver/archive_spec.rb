@@ -192,6 +192,17 @@ RSpec.describe WaybackArchiver::Archive do
       end
     end
 
+    it 'handles submit response with missing job_id as error' do
+      allow(adapter).to receive(:submit)
+        .with('http://a.com').and_return({ 'message' => 'something unexpected' })
+
+      results = described_class.post(%w[http://a.com])
+
+      expect(results.length).to eq(1)
+      expect(results.first.errored?).to eq(true)
+      expect(results.first.error.message).to include('Missing job_id')
+    end
+
     it 'falls back to per-URL call for adapters without submit' do
       simple_adapter = ->(u) { WaybackArchiver::ArchiveResult.new(u) }
       WaybackArchiver.adapter = simple_adapter

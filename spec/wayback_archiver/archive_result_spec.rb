@@ -112,6 +112,46 @@ RSpec.describe WaybackArchiver::ArchiveResult do
     end
   end
 
+  describe '.from_status' do
+    let(:url) { 'http://example.com' }
+    let(:job_id) { 'spn2-abc123' }
+
+    it 'builds a success result from a status hash' do
+      status = {
+        'status' => 'success',
+        'timestamp' => '20260326120000',
+        'duration_sec' => 3.5,
+        'resources' => [url],
+        'outlinks' => {},
+        'screenshot' => nil,
+        'original_url' => url
+      }
+
+      result = described_class.from_status(url, job_id, status)
+
+      expect(result.success?).to eq(true)
+      expect(result.job_id).to eq(job_id)
+      expect(result.timestamp).to eq('20260326120000')
+      expect(result.duration_sec).to eq(3.5)
+      expect(result.code).to eq('200')
+    end
+
+    it 'builds an error result from an error status hash' do
+      status = {
+        'status' => 'error',
+        'status_ext' => 'error:invalid-host-resolution',
+        'message' => "Couldn't resolve host"
+      }
+
+      result = described_class.from_status(url, job_id, status)
+
+      expect(result.errored?).to eq(true)
+      expect(result.status_ext).to eq('error:invalid-host-resolution')
+      expect(result.response_error).to eq("Couldn't resolve host")
+      expect(result.job_id).to eq(job_id)
+    end
+  end
+
   describe 'backward compatibility' do
     it 'can be constructed with only uri' do
       result = described_class.new('http://example.com')
