@@ -24,7 +24,7 @@ Gem::Specification.new do |spec|
   spec.add_runtime_dependency 'logger'                     # No longer in default gems as of Ruby 4.0
   spec.add_runtime_dependency 'spidr',         '~> 0.7.1' # Crawl sites
   spec.add_runtime_dependency 'concurrent-ruby', '~> 1.3' # Concurrency primitives
-  spec.add_runtime_dependency 'rexml',         '~> 3.3.9'
+  spec.add_runtime_dependency 'rexml',         '~> 3.3'
   spec.add_runtime_dependency 'rss',            '~> 0.3'      # RSS/Atom feed parsing
 
   spec.add_development_dependency 'bundler',   '>= 2.1'
