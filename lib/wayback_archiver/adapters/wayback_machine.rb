@@ -2,6 +2,7 @@ require 'json'
 
 require 'wayback_archiver/archive_result'
 require 'wayback_archiver/request'
+require 'wayback_archiver/rate_limiter'
 require 'wayback_archiver/retry'
 require 'wayback_archiver/screenshot'
 
@@ -39,6 +40,17 @@ module WaybackArchiver
       capture_cookie use_user_agent target_username target_password
     ].freeze
 
+    # Returns the rate limiter, creating one if needed.
+    # @return [RateLimiter]
+    def self.rate_limiter
+      @rate_limiter ||= RateLimiter.for_current_user
+    end
+
+    # Reset the rate limiter (e.g. after credentials change).
+    def self.reset_rate_limiter!
+      @rate_limiter = nil
+    end
+
     # Send URL to Wayback Machine via SPN2.
     # @return [ArchiveResult]
     # @param [String] url to archive.
@@ -61,6 +73,8 @@ module WaybackArchiver
     # @param [String] url to archive.
     # @param [Hash] options SPN2 capture options.
     def self.submit(url, **options)
+      rate_limiter.acquire
+
       body = build_post_body(url, **options)
       headers = build_headers
 

@@ -1,3 +1,4 @@
+require 'wayback_archiver/rate_limiter'
 require 'wayback_archiver/retry'
 require 'wayback_archiver/thread_pool'
 require 'wayback_archiver/null_logger'

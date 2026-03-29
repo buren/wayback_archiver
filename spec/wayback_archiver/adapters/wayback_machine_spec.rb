@@ -10,6 +10,7 @@ RSpec.describe WaybackArchiver::WaybackMachine do
 
   before do
     allow(described_class).to receive(:sleep)
+    allow(WaybackArchiver::Retry).to receive(:sleep)
   end
 
   describe '::call' do
