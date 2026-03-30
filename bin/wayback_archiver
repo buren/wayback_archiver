@@ -42,14 +42,24 @@ optparse = OptionParser.new do |parser|
   end
 
   parser.on('--hosts=[example.com]', Array, 'Only spider links on certain hosts') do |value|
-    hosts = value.map { |v| Regexp.new(v) } if value
+    if value
+      hosts = value.map do |v|
+        Regexp.new(v)
+      rescue RegexpError => e
+        raise ArgumentError, "Invalid host pattern '#{v}': #{e.message}"
+      end
+    end
   end
 
   parser.on('--concurrency=N', Integer, 'Concurrency (default: 4)') do |value|
+    raise ArgumentError, "Concurrency must be > 0, got #{value}" unless value > 0
+
     concurrency = value
   end
 
   parser.on('--limit=N', Integer, 'Max number of URLs to archive') do |value|
+    raise ArgumentError, "Limit must be -1 (unlimited) or > 0, got #{value}" unless value == -1 || value > 0
+
     limit = value
   end
 
@@ -100,6 +110,8 @@ optparse = OptionParser.new do |parser|
   end
 
   parser.on('--js-behavior-timeout=N', Integer, 'Run JS for N seconds after page load (max 30)') do |value|
+    raise ArgumentError, "js-behavior-timeout must be between 1 and 30, got #{value}" unless value.between?(1, 30)
+
     options[:js_behavior_timeout] = value
   end
 
