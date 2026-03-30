@@ -212,6 +212,7 @@ module WaybackArchiver
   # @param [String, nil] key the access key
   def self.access_key=(key)
     @access_key = key
+    WaybackMachine.reset_rate_limiter!
   end
 
   # Returns the configured access key, falling back to environment variables
@@ -225,6 +226,7 @@ module WaybackArchiver
   # @param [String, nil] key the secret key
   def self.secret_key=(key)
     @secret_key = key
+    WaybackMachine.reset_rate_limiter!
   end
 
   # Returns the configured secret key, falling back to environment variables
