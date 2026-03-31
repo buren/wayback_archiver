@@ -5,7 +5,8 @@ require 'wayback_archiver'
 
 # Default values
 urls = nil
-strategy = 'auto'
+strategy = nil
+file_path = nil
 log = STDOUT
 log_level = Logger::INFO
 concurrency = WaybackArchiver.concurrency
@@ -120,6 +121,13 @@ optparse = OptionParser.new do |parser|
   end
 
   parser.separator ''
+  parser.separator 'Input options:'
+
+  parser.on('-f', '--file=PATH', String, 'Read URLs from file (one per line, "-" for stdin)') do |value|
+    file_path = value
+  end
+
+  parser.separator ''
   parser.separator 'General options:'
 
   parser.on('--log=output.log', String, 'Path to desired log file (defaults to STDOUT)') do |path|
@@ -156,9 +164,38 @@ end
 optparse.parse!
 
 urls = ARGV.map(&:strip).reject(&:empty?)
+
+if file_path
+  # "-" is a Unix convention meaning "read from stdin" — allows piping,
+  # e.g.: cat urls.txt | wayback_archiver --file=-
+  lines = if file_path == '-'
+            $stdin.readlines
+          else
+            begin
+              File.readlines(file_path)
+            rescue Errno::ENOENT
+              raise ArgumentError, "File not found: #{file_path}"
+            rescue Errno::EACCES
+              raise ArgumentError, "File not readable: #{file_path}"
+            end
+          end
+
+  file_urls = lines
+    .map(&:strip)
+    .reject(&:empty?)
+    .reject { |line| line.start_with?('#') }
+
+  urls.concat(file_urls)
+  urls.uniq!
+
+  # When --file is used, the intent is "archive these URLs" — default to
+  # the :urls strategy unless the user explicitly chose a different one
+  strategy ||= 'urls'
+end
+
 if urls.empty?
   puts optparse.help
-  raise ArgumentError, "[<url>] is required"
+  raise ArgumentError, "[<url>] or --file is required"
 end
 
 WaybackArchiver.logger = Logger.new(log).tap do |logger|
