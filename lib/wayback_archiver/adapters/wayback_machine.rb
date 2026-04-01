@@ -3,6 +3,7 @@ require 'json'
 require 'wayback_archiver/archive_result'
 require 'wayback_archiver/request'
 require 'wayback_archiver/rate_limiter'
+require 'wayback_archiver/error_codes'
 require 'wayback_archiver/retry'
 require 'wayback_archiver/screenshot'
 
@@ -16,16 +17,6 @@ module WaybackArchiver
     STATUS_URL   = 'https://web.archive.org/save/status'.freeze
     POLL_INTERVAL = 3   # seconds between status polls
     POLL_TIMEOUT  = 120 # max seconds to wait for capture
-
-    # SPN2 error codes that warrant a retry
-    RETRYABLE_ERRORS = %w[
-      error:too-many-requests
-      error:user-session-limit
-      error:service-unavailable
-      error:cannot-fetch
-      error:no-browsers-available
-      error:celery
-    ].freeze
 
     # Boolean SPN2 options that get serialized as "1"
     BOOLEAN_OPTIONS = %i[
@@ -142,7 +133,7 @@ module WaybackArchiver
       if status['status'] == 'error'
         status_ext = status['status_ext']
 
-        if RETRYABLE_ERRORS.include?(status_ext)
+        if ErrorCodes.retryable?(status_ext)
           raise RetryableError, status_ext
         end
 

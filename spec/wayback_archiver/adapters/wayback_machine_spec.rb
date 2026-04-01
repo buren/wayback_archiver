@@ -163,6 +163,35 @@ RSpec.describe WaybackArchiver::WaybackMachine do
         expect(result.success?).to eq(true)
       end
 
+      it 'retries on newly retryable status_ext errors (e.g. gateway-timeout)' do
+        stub_submit
+
+        call_count = 0
+        stub_request(:get, status_url)
+          .to_return do |_request|
+            call_count += 1
+            if call_count <= 1
+              { status: 200, body: { status: 'error', job_id: job_id, status_ext: 'error:gateway-timeout', message: 'Timeout' }.to_json }
+            else
+              { status: 200, body: success_status.to_json }
+            end
+          end
+
+        result = described_class.call(url)
+        expect(result.success?).to eq(true)
+      end
+
+      it 'does not retry daily_limit errors' do
+        stub_submit
+        stub_status(status: 'error', job_id: job_id, status_ext: 'error:too-many-daily-captures', message: 'Captured 10 times today')
+
+        result = described_class.call(url)
+
+        expect(result.errored?).to eq(true)
+        expect(result.status_ext).to eq('error:too-many-daily-captures')
+        expect(result.error_category).to eq(:daily_limit)
+      end
+
       it 'returns ArchiveResult with error on network failure' do
         stub_request(:post, save_url).to_raise(Timeout::Error)
 

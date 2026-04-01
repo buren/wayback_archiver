@@ -67,7 +67,8 @@ RSpec.describe WaybackArchiver::Report do
         expect(row[1]).to eq('false')
         expect(row[2]).to be_nil
         expect(row[7]).to eq('error:cannot-fetch')
-        expect(row[8]).to eq('connection failed')
+        expect(row[8]).to eq('transient')
+        expect(row[9]).to eq('connection failed')
       end
     end
 
@@ -105,6 +106,7 @@ RSpec.describe WaybackArchiver::Report do
         expect(entry['success']).to eq(false)
         expect(entry['wayback_url']).to be_nil
         expect(entry['status_ext']).to eq('error:cannot-fetch')
+        expect(entry['error_category']).to eq('transient')
         expect(entry['error']).to eq('connection failed')
       end
     end

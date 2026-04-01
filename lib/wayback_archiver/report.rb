@@ -4,7 +4,7 @@ require 'json'
 module WaybackArchiver
   # Write archive results to CSV or JSON files
   class Report
-    COLUMNS = %w[url success wayback_url job_id timestamp duration_sec screenshot_url status_ext error].freeze
+    COLUMNS = %w[url success wayback_url job_id timestamp duration_sec screenshot_url status_ext error_category error].freeze
 
     # Write results to a file. Format is detected from the file extension.
     # @param results [Array<ArchiveResult>] the results to write.
@@ -43,6 +43,7 @@ module WaybackArchiver
         result.duration_sec,
         result.screenshot_url,
         result.status_ext,
+        result.error_category&.to_s,
         result.error&.to_s
       ]
     end
@@ -57,8 +58,9 @@ module WaybackArchiver
         'timestamp'      => result.timestamp,
         'duration_sec'   => result.duration_sec,
         'screenshot_url' => result.screenshot_url,
-        'status_ext'     => result.status_ext,
-        'error'          => result.error&.to_s
+        'status_ext'      => result.status_ext,
+        'error_category'  => result.error_category&.to_s,
+        'error'           => result.error&.to_s
       }
     end
     private_class_method :result_to_hash

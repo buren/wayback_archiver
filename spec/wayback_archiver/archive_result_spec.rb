@@ -23,6 +23,40 @@ RSpec.describe WaybackArchiver::ArchiveResult do
     end
   end
 
+  describe '#error_category' do
+    it 'returns :permanent for a permanent status_ext' do
+      result = described_class.new('http://example.com', status_ext: 'error:blocked-url')
+      expect(result.error_category).to eq(:permanent)
+    end
+
+    it 'returns :transient for a transient status_ext' do
+      result = described_class.new('http://example.com', status_ext: 'error:celery')
+      expect(result.error_category).to eq(:transient)
+    end
+
+    it 'returns :daily_limit for a daily limit status_ext' do
+      result = described_class.new('http://example.com', status_ext: 'error:too-many-daily-captures')
+      expect(result.error_category).to eq(:daily_limit)
+    end
+
+    it 'returns nil when status_ext is nil' do
+      result = described_class.new('http://example.com')
+      expect(result.error_category).to be_nil
+    end
+  end
+
+  describe '#error_message' do
+    it 'returns human-readable message for known status_ext' do
+      result = described_class.new('http://example.com', status_ext: 'error:not-found')
+      expect(result.error_message).to eq('Target URL not found (HTTP 404)')
+    end
+
+    it 'returns nil when status_ext is nil' do
+      result = described_class.new('http://example.com')
+      expect(result.error_message).to be_nil
+    end
+  end
+
   describe '#success?' do
     it 'returns true if no error' do
       expect(described_class.new(nil, error: nil).success?).to eq(true)

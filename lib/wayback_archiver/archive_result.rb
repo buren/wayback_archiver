@@ -1,3 +1,5 @@
+require 'wayback_archiver/error_codes'
+
 module WaybackArchiver
   # Result data for posting URL to archive
   class ArchiveResult
@@ -39,6 +41,16 @@ module WaybackArchiver
     # @return [Boolean] true if errored
     def errored?
       !!error || (status_ext.is_a?(String) && status_ext.start_with?('error:'))
+    end
+
+    # @return [Symbol, nil] :transient, :daily_limit, :permanent, or nil
+    def error_category
+      ErrorCodes.category(status_ext)
+    end
+
+    # @return [String, nil] human-readable error description
+    def error_message
+      ErrorCodes.message(status_ext)
     end
 
     # Build an ArchiveResult from a poll status hash.

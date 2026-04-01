@@ -334,6 +334,17 @@ if show_summary
   total_duration = all_results.sum { |r| r.duration_sec || 0 }.round(1)
 
   puts "\n--- Summary ---"
-  puts "Total: #{total}  Succeeded: #{succeeded}  Failed: #{failed}"
+  if failed > 0
+    counts = all_results.select(&:errored?).group_by(&:error_category).transform_values(&:count)
+    parts = []
+    parts << "#{counts[:transient]} transient" if counts[:transient]
+    parts << "#{counts[:daily_limit]} daily limit" if counts[:daily_limit]
+    parts << "#{counts[:permanent]} permanent" if counts[:permanent]
+    parts << "#{counts[nil]} other" if counts[nil]
+    breakdown = parts.any? ? " (#{parts.join(', ')})" : ""
+    puts "Total: #{total}  Succeeded: #{succeeded}  Failed: #{failed}#{breakdown}"
+  else
+    puts "Total: #{total}  Succeeded: #{succeeded}  Failed: #{failed}"
+  end
   puts "Duration: #{total_duration}s"
 end
