@@ -58,16 +58,16 @@ module WaybackArchiver
   #        /host[\d]+\.example\.com/
   #      ]
   #    )
-  def self.archive(source, legacy_strategy = nil, strategy: :auto, hosts: [], concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, **options, &block)
+  def self.archive(source, legacy_strategy = nil, strategy: :auto, hosts: [], concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, **options, &block)
     strategy = legacy_strategy || strategy
 
     case strategy.to_s
-    when 'crawl'   then crawl(source, concurrency: concurrency, limit: limit, hosts: hosts, **options, &block)
-    when 'auto'    then auto(source, concurrency: concurrency, limit: limit, **options, &block)
-    when 'sitemap' then sitemap(source, concurrency: concurrency, limit: limit, **options, &block)
-    when 'urls'    then urls(source, concurrency: concurrency, limit: limit, **options, &block)
-    when 'url'     then urls(source, concurrency: concurrency, limit: limit, **options, &block)
-    when 'rss'     then rss(source, concurrency: concurrency, limit: limit, **options, &block)
+    when 'crawl'   then crawl(source, concurrency: concurrency, limit: limit, hosts: hosts, skip_urls: skip_urls, **options, &block)
+    when 'auto'    then auto(source, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
+    when 'sitemap' then sitemap(source, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
+    when 'urls'    then urls(source, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
+    when 'url'     then urls(source, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
+    when 'rss'     then rss(source, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
     else
       raise ArgumentError, "Unknown strategy: '#{strategy}'. Allowed strategies: sitemap, urls, url, crawl, rss"
     end
@@ -85,7 +85,7 @@ module WaybackArchiver
   # @example Auto archive example.com and archive max 100 URLs
   #    WaybackArchiver.auto('example.com', limit: 100)
   # @see http://www.sitemaps.org
-  def self.auto(source, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, **options, &block)
+  def self.auto(source, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, **options, &block)
     # Step 1: Fetch source URL and check if it is itself a feed
     WaybackArchiver.logger.info "Fetching #{source}"
     begin
@@ -100,25 +100,25 @@ module WaybackArchiver
       feed_urls = FeedParser.urls(xml: source_body)
       if feed_urls.any?
         WaybackArchiver.logger.info "Source URL is an RSS/Atom feed with #{feed_urls.length} entries"
-        return urls(feed_urls, concurrency: concurrency, limit: limit, **options, &block)
+        return urls(feed_urls, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
       end
     end
 
     # Step 2: Try sitemap autodiscovery
     sitemap_urls = Sitemapper.autodiscover(source)
     if sitemap_urls.any?
-      return urls(sitemap_urls, concurrency: concurrency, limit: limit, **options, &block)
+      return urls(sitemap_urls, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
     end
 
     # Step 3: Try feed autodiscovery (HTML link tags + common feed paths)
     feed_urls = FeedParser.autodiscover(source, html: source_body)
     if feed_urls.any?
       WaybackArchiver.logger.info "Found RSS/Atom feed with #{feed_urls.length} entries"
-      return urls(feed_urls, concurrency: concurrency, limit: limit, **options, &block)
+      return urls(feed_urls, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
     end
 
     # Step 4: Crawl
-    crawl(source, concurrency: concurrency, limit: limit, **options, &block)
+    crawl(source, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
   end
 
   # Crawl site for URLs to send to the Wayback Machine.
@@ -140,9 +140,9 @@ module WaybackArchiver
   #        /host[\d]+\.example\.com/
   #      ]
   #    )
-  def self.crawl(url, hosts: [], concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, **options, &block)
+  def self.crawl(url, hosts: [], concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, **options, &block)
     WaybackArchiver.logger.info "Crawling #{url}"
-    Archive.crawl(url, hosts: hosts, concurrency: concurrency, limit: limit, **options, &block)
+    Archive.crawl(url, hosts: hosts, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
   end
 
   # Get URLs from sitemap and send found URLs to the Wayback Machine.
@@ -156,9 +156,9 @@ module WaybackArchiver
   # @example Get example.com sitemap archive max 100 URLs
   #    WaybackArchiver.sitemap('example.com/sitemap.xml', limit: 100)
   # @see http://www.sitemaps.org
-  def self.sitemap(url, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, **options, &block)
+  def self.sitemap(url, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, **options, &block)
     WaybackArchiver.logger.info "Fetching Sitemap"
-    Archive.post(URLCollector.sitemap(url), concurrency: concurrency, limit: limit, **options, &block)
+    Archive.post(URLCollector.sitemap(url), concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
   end
 
   # Get URLs from an RSS or Atom feed and send them to the Wayback Machine.
@@ -171,9 +171,9 @@ module WaybackArchiver
   #    WaybackArchiver.rss('https://example.com/feed.xml', concurrency: 2)
   # @example Archive RSS feed URLs with a limit
   #    WaybackArchiver.rss('https://example.com/feed.xml', limit: 10)
-  def self.rss(url, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, **options, &block)
+  def self.rss(url, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, **options, &block)
     WaybackArchiver.logger.info "Fetching RSS/Atom feed"
-    Archive.post(URLCollector.feed(url), concurrency: concurrency, limit: limit, **options, &block)
+    Archive.post(URLCollector.feed(url), concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
   end
 
   # Send URL to the Wayback Machine.
@@ -186,8 +186,8 @@ module WaybackArchiver
   #    WaybackArchiver.urls(%w(example.com google.com))
   # @example Archive example.com, max 100 URLs
   #    WaybackArchiver.urls(%w(example.com www.example.com), limit: 100)
-  def self.urls(urls, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, **options, &block)
-    Archive.post(Array(urls), concurrency: concurrency, limit: limit, **options, &block)
+  def self.urls(urls, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, **options, &block)
+    Archive.post(Array(urls), concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
   end
 
   # Configure WaybackArchiver with a block.

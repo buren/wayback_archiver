@@ -1,7 +1,10 @@
 #!/usr/bin/env ruby
 
 require 'optparse'
+require 'shellwords'
+require 'set'
 require 'wayback_archiver'
+require 'wayback_archiver/session_file'
 
 # Default values
 urls = nil
@@ -15,6 +18,9 @@ hosts = []
 options = {}
 show_summary = true
 report_path = nil
+session_path = nil
+no_session = false
+resume_path = nil
 
 optparse = OptionParser.new do |parser|
   parser.banner = 'Usage: wayback_archiver [<url>] [options]'
@@ -128,6 +134,21 @@ optparse = OptionParser.new do |parser|
   end
 
   parser.separator ''
+  parser.separator 'Session options:'
+
+  parser.on('--session=PATH', String, 'Write session file to PATH (default: auto-generated in /tmp)') do |value|
+    session_path = value
+  end
+
+  parser.on('--no-session', 'Disable session file') do
+    no_session = true
+  end
+
+  parser.on('--resume=PATH', String, 'Resume from a previous session file') do |value|
+    resume_path = value
+  end
+
+  parser.separator ''
   parser.separator 'General options:'
 
   parser.on('--log=output.log', String, 'Path to desired log file (defaults to STDOUT)') do |path|
@@ -162,6 +183,18 @@ optparse = OptionParser.new do |parser|
 end
 
 optparse.parse!
+
+if resume_path && session_path
+  raise ArgumentError, "--resume and --session are mutually exclusive"
+end
+
+if resume_path && no_session
+  raise ArgumentError, "--resume and --no-session are mutually exclusive"
+end
+
+if resume_path && !File.exist?(resume_path)
+  raise ArgumentError, "Session file not found: #{resume_path}"
+end
 
 urls = ARGV.map(&:strip).reject(&:empty?)
 
@@ -205,6 +238,65 @@ end
 
 # If no strategy has explicitly been given, then default to 'auto'
 strategy ||= 'auto'
+
+build_resume_command = lambda do |session_file|
+  parts = ['wayback_archiver']
+  if file_path
+    parts << "--file=#{Shellwords.shellescape(file_path)}"
+  else
+    urls.each { |u| parts << Shellwords.shellescape(u) }
+  end
+  parts << "--resume=#{Shellwords.shellescape(session_file.path)}"
+  parts << "--#{strategy}"
+  parts << "--concurrency=#{concurrency}" if concurrency != WaybackArchiver::DEFAULT_CONCURRENCY
+  parts << "--limit=#{limit}" if limit != WaybackArchiver::DEFAULT_MAX_LIMIT
+  hosts.each { |h| parts << "--hosts=#{Shellwords.shellescape(h.source)}" } if hosts.any?
+  options.each do |key, value|
+    flag = key.to_s.tr('_', '-')
+    if value == true
+      parts << "--#{flag}"
+    elsif value
+      parts << "--#{flag}=#{value}"
+    end
+  end
+  parts.join(' ')
+end
+
+session = nil
+auto_generated_session = false
+
+unless no_session
+  if resume_path
+    session = WaybackArchiver::SessionFile.new(resume_path)
+    WaybackArchiver.logger.info("Resuming from session: #{session.path}")
+  elsif session_path
+    session = WaybackArchiver::SessionFile.new(session_path)
+    WaybackArchiver.logger.info("Session file: #{session.path}")
+  else
+    session = WaybackArchiver::SessionFile.new(WaybackArchiver::SessionFile.auto_path)
+    auto_generated_session = true
+    WaybackArchiver.logger.info("Session file: #{session.path}")
+  end
+end
+
+at_exit { session&.close }
+
+skip_urls = session&.completed_urls
+if resume_path && skip_urls&.any?
+  WaybackArchiver.logger.info("Session contains #{skip_urls.size} previously succeeded URL(s)")
+end
+
+# Pre-compute so the signal handler only does simple string I/O
+resume_command = session ? build_resume_command.call(session) : nil
+
+if resume_command
+  Signal.trap('INT') do
+    $stderr.puts "\nInterrupted. Resume with:"
+    $stderr.puts "  #{resume_command}"
+    exit(1)
+  end
+end
+
 all_results = urls.flat_map do |url|
   WaybackArchiver.archive(
     url,
@@ -212,14 +304,27 @@ all_results = urls.flat_map do |url|
     strategy: strategy,
     concurrency: concurrency,
     limit: limit,
+    skip_urls: skip_urls,
     **options
-  )
+  ) do |result|
+    session&.write_result(result)
+  end
 end
 
 if report_path
   require 'wayback_archiver/report'
   WaybackArchiver::Report.write(all_results, report_path)
   WaybackArchiver.logger.info("Report written to #{report_path}")
+end
+
+if session
+  if all_results.any?(&:errored?)
+    $stderr.puts "Some URLs failed. Resume with:"
+    $stderr.puts "  #{resume_command}"
+  elsif auto_generated_session
+    session.delete!
+    session = nil
+  end
 end
 
 if show_summary

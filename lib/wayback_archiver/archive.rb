@@ -12,7 +12,7 @@ module WaybackArchiver
     # @param concurrency [Integer] the default is 1
     # @yield [archive_result] If a block is given, each result will be yielded
     # @yieldparam [ArchiveResult] archive_result
-    def self.post(urls, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, **options, &block)
+    def self.post(urls, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, **options, &block)
       WaybackArchiver.logger.info "Total URLs to be sent: #{urls.length}"
       WaybackArchiver.logger.info "Request are sent with up to #{concurrency} parallel threads"
 
@@ -21,6 +21,13 @@ module WaybackArchiver
                    else
                      urls[0...limit]
                    end
+
+      if skip_urls && !skip_urls.empty?
+        before = urls_queue.length
+        urls_queue = urls_queue.reject { |url| skip_urls.include?(url) }
+        skipped = before - urls_queue.length
+        WaybackArchiver.logger.info "Skipped #{skipped} previously succeeded URL(s)" if skipped > 0
+      end
 
       adapter = WaybackArchiver.adapter
       if batch_capable?(adapter)
@@ -37,13 +44,15 @@ module WaybackArchiver
     # @param [Array<String, Regexp>] hosts to crawl
     # @yield [archive_result] If a block is given, each result will be yielded
     # @yieldparam [ArchiveResult] archive_result
-    def self.crawl(source, hosts: [], concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, **options)
+    def self.crawl(source, hosts: [], concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, **options)
       WaybackArchiver.logger.info "Request are sent with up to #{concurrency} parallel threads"
 
       results = Concurrent::Array.new
       pool = ThreadPool.build(concurrency)
 
       found_urls = URLCollector.crawl(source, hosts: hosts, limit: limit) do |url|
+        next if skip_urls&.include?(url)
+
         pool.post do
           result = post_url(url, **options)
           yield(result) if block_given?

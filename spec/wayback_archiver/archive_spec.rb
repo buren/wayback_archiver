@@ -53,6 +53,24 @@ RSpec.describe WaybackArchiver::Archive do
 
       expect(described_class).to have_received(:post_url).with('https://example.com', capture_all: true, js_behavior_timeout: 10)
     end
+
+    it 'skips URLs in skip_urls' do
+      allow(described_class).to receive(:post_url).and_return(WaybackArchiver::ArchiveResult.new(nil))
+
+      skip = Set.new(['https://example.com'])
+      described_class.post(%w[https://example.com https://example.com/path], skip_urls: skip)
+
+      expect(described_class).to have_received(:post_url).once
+      expect(described_class).to have_received(:post_url).with('https://example.com/path')
+    end
+
+    it 'does not skip anything when skip_urls is nil' do
+      allow(described_class).to receive(:post_url).and_return(WaybackArchiver::ArchiveResult.new(nil))
+
+      described_class.post(%w[https://example.com https://example.com/path], skip_urls: nil)
+
+      expect(described_class).to have_received(:post_url).twice
+    end
   end
 
   describe '::crawl' do
@@ -66,6 +84,21 @@ RSpec.describe WaybackArchiver::Archive do
       allow(described_class).to receive(:post_url).and_return(WaybackArchiver::ArchiveResult.new(url))
 
       expect(described_class.crawl(url)[0].uri).to eq(url)
+    end
+
+    it 'skips URLs in skip_urls' do
+      allow(WaybackArchiver::URLCollector).to receive(:crawl)
+        .and_yield('http://a.com')
+        .and_yield('http://b.com')
+        .and_return(%w[http://a.com http://b.com])
+
+      allow(described_class).to receive(:post_url).and_return(WaybackArchiver::ArchiveResult.new('http://b.com'))
+
+      skip = Set.new(['http://a.com'])
+      results = described_class.crawl('http://example.com', skip_urls: skip)
+
+      expect(described_class).to have_received(:post_url).once
+      expect(described_class).to have_received(:post_url).with('http://b.com')
     end
   end
 

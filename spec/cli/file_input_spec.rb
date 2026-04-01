@@ -21,7 +21,7 @@ RSpec.describe 'CLI --file flag' do
   def run_cli(*args, stdin_data: nil)
     # These tests only exercise argument parsing and error paths, so no
     # HTTP calls are made.
-    stdout, stderr, status = Open3.capture3(bin, *args, stdin_data: stdin_data)
+    stdout, stderr, status = Open3.capture3(RbConfig.ruby, bin, *args, stdin_data: stdin_data)
     [stdout, stderr, status]
   end
 
