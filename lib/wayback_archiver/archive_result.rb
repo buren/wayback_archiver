@@ -43,6 +43,11 @@ module WaybackArchiver
       !!error || (status_ext.is_a?(String) && status_ext.start_with?('error:'))
     end
 
+    # @return [Boolean] true if skipped (e.g. already archived, CDX pre-check)
+    def skipped?
+      status_ext.is_a?(String) && status_ext.start_with?('skipped:')
+    end
+
     # @return [Symbol, nil] :transient, :daily_limit, :permanent, or nil
     def error_category
       ErrorCodes.category(status_ext)

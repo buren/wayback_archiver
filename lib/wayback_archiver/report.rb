@@ -2,18 +2,21 @@ require 'csv'
 require 'json'
 
 module WaybackArchiver
-  # Write archive results to CSV or JSON files
+  # Write archive or check results to CSV or JSON files
   class Report
     COLUMNS = %w[url success wayback_url job_id timestamp duration_sec screenshot_url status_ext error_category error].freeze
+    CHECK_COLUMNS = %w[url archived timestamp wayback_url].freeze
 
     # Write results to a file. Format is detected from the file extension.
-    # @param results [Array<ArchiveResult>] the results to write.
+    # Accepts either Array<ArchiveResult> or Array<CheckResult>.
+    # @param results [Array] the results to write.
     # @param path [String] output file path (.csv or .json).
     # @raise [ArgumentError] if the file extension is not supported.
     def self.write(results, path)
+      check_mode = results.any? && results.first.is_a?(CheckResult)
       case File.extname(path).downcase
-      when '.csv'  then write_csv(results, path)
-      when '.json' then write_json(results, path)
+      when '.csv'  then check_mode ? write_check_csv(results, path) : write_csv(results, path)
+      when '.json' then check_mode ? write_check_json(results, path) : write_json(results, path)
       else
         raise ArgumentError, "Unsupported report format: #{File.extname(path)}. Use .csv or .json"
       end
@@ -32,6 +35,20 @@ module WaybackArchiver
       File.write(path, JSON.pretty_generate(data))
     end
     private_class_method :write_json
+
+    def self.write_check_csv(results, path)
+      CSV.open(path, 'w') do |csv|
+        csv << CHECK_COLUMNS
+        results.each { |r| csv << check_to_row(r) }
+      end
+    end
+    private_class_method :write_check_csv
+
+    def self.write_check_json(results, path)
+      data = results.map { |r| check_to_hash(r) }
+      File.write(path, JSON.pretty_generate(data))
+    end
+    private_class_method :write_check_json
 
     def self.result_to_row(result)
       [
@@ -64,5 +81,20 @@ module WaybackArchiver
       }
     end
     private_class_method :result_to_hash
+
+    def self.check_to_row(result)
+      [result.url, result.archived?, result.timestamp, result.wayback_url]
+    end
+    private_class_method :check_to_row
+
+    def self.check_to_hash(result)
+      {
+        'url'        => result.url,
+        'archived'   => result.archived?,
+        'timestamp'  => result.timestamp,
+        'wayback_url' => result.wayback_url
+      }
+    end
+    private_class_method :check_to_hash
   end
 end

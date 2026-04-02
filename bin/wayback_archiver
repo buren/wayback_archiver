@@ -5,6 +5,7 @@ require 'shellwords'
 require 'set'
 require 'wayback_archiver'
 require 'wayback_archiver/session_file'
+require 'wayback_archiver/timedelta'
 
 # Default values
 urls = nil
@@ -21,6 +22,9 @@ report_path = nil
 session_path = nil
 no_session = false
 resume_path = nil
+check_mode = false
+skip_archived = false
+skip_archived_within = nil
 
 optparse = OptionParser.new do |parser|
   parser.banner = 'Usage: wayback_archiver [<url>] [options]'
@@ -112,7 +116,9 @@ optparse = OptionParser.new do |parser|
     options[:delay_wb_availability] = true
   end
 
-  parser.on('--if-not-archived-within=TIMEDELTA', String, 'Skip if recent snapshot exists (e.g. "3d 5h 20m")') do |value|
+  parser.on('--if-not-archived-within=TIMEDELTA', String,
+           'Skip if recent snapshot exists (server-side).',
+           'Format: "3d 5h 20m", "7d", or seconds e.g. "120"') do |value|
     options[:if_not_archived_within] = value
   end
 
@@ -124,6 +130,20 @@ optparse = OptionParser.new do |parser|
 
   parser.on('--use-user-agent=AGENT', String, 'Custom User-Agent for target page') do |value|
     options[:use_user_agent] = value
+  end
+
+  parser.separator ''
+  parser.separator 'Check options:'
+
+  parser.on('--check', 'Check which URLs are already archived (does not archive)') do
+    check_mode = true
+  end
+
+  parser.on('--skip-archived[=TIMEDELTA]', String,
+            'Skip URLs already in the Wayback Machine (client-side CDX check).',
+            'Optional: time window, e.g. "7d", "3d 5h 20m"') do |value|
+    skip_archived = true
+    skip_archived_within = value
   end
 
   parser.separator ''
@@ -183,6 +203,14 @@ optparse = OptionParser.new do |parser|
 end
 
 optparse.parse!
+
+if check_mode && skip_archived
+  raise ArgumentError, "--check and --skip-archived are mutually exclusive"
+end
+
+if check_mode
+  no_session = true
+end
 
 if resume_path && session_path
   raise ArgumentError, "--resume and --session are mutually exclusive"
@@ -286,6 +314,38 @@ if resume_path && skip_urls&.any?
   WaybackArchiver.logger.info("Session contains #{skip_urls.size} previously succeeded URL(s)")
 end
 
+# -- Check mode: query CDX and exit --
+if check_mode
+  all_urls = urls.flat_map do |url|
+    WaybackArchiver.discover_urls(url, strategy: strategy, hosts: hosts, limit: limit)
+  end
+
+  WaybackArchiver.logger.info("Checking #{all_urls.length} URL(s) against the Wayback Machine")
+  check_results = WaybackArchiver.check(all_urls, concurrency: concurrency)
+  check_results.sort_by!(&:url)
+
+  max_len = check_results.map { |r| r.url.length }.max || 0
+  check_results.each do |r|
+    status = r.archived? ? 'archived' : 'not archived'
+    ts = r.timestamp ? "  #{r.timestamp}" : ''
+    puts "#{r.url.ljust(max_len)}  #{status}#{ts}"
+  end
+
+  if report_path
+    require 'wayback_archiver/report'
+    WaybackArchiver::Report.write(check_results, report_path)
+    WaybackArchiver.logger.info("Report written to #{report_path}")
+  end
+
+  if show_summary
+    archived_count = check_results.count(&:archived?)
+    puts "\n--- Summary ---"
+    puts "Total: #{check_results.length}  Archived: #{archived_count}  Not archived: #{check_results.length - archived_count}"
+  end
+
+  exit(0)
+end
+
 # Pre-compute so the signal handler only does simple string I/O
 resume_command = session ? build_resume_command.call(session) : nil
 
@@ -297,7 +357,42 @@ if resume_command
   end
 end
 
-all_results = urls.flat_map do |url|
+all_results = []
+
+# -- Skip-archived pre-filter: check CDX before archiving --
+if skip_archived
+  from = skip_archived_within ? WaybackArchiver::Timedelta.to_cdx_timestamp(skip_archived_within) : nil
+
+  # Discover all URLs that would be archived
+  urls_to_check = urls.flat_map do |url|
+    WaybackArchiver.discover_urls(url, strategy: strategy, hosts: hosts, limit: limit)
+  end
+
+  # Remove URLs already skipped by session resume
+  urls_to_check = urls_to_check.reject { |u| skip_urls&.include?(u) } if skip_urls
+
+  WaybackArchiver.logger.info("Checking #{urls_to_check.length} URL(s) against the Wayback Machine")
+  check_results = WaybackArchiver.check(urls_to_check, concurrency: concurrency)
+  archived_checks = check_results.select(&:archived?)
+
+  if archived_checks.any?
+    skipped_results = archived_checks.map do |cr|
+      WaybackArchiver::ArchiveResult.new(cr.url, status_ext: 'skipped:already-archived', timestamp: cr.timestamp)
+    end
+    skipped_results.each { |r| session&.write_result(r) }
+    all_results.concat(skipped_results)
+
+    skip_urls ||= Set.new
+    skip_urls.merge(archived_checks.map(&:url))
+
+    WaybackArchiver.logger.info("Skipped #{archived_checks.length} already-archived URL(s)")
+    archived_checks.each do |cr|
+      WaybackArchiver.logger.debug("Skipping #{cr.url} (archived #{cr.timestamp})")
+    end
+  end
+end
+
+all_results += urls.flat_map do |url|
   WaybackArchiver.archive(
     url,
     hosts: hosts,
@@ -328,12 +423,14 @@ if session
 end
 
 if show_summary
-  succeeded = all_results.count(&:success?)
+  succeeded = all_results.count { |r| r.success? && !r.skipped? }
+  skipped = all_results.count(&:skipped?)
   failed = all_results.count(&:errored?)
   total = all_results.length
   total_duration = all_results.sum { |r| r.duration_sec || 0 }.round(1)
 
   puts "\n--- Summary ---"
+  breakdown = ""
   if failed > 0
     counts = all_results.select(&:errored?).group_by(&:error_category).transform_values(&:count)
     parts = []
@@ -341,10 +438,10 @@ if show_summary
     parts << "#{counts[:daily_limit]} daily limit" if counts[:daily_limit]
     parts << "#{counts[:permanent]} permanent" if counts[:permanent]
     parts << "#{counts[nil]} other" if counts[nil]
-    breakdown = parts.any? ? " (#{parts.join(', ')})" : ""
-    puts "Total: #{total}  Succeeded: #{succeeded}  Failed: #{failed}#{breakdown}"
-  else
-    puts "Total: #{total}  Succeeded: #{succeeded}  Failed: #{failed}"
+    breakdown = " (#{parts.join(', ')})" if parts.any?
   end
+  line = "Total: #{total}  Succeeded: #{succeeded}  Failed: #{failed}#{breakdown}"
+  line << "  Skipped: #{skipped}" if skipped > 0
+  puts line
   puts "Duration: #{total_duration}s"
 end

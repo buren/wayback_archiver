@@ -4,14 +4,15 @@ module WaybackArchiver
   class RateLimiter
     AUTHENTICATED_RATE = 12 # captures per minute
     ANONYMOUS_RATE     = 4  # captures per minute
-    WINDOW             = 60.0 # seconds
 
-    attr_reader :rate_per_minute
+    attr_reader :max_requests, :window
 
-    # @param rate_per_minute [Integer] maximum requests per minute.
+    # @param max_requests [Integer] maximum requests per window.
+    # @param window [Float] sliding window duration in seconds (default: 60.0).
     # @param enabled [Boolean] set to false to disable rate limiting.
-    def initialize(rate_per_minute:, enabled: true)
-      @rate_per_minute = rate_per_minute
+    def initialize(max_requests:, window: 60.0, enabled: true)
+      @max_requests = max_requests
+      @window = window.to_f
       @enabled = enabled
       @timestamps = []
       @mutex = Mutex.new
@@ -21,7 +22,7 @@ module WaybackArchiver
     # @return [RateLimiter]
     def self.for_current_user
       rate = WaybackArchiver.credentials? ? AUTHENTICATED_RATE : ANONYMOUS_RATE
-      new(rate_per_minute: rate)
+      new(max_requests: rate)
     end
 
     # Block until a request slot is available, then record the request.
@@ -32,8 +33,8 @@ module WaybackArchiver
         now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         prune_old_timestamps(now)
 
-        if @timestamps.length >= @rate_per_minute
-          wait_time = @timestamps.first + WINDOW - now
+        if @timestamps.length >= @max_requests
+          wait_time = @timestamps.first + @window - now
           if wait_time > 0
             sleep(wait_time)
             now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -48,7 +49,7 @@ module WaybackArchiver
     private
 
     def prune_old_timestamps(now)
-      cutoff = now - WINDOW
+      cutoff = now - @window
       @timestamps.reject! { |t| t < cutoff }
     end
   end

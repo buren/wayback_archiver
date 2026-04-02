@@ -57,6 +57,33 @@ RSpec.describe WaybackArchiver::ArchiveResult do
     end
   end
 
+  describe '#skipped?' do
+    it 'returns true for skipped:already-archived' do
+      result = described_class.new('http://example.com', status_ext: 'skipped:already-archived')
+      expect(result.skipped?).to eq(true)
+    end
+
+    it 'returns false for nil status_ext' do
+      result = described_class.new('http://example.com')
+      expect(result.skipped?).to eq(false)
+    end
+
+    it 'returns false for error status_ext' do
+      result = described_class.new('http://example.com', status_ext: 'error:not-found')
+      expect(result.skipped?).to eq(false)
+    end
+
+    it 'is not errored' do
+      result = described_class.new('http://example.com', status_ext: 'skipped:already-archived')
+      expect(result.errored?).to eq(false)
+    end
+
+    it 'is considered success (archived)' do
+      result = described_class.new('http://example.com', status_ext: 'skipped:already-archived')
+      expect(result.success?).to eq(true)
+    end
+  end
+
   describe '#success?' do
     it 'returns true if no error' do
       expect(described_class.new(nil, error: nil).success?).to eq(true)

@@ -119,6 +119,53 @@ RSpec.describe WaybackArchiver::Report do
       end
     end
 
+    context 'with CheckResult (check mode)' do
+      let(:archived_check) do
+        WaybackArchiver::CheckResult.new('http://example.com', archived: true, timestamp: '20260326120000')
+      end
+
+      let(:not_archived_check) do
+        WaybackArchiver::CheckResult.new('http://other.com', archived: false)
+      end
+
+      it 'writes check CSV with correct columns' do
+        path = File.join(@tmpdir, 'check.csv')
+        described_class.write([archived_check, not_archived_check], path)
+
+        csv = CSV.read(path)
+        expect(csv[0]).to eq(described_class::CHECK_COLUMNS)
+        expect(csv.length).to eq(3)
+      end
+
+      it 'writes correct check CSV values' do
+        path = File.join(@tmpdir, 'check.csv')
+        described_class.write([archived_check], path)
+
+        row = CSV.read(path)[1]
+        expect(row[0]).to eq('http://example.com')
+        expect(row[1]).to eq('true')
+        expect(row[2]).to eq('20260326120000')
+        expect(row[3]).to eq('https://web.archive.org/web/20260326120000/http://example.com')
+      end
+
+      it 'writes correct check JSON values' do
+        path = File.join(@tmpdir, 'check.json')
+        described_class.write([archived_check, not_archived_check], path)
+
+        data = JSON.parse(File.read(path))
+        expect(data.length).to eq(2)
+
+        expect(data[0]['url']).to eq('http://example.com')
+        expect(data[0]['archived']).to eq(true)
+        expect(data[0]['timestamp']).to eq('20260326120000')
+        expect(data[0]['wayback_url']).to eq('https://web.archive.org/web/20260326120000/http://example.com')
+
+        expect(data[1]['url']).to eq('http://other.com')
+        expect(data[1]['archived']).to eq(false)
+        expect(data[1]['timestamp']).to be_nil
+      end
+    end
+
     context 'with empty results' do
       it 'writes CSV with only a header' do
         path = File.join(@tmpdir, 'report.csv')

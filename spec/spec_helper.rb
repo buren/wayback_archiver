@@ -26,7 +26,7 @@ RSpec.configure do |config|
     # Disable rate limiting in tests to avoid real sleeps
     WaybackArchiver::WaybackMachine.instance_variable_set(
       :@rate_limiter,
-      WaybackArchiver::RateLimiter.new(rate_per_minute: 999, enabled: false)
+      WaybackArchiver::RateLimiter.new(max_requests: 999, enabled: false)
     )
   end
 end

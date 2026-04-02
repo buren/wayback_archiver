@@ -5,6 +5,8 @@ require 'wayback_archiver/null_logger'
 require 'wayback_archiver/version'
 require 'wayback_archiver/url_collector'
 require 'wayback_archiver/archive'
+require 'wayback_archiver/cdx'
+require 'wayback_archiver/check_result'
 require 'wayback_archiver/screenshot'
 require 'wayback_archiver/sitemapper'
 require 'wayback_archiver/feed_parser'
@@ -189,6 +191,63 @@ module WaybackArchiver
   def self.urls(urls, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, **options, &block)
     Archive.post(Array(urls), concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
   end
+
+  # Discover URLs using the specified strategy without archiving them.
+  # @return [Array<String>] discovered URLs
+  # @param [String/Array<String>] source for URL(s).
+  # @param [String/Symbol] strategy for URL discovery.
+  # @param [Array<String, Regexp>] hosts to crawl (crawl strategy only).
+  # @param [Integer] limit max number of URLs.
+  def self.discover_urls(source, strategy: 'auto', hosts: [], limit: max_limit)
+    case strategy.to_s
+    when 'urls', 'url'
+      Array(source)
+    when 'sitemap'
+      URLCollector.sitemap(source)
+    when 'rss'
+      URLCollector.feed(source)
+    when 'crawl'
+      URLCollector.crawl(source, hosts: hosts, limit: limit)
+    when 'auto'
+      discover_urls_auto(source, hosts: hosts, limit: limit)
+    else
+      raise ArgumentError, "Unknown strategy: '#{strategy}'"
+    end
+  end
+
+  # Check which URLs are already archived in the Wayback Machine.
+  # @return [Array<CheckResult>] check results for each URL.
+  # @param [Array<String>] urls to check.
+  # @param [Integer] concurrency number of concurrent CDX requests.
+  # @yield [CheckResult] each result as it completes.
+  def self.check(urls, concurrency: WaybackArchiver.concurrency, &block)
+    CDX.check_urls(urls, concurrency: concurrency, &block)
+  end
+
+  # Auto-discover URLs without archiving (mirrors the auto strategy logic).
+  def self.discover_urls_auto(source, hosts: [], limit: max_limit)
+    WaybackArchiver.logger.info "Fetching #{source}"
+    begin
+      response = Request.get(source, raise_on_http_error: false)
+      source_body = response.success? ? response.body : nil
+    rescue Request::Error
+      source_body = nil
+    end
+
+    if source_body
+      feed_urls = FeedParser.urls(xml: source_body)
+      return feed_urls if feed_urls.any?
+    end
+
+    sitemap_urls = Sitemapper.autodiscover(source)
+    return sitemap_urls if sitemap_urls.any?
+
+    feed_urls = FeedParser.autodiscover(source, html: source_body)
+    return feed_urls if feed_urls.any?
+
+    URLCollector.crawl(source, hosts: hosts, limit: limit)
+  end
+  private_class_method :discover_urls_auto
 
   # Configure WaybackArchiver with a block.
   # @yield [WaybackArchiver] the module itself for configuration.
