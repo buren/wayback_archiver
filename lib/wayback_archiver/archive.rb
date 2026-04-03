@@ -111,56 +111,147 @@ module WaybackArchiver
     end
     private_class_method :sequential_post
 
-    # Batch mode: submit all URLs in parallel, then batch-poll until all complete.
+    BATCH_CHUNK_SIZE = 12 # matches SPN2 rate limit of 12/min
+
+    # Batch mode: submit URLs in chunks with intermediate polling.
+    MAX_SESSION_RETRIES = 5
+
     def self.batch_post(urls, adapter, concurrency:, **options, &block)
       results = Concurrent::Array.new
-      pool = ThreadPool.build(concurrency)
+      pending = Concurrent::Hash.new
+      counts = Concurrent::Hash.new(0) # :success, :error — incremental counters
+      total = urls.length
+      queue = urls.dup
+      submitted = 0
+      session_retries = Hash.new(0) # url => retry count
 
-      # Phase 1: Submit all URLs, collect {job_id => url} mapping
-      submissions = Concurrent::Hash.new
-      urls.each do |url|
-        pool.post do
-          WaybackArchiver.logger.info("Submitting #{url}")
-          response = adapter.submit(url, **options)
-          if response.is_a?(ArchiveResult)
-            yield(response) if block
-            results << response
-          else
-            job_id = response['job_id']
-            if job_id.nil? && response['timestamp']
-              # SPN2 returns the capture directly when if_not_archived_within matches a recent snapshot
-              WaybackArchiver.logger.info("Recent capture returned for #{url} [#{response['timestamp']}]")
-              result = build_result_from_status(url, nil, response, status_ext: 'cached', **options)
-              yield(result) if block
-              results << result
-            elsif job_id.nil?
-              msg = response['message'] || "Unexpected submit response for #{url}"
-              error = Request::ServerError.new(msg)
-              WaybackArchiver.logger.error(error.message)
-              result = ArchiveResult.new(url, error: error)
+      until queue.empty?
+        chunk = queue.shift(BATCH_CHUNK_SIZE)
+
+        pool = ThreadPool.build(concurrency)
+        retry_urls = Concurrent::Array.new
+        chunk.each do |url|
+          submitted += 1
+          n = submitted
+          pool.post do
+            WaybackArchiver.logger.info("Submitting #{url} (#{n}/#{total})")
+            handle_submit_response(adapter.submit(url, **options), url, pending, results, retry_urls, **options, &block)
+          end
+        end
+        pool.shutdown
+        pool.wait_for_termination
+
+        # Re-queue URLs that hit session limits for the next chunk
+        unless retry_urls.empty?
+          requeued = []
+          retry_urls.each do |url|
+            session_retries[url] += 1
+            if session_retries[url] > MAX_SESSION_RETRIES
+              WaybackArchiver.logger.error("Session limit exceeded #{MAX_SESSION_RETRIES} times for #{url}")
+              result = ArchiveResult.new(url, error: Request::ServerError.new('error:user-session-limit'), status_ext: 'error:user-session-limit')
+              counts[:error] += 1
               yield(result) if block
               results << result
             else
-              submissions[job_id] = url
+              requeued << url
             end
           end
+          unless requeued.empty?
+            WaybackArchiver.logger.warn("Re-queuing #{requeued.size} URL(s) that hit session limit")
+            queue.unshift(*requeued)
+          end
         end
-      end
-      pool.shutdown
-      pool.wait_for_termination
 
-      # Phase 2: Batch-poll pending job_ids
-      pending = submissions.dup
-      WaybackArchiver.logger.info("Polling #{pending.size} pending capture(s)") unless pending.empty?
+        # Intermediate poll to check progress and free sessions
+        poll_pending(adapter, pending, results, counts, **options, &block) unless pending.empty?
+        log_progress(counts, pending)
+      end
+
+      # Final poll phase: loop until all pending resolve or timeout
+      poll_until_done(adapter, pending, results, counts, **options, &block) unless pending.empty?
+
+      WaybackArchiver.logger.info "#{counts[:success]} of #{results.length} URL(s) posted to Wayback Machine"
+      results
+    end
+    private_class_method :batch_post
+
+    def self.handle_submit_response(response, url, pending, results, retry_urls, **options, &block)
+      if response.is_a?(ArchiveResult)
+        yield(response) if block
+        results << response
+        return
+      end
+
+      job_id = response['job_id']
+      if job_id.nil? && response['timestamp']
+        WaybackArchiver.logger.debug("Recent capture returned for #{url} [#{response['timestamp']}]")
+        result = build_result_from_status(url, nil, response, status_ext: 'cached', **options)
+        yield(result) if block
+        results << result
+      elsif job_id.nil?
+        msg = response['message'] || "Unexpected submit response for #{url}"
+        if msg.include?('limit of active')
+          WaybackArchiver.logger.warn("Session limit hit for #{url}")
+          retry_urls << url
+        else
+          error = Request::ServerError.new(msg)
+          WaybackArchiver.logger.error(error.message)
+          result = ArchiveResult.new(url, error: error)
+          yield(result) if block
+          results << result
+        end
+      else
+        pending[job_id] = url
+      end
+    end
+    private_class_method :handle_submit_response
+
+    # Single poll pass: collect completed results from pending jobs.
+    def self.poll_pending(adapter, pending, results, counts, **options, &block)
+      statuses = begin
+        adapter.poll_statuses(pending.keys)
+      rescue Request::Error => e
+        WaybackArchiver.logger.warn("Poll failed: #{e.message}")
+        return
+      end
+
+      # SPN2 occasionally returns a JSON array instead of the expected {job_id => status} hash
+      unless statuses.is_a?(Hash)
+        WaybackArchiver.logger.warn("Unexpected poll response type: #{statuses.class}")
+        return
+      end
+
+      statuses.each do |job_id, status|
+        next if status.nil? || status['status'] == 'pending'
+
+        url = pending.delete(job_id)
+        next unless url
+
+        result = build_result_from_status(url, job_id, status, **options)
+        if result.success?
+          counts[:success] += 1
+          WaybackArchiver.logger.debug("Captured #{url} [#{result.formatted_timestamp}]")
+        elsif result.errored?
+          counts[:error] += 1
+          WaybackArchiver.logger.debug("Capture failed for #{url}: #{result.status_ext}")
+        end
+        yield(result) if block
+        results << result
+      end
+    end
+    private_class_method :poll_pending
+
+    # Poll in a loop until all pending jobs complete or timeout.
+    def self.poll_until_done(adapter, pending, results, counts, **options, &block)
       start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
       until pending.empty?
         elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time
         if elapsed > WaybackMachine::POLL_TIMEOUT
-          # Timeout remaining jobs
           pending.each do |job_id, url|
             error = WaybackMachine::PollTimeoutError.new("Polling timed out after #{WaybackMachine::POLL_TIMEOUT}s for job #{job_id}")
             result = ArchiveResult.new(url, job_id: job_id, error: error)
+            counts[:error] += 1
             yield(result) if block
             results << result
           end
@@ -168,32 +259,16 @@ module WaybackArchiver
         end
 
         sleep(WaybackMachine::POLL_INTERVAL)
-
-        statuses = adapter.poll_statuses(pending.keys)
-
-        statuses.each do |job_id, status|
-          next if status['status'] == 'pending'
-
-          url = pending.delete(job_id)
-          next unless url # ignore unknown job_ids
-
-          result = build_result_from_status(url, job_id, status, **options)
-
-          if result.success?
-            WaybackArchiver.logger.info("Captured #{url} [#{result.formatted_timestamp}]")
-          elsif result.errored?
-            WaybackArchiver.logger.error("Capture failed for #{url}: #{result.status_ext}")
-          end
-
-          yield(result) if block
-          results << result
-        end
+        poll_pending(adapter, pending, results, counts, **options, &block)
+        log_progress(counts, pending) unless pending.empty?
       end
-
-      WaybackArchiver.logger.info "#{results.count(&:success?)} of #{results.length} URL(s) posted to Wayback Machine"
-      results
     end
-    private_class_method :batch_post
+    private_class_method :poll_until_done
+
+    def self.log_progress(counts, pending)
+      WaybackArchiver.logger.info("Progress: #{counts[:success]} captured, #{counts[:error]} failed, #{pending.size} pending")
+    end
+    private_class_method :log_progress
 
     def self.build_result_from_status(url, job_id, status, **options)
       ArchiveResult.from_status(url, job_id, status, **options)

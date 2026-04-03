@@ -102,6 +102,7 @@ module WaybackArchiver
       feed_urls = FeedParser.urls(xml: source_body)
       if feed_urls.any?
         WaybackArchiver.logger.info "Source URL is an RSS/Atom feed with #{feed_urls.length} entries"
+        WaybackArchiver.logger.info "Strategy resolved: feed (#{feed_urls.length} URLs)"
         return urls(feed_urls, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
       end
     end
@@ -109,6 +110,7 @@ module WaybackArchiver
     # Step 2: Try sitemap autodiscovery
     sitemap_urls = Sitemapper.autodiscover(source)
     if sitemap_urls.any?
+      WaybackArchiver.logger.info "Strategy resolved: sitemap (#{sitemap_urls.length} URLs)"
       return urls(sitemap_urls, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
     end
 
@@ -116,10 +118,12 @@ module WaybackArchiver
     feed_urls = FeedParser.autodiscover(source, html: source_body)
     if feed_urls.any?
       WaybackArchiver.logger.info "Found RSS/Atom feed with #{feed_urls.length} entries"
+      WaybackArchiver.logger.info "Strategy resolved: feed (#{feed_urls.length} URLs)"
       return urls(feed_urls, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
     end
 
     # Step 4: Crawl
+    WaybackArchiver.logger.info "Strategy resolved: crawl"
     crawl(source, concurrency: concurrency, limit: limit, hosts: hosts, skip_urls: skip_urls, **options, &block)
   end
 
@@ -236,15 +240,25 @@ module WaybackArchiver
 
     if source_body
       feed_urls = FeedParser.urls(xml: source_body)
-      return feed_urls if feed_urls.any?
+      if feed_urls.any?
+        WaybackArchiver.logger.info "Strategy resolved: feed (#{feed_urls.length} URLs)"
+        return feed_urls
+      end
     end
 
     sitemap_urls = Sitemapper.autodiscover(source)
-    return sitemap_urls if sitemap_urls.any?
+    if sitemap_urls.any?
+      WaybackArchiver.logger.info "Strategy resolved: sitemap (#{sitemap_urls.length} URLs)"
+      return sitemap_urls
+    end
 
     feed_urls = FeedParser.autodiscover(source, html: source_body)
-    return feed_urls if feed_urls.any?
+    if feed_urls.any?
+      WaybackArchiver.logger.info "Strategy resolved: feed (#{feed_urls.length} URLs)"
+      return feed_urls
+    end
 
+    WaybackArchiver.logger.info "Strategy resolved: crawl"
     URLCollector.crawl(source, hosts: hosts, limit: limit)
   end
   private_class_method :discover_urls_auto

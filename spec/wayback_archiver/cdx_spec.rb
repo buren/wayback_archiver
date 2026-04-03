@@ -18,6 +18,16 @@ RSpec.describe WaybackArchiver::CDX do
     ].to_json
   end
 
+  describe '.reset_rate_limiter!' do
+    it 'clears the rate limiter so a fresh one is created' do
+      old_limiter = described_class.rate_limiter
+      described_class.reset_rate_limiter!
+      new_limiter = described_class.rate_limiter
+
+      expect(new_limiter).not_to equal(old_limiter)
+    end
+  end
+
   describe '.check' do
     it 'returns archived CheckResult when CDX has a match' do
       stub_request(:get, /#{Regexp.escape(cdx_url)}/)

@@ -369,6 +369,99 @@ RSpec.describe WaybackArchiver::Archive do
       expect(adapter).not_to have_received(:poll_statuses)
     end
 
+    it 'polls between chunks and logs progress' do
+      jobs = (1..14).map { |i| ["job-#{i}", "http://example.com/page-#{i}"] }
+      jobs.each do |job_id, url|
+        allow(adapter).to receive(:submit)
+          .with(url).and_return({ 'url' => url, 'job_id' => job_id })
+      end
+
+      poll_count = 0
+      allow(adapter).to receive(:poll_statuses) do |ids|
+        poll_count += 1
+        ids.each_with_object({}) do |jid, h|
+          h[jid] = { 'status' => 'success', 'job_id' => jid, 'timestamp' => '20260326120000', 'original_url' => "http://example.com" }
+        end
+      end
+
+      urls = jobs.map(&:last)
+      results = described_class.post(urls)
+
+      expect(results.length).to eq(14)
+      expect(results).to all(be_success)
+      # 2 chunks (12 + 2): inter-chunk poll after first chunk + final poll for second chunk
+      expect(poll_count).to be >= 2
+    end
+
+    it 'includes counter in submit log messages' do
+      allow(adapter).to receive(:submit)
+        .with('http://a.com').and_return({ 'url' => 'http://a.com', 'job_id' => job1 })
+      allow(adapter).to receive(:poll_statuses).and_return(
+        job1 => { 'status' => 'success', 'job_id' => job1, 'timestamp' => '20260326120000', 'original_url' => 'http://a.com' }
+      )
+
+      described_class.post(%w[http://a.com])
+
+      expect(WaybackArchiver.logger.info_log).to include('Submitting http://a.com (1/1)')
+    end
+
+    it 're-queues URLs that hit session limit' do
+      call_count = 0
+      allow(adapter).to receive(:submit).with('http://a.com') do
+        call_count += 1
+        if call_count <= 1
+          { 'message' => 'You have already reached the limit of active Save Page Now sessions. Please wait for a minute and then try again.' }
+        else
+          { 'url' => 'http://a.com', 'job_id' => job1 }
+        end
+      end
+
+      allow(adapter).to receive(:poll_statuses).and_return(
+        job1 => { 'status' => 'success', 'job_id' => job1, 'timestamp' => '20260326120000', 'original_url' => 'http://a.com' }
+      )
+
+      results = described_class.post(%w[http://a.com])
+
+      expect(results.length).to eq(1)
+      expect(results.first.success?).to eq(true)
+      expect(call_count).to eq(2)
+    end
+
+    it 'handles poll_statuses raising Request::Error gracefully' do
+      allow(adapter).to receive(:submit)
+        .with('http://a.com').and_return({ 'url' => 'http://a.com', 'job_id' => job1 })
+
+      call_count = 0
+      allow(adapter).to receive(:poll_statuses) do |_ids|
+        call_count += 1
+        if call_count <= 1
+          raise WaybackArchiver::Request::ServerError, 'network hiccup'
+        else
+          { job1 => { 'status' => 'success', 'job_id' => job1, 'timestamp' => '20260326120000', 'original_url' => 'http://a.com' } }
+        end
+      end
+
+      results = described_class.post(%w[http://a.com])
+
+      expect(results.length).to eq(1)
+      expect(results.first.success?).to eq(true)
+    end
+
+    it 'collects errored results from batch polling' do
+      allow(adapter).to receive(:submit)
+        .with('http://a.com').and_return({ 'url' => 'http://a.com', 'job_id' => job1 })
+
+      allow(adapter).to receive(:poll_statuses).and_return(
+        job1 => { 'status' => 'error', 'job_id' => job1, 'status_ext' => 'error:invalid-host-resolution', 'message' => "Couldn't resolve host" }
+      )
+
+      results = described_class.post(%w[http://a.com])
+
+      expect(results.length).to eq(1)
+      expect(results.first.errored?).to eq(true)
+      expect(results.first.status_ext).to eq('error:invalid-host-resolution')
+    end
+
     it 'does not crash when poll_statuses returns unknown job_ids' do
       allow(adapter).to receive(:submit)
         .with('http://a.com').and_return({ 'url' => 'http://a.com', 'job_id' => job1 })

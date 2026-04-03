@@ -17,6 +17,27 @@ RSpec.describe WaybackArchiver::URLCollector do
     end
   end
 
+  describe '::crawl (resolve_start_url error handling)' do
+    it 'falls back to original URL when resolve_start_url raises Request::Error' do
+      # resolve_start_url calls Request.get; if it raises, the original URL is used
+      allow(WaybackArchiver::Request).to receive(:get)
+        .with('http://dead.example.com', hash_including(:follow_redirects))
+        .and_raise(WaybackArchiver::Request::ServerError, 'connection refused')
+
+      html_page = '<html><head><title>Test</title></head><body></body></html>'
+      response_headers = { 'Content-Type' => 'text/html; charset=utf-8' }
+
+      stub_request(:get, 'http://dead.example.com/robots.txt')
+        .to_return(status: 200, body: '', headers: {})
+      stub_request(:get, 'http://dead.example.com/')
+        .to_return(status: 200, body: html_page, headers: response_headers)
+
+      found = described_class.crawl('http://dead.example.com')
+
+      expect(found).to include('http://dead.example.com')
+    end
+  end
+
   describe '::crawl' do
     let(:headers) do
       {

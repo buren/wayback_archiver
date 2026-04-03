@@ -215,11 +215,12 @@ module WaybackArchiver
       response = http.request(request)
       GETStruct.new(response)
     rescue *REQUEST_ERRORS.keys => e
-      build_request_error(uri, e, REQUEST_ERRORS.fetch(e.class))
+      error_klass = REQUEST_ERRORS.find { |k, _| e.is_a?(k) }&.last || ServerError
+      build_request_error(uri, e, error_klass)
     end
 
     def self.build_request_error(uri, error, error_wrapper_klass)
-      WaybackArchiver.logger.error "Request to #{uri} failed: #{error_wrapper_klass}, #{error.class}, #{error.message}"
+      WaybackArchiver.logger.debug "Request to #{uri} failed: #{error_wrapper_klass}, #{error.class}, #{error.message}"
 
       GETStruct.new(
         Response.new,

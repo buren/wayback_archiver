@@ -335,6 +335,42 @@ RSpec.describe WaybackArchiver::WaybackMachine do
         expect(result.error.message).to include('You need to be logged in')
       end
 
+      it 'returns ArchiveResult with error when retries exhausted on RetryableError' do
+        stub_request(:post, save_url)
+          .to_return(status: 200, body: {
+            'status' => 'error', 'status_ext' => 'error:too-many-requests'
+          }.to_json)
+
+        # Force Retry.with_backoff to give up by raising RetryableError through all retries
+        allow(WaybackArchiver::Retry).to receive(:with_backoff).and_raise(
+          WaybackArchiver::RetryableError, 'error:too-many-requests'
+        )
+
+        result = described_class.call(url)
+
+        expect(result.errored?).to eq(true)
+        expect(result.error).to be_a(WaybackArchiver::RetryableError)
+        expect(result.status_ext).to eq('error:too-many-requests')
+      end
+
+      it 'retries when submit returns retryable status_ext without job_id' do
+        call_count = 0
+        stub_request(:post, save_url)
+          .to_return do |_request|
+            call_count += 1
+            if call_count <= 1
+              { status: 200, body: { 'status_ext' => 'error:too-many-requests' }.to_json }
+            else
+              { status: 200, body: { 'url' => url, 'job_id' => job_id }.to_json }
+            end
+          end
+        stub_status(success_status)
+
+        result = described_class.call(url)
+        expect(result.success?).to eq(true)
+        expect(call_count).to be > 1
+      end
+
       it 'includes URL in error when response has no message' do
         stub_request(:post, save_url)
           .to_return(status: 200, body: { 'status' => 'error' }.to_json)
@@ -537,6 +573,14 @@ RSpec.describe WaybackArchiver::WaybackMachine do
       expect do
         described_class.check_user_status
       end.to raise_error(WaybackArchiver::AuthenticationError)
+    end
+
+    it 'raises ServerError when response is not JSON' do
+      stub_request(:get, /web\.archive\.org\/save\/status\/user\?_t=/)
+        .to_return(status: 200, body: '<html>Bad Gateway</html>')
+
+      expect { described_class.check_user_status }
+        .to raise_error(WaybackArchiver::Request::ServerError, /Invalid JSON/)
     end
   end
 

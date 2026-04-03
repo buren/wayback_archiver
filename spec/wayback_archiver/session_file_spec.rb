@@ -96,6 +96,19 @@ RSpec.describe WaybackArchiver::SessionFile do
     end
   end
 
+  describe '#completed_urls when file does not exist' do
+    it 'returns empty set when the file has been deleted' do
+      path = File.join(@tmpdir, 'will_delete.jsonl')
+      session = described_class.new(path)
+      session.close
+
+      # Remove the file so completed_urls hits Errno::ENOENT
+      File.delete(path)
+
+      expect(session.completed_urls).to eq(Set.new)
+    end
+  end
+
   describe '#completed_urls edge cases' do
     it 'returns empty set for empty file' do
       path = session_path

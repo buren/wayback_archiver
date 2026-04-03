@@ -67,6 +67,21 @@ RSpec.describe WaybackArchiver::Sitemapper do
       end
     end
 
+    context 'when a network error occurs during common location probing' do
+      it 'rescues Request::Error and returns empty array' do
+        base_url = 'http://www.example.com'
+        stub_request(:get, "#{base_url}/robots.txt")
+          .to_return(status: 200, body: "User-agent: *\nAllow: /\n", headers: { 'Content-Type' => 'text/plain' })
+
+        # First common location raises a network error
+        allow(WaybackArchiver::Request).to receive(:get)
+          .with(/sitemap/, anything)
+          .and_raise(WaybackArchiver::Request::ServerError, 'connection reset')
+
+        expect(described_class.autodiscover(base_url)).to eq([])
+      end
+    end
+
     context 'at the provided URL' do
       it 'returns all present URLs if a Sitemap is found' do
         base_url = 'http://www.example.com'
