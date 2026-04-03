@@ -32,20 +32,21 @@ module WaybackArchiver
       end
     end
 
-    # Read the session file and return the set of URLs that succeeded.
+    # Read the session file and return the set of URLs that should be skipped.
+    # Includes URLs that succeeded OR were submitted (got a job_id from SPN2).
     # Uses last-write-wins: if a URL appears multiple times, only the
     # latest record determines its status.
-    # @return [Set<String>] URLs with success == true
+    # @return [Set<String>] URLs to skip on resume
     def completed_urls
       records = {}
       File.foreach(@path) do |line|
         data = JSON.parse(line)
-        records[data['url']] = data['success']
+        records[data['url']] = data['success'] || data['submitted']
       rescue JSON::ParserError
         # Skip truncated/corrupt lines (e.g. from hard crash)
         WaybackArchiver.logger.warn("Skipping corrupt session line: #{line.chomp}")
       end
-      records.select { |_url, success| success }.keys.to_set
+      records.select { |_url, completed| completed }.keys.to_set
     rescue Errno::ENOENT
       Set.new
     end
@@ -71,6 +72,7 @@ module WaybackArchiver
       {
         'url'        => result.uri,
         'success'    => result.success?,
+        'submitted'  => result.submitted?,
         'job_id'     => result.job_id,
         'timestamp'  => result.timestamp,
         'error'      => result.error&.to_s,

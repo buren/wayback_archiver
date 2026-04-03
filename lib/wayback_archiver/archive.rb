@@ -170,6 +170,12 @@ module WaybackArchiver
       # Final poll phase: loop until all pending resolve or timeout
       poll_until_done(adapter, pending, results, counts, **options, &block) unless pending.empty?
 
+      # Any URLs still pending after final poll were submitted but unconfirmed
+      pending.each do |job_id, url|
+        result = ArchiveResult.new(url, job_id: job_id, status_ext: 'submitted')
+        results << result
+      end
+
       WaybackArchiver.logger.info "#{counts[:success]} of #{results.length} URL(s) posted to Wayback Machine"
       results
     end
@@ -202,6 +208,9 @@ module WaybackArchiver
         end
       else
         pending[job_id] = url
+        # Write a "submitted" record so resume can skip this URL
+        submitted_result = ArchiveResult.new(url, job_id: job_id, status_ext: 'submitted')
+        yield(submitted_result) if block
       end
     end
     private_class_method :handle_submit_response
@@ -248,13 +257,7 @@ module WaybackArchiver
       until pending.empty?
         elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time
         if elapsed > WaybackMachine::POLL_TIMEOUT
-          pending.each do |job_id, url|
-            error = WaybackMachine::PollTimeoutError.new("Polling timed out after #{WaybackMachine::POLL_TIMEOUT}s for job #{job_id}")
-            result = ArchiveResult.new(url, job_id: job_id, error: error)
-            counts[:error] += 1
-            yield(result) if block
-            results << result
-          end
+          WaybackArchiver.logger.info("Poll timeout reached, #{pending.size} URL(s) submitted but unconfirmed")
           break
         end
 

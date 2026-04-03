@@ -243,8 +243,9 @@ RSpec.describe WaybackArchiver::Archive do
       yielded = []
       described_class.post(%w[http://a.com http://b.com]) { |r| yielded << r }
 
-      expect(yielded.length).to eq(2)
-      expect(yielded.map(&:uri)).to contain_exactly('http://a.com', 'http://b.com')
+      completed = yielded.reject(&:submitted?)
+      expect(completed.length).to eq(2)
+      expect(completed.map(&:uri)).to contain_exactly('http://a.com', 'http://b.com')
     end
 
     it 'handles submit failures as immediate error results' do
@@ -264,7 +265,7 @@ RSpec.describe WaybackArchiver::Archive do
       expect(results.find { |r| r.uri == 'http://a.com' }.success?).to eq(true)
     end
 
-    it 'times out pending jobs' do
+    it 'marks timed-out pending jobs as submitted' do
       allow(adapter).to receive(:submit)
         .with('http://slow.com').and_return({ 'url' => 'http://slow.com', 'job_id' => job1 })
 
@@ -278,8 +279,8 @@ RSpec.describe WaybackArchiver::Archive do
       results = described_class.post(%w[http://slow.com])
 
       expect(results.length).to eq(1)
-      expect(results.first.errored?).to eq(true)
-      expect(results.first.error).to be_a(WaybackArchiver::WaybackMachine::PollTimeoutError)
+      expect(results.first.submitted?).to eq(true)
+      expect(results.first.job_id).to eq(job1)
     end
 
     it 'downloads screenshots in batch mode when screenshot_dir is provided' do

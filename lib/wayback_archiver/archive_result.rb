@@ -33,9 +33,9 @@ module WaybackArchiver
       uri
     end
 
-    # @return [Boolean] true if success
+    # @return [Boolean] true if success (not submitted or errored)
     def success?
-      !errored?
+      !errored? && !submitted?
     end
 
     # @return [Boolean] true if errored
@@ -51,6 +51,11 @@ module WaybackArchiver
     # @return [Boolean] true if this is a cached capture (e.g. from if_not_archived_within)
     def cached?
       status_ext == 'cached'
+    end
+
+    # @return [Boolean] true if submitted to SPN2 but not yet confirmed
+    def submitted?
+      status_ext == 'submitted'
     end
 
     # @return [Symbol, nil] :transient, :daily_limit, :permanent, or nil

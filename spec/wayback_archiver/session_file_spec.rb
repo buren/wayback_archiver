@@ -94,6 +94,30 @@ RSpec.describe WaybackArchiver::SessionFile do
 
       session.close
     end
+
+    it 'includes submitted URLs in completed_urls' do
+      path = session_path
+      session = described_class.new(path)
+
+      session.write_result(make_result('http://submitted.com', job_id: 'job-1', status_ext: 'submitted'))
+
+      expect(session.completed_urls).to include('http://submitted.com')
+
+      session.close
+    end
+
+    it 'overwrites submitted with success on confirmed capture' do
+      path = session_path
+      session = described_class.new(path)
+
+      session.write_result(make_result('http://a.com', job_id: 'job-1', status_ext: 'submitted'))
+      session.write_result(make_result('http://a.com', job_id: 'job-1', timestamp: '20260326120000'))
+
+      completed = session.completed_urls
+      expect(completed).to include('http://a.com')
+
+      session.close
+    end
   end
 
   describe '#completed_urls when file does not exist' do

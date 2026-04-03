@@ -448,27 +448,41 @@ if session
 end
 
 if show_summary
-  succeeded = all_results.count { |r| r.success? && !r.skipped? && !r.cached? }
-  cached = all_results.count(&:cached?)
-  skipped = all_results.count(&:skipped?)
-  failed = all_results.count(&:errored?)
+  tally = { succeeded: 0, submitted: 0, cached: 0, skipped: 0, failed: 0, errors: {} }
+  total_duration = 0.0
+  all_results.each do |r|
+    total_duration += r.duration_sec || 0
+    if r.errored?
+      tally[:failed] += 1
+      cat = r.error_category
+      tally[:errors][cat] = (tally[:errors][cat] || 0) + 1
+    elsif r.submitted?
+      tally[:submitted] += 1
+    elsif r.cached?
+      tally[:cached] += 1
+    elsif r.skipped?
+      tally[:skipped] += 1
+    else
+      tally[:succeeded] += 1
+    end
+  end
   total = all_results.length
-  total_duration = all_results.sum { |r| r.duration_sec || 0 }.round(1)
+  total_duration = total_duration.round(1)
 
   puts "\n--- Summary ---"
   breakdown = ""
-  if failed > 0
-    counts = all_results.select(&:errored?).group_by(&:error_category).transform_values(&:count)
+  if tally[:failed] > 0
     parts = []
-    parts << "#{counts[:transient]} transient" if counts[:transient]
-    parts << "#{counts[:daily_limit]} daily limit" if counts[:daily_limit]
-    parts << "#{counts[:permanent]} permanent" if counts[:permanent]
-    parts << "#{counts[nil]} uncategorized" if counts[nil]
+    parts << "#{tally[:errors][:transient]} transient" if tally[:errors][:transient]
+    parts << "#{tally[:errors][:daily_limit]} daily limit" if tally[:errors][:daily_limit]
+    parts << "#{tally[:errors][:permanent]} permanent" if tally[:errors][:permanent]
+    parts << "#{tally[:errors][nil]} uncategorized" if tally[:errors][nil]
     breakdown = " (#{parts.join(', ')})" if parts.any?
   end
-  line = "Total: #{total}  Succeeded: #{succeeded}  Failed: #{failed}#{breakdown}"
-  line << "  Cached: #{cached}" if cached > 0
-  line << "  Skipped: #{skipped}" if skipped > 0
+  line = "Total: #{total}  Succeeded: #{tally[:succeeded]}  Failed: #{tally[:failed]}#{breakdown}"
+  line << "  Submitted: #{tally[:submitted]}" if tally[:submitted] > 0
+  line << "  Cached: #{tally[:cached]}" if tally[:cached] > 0
+  line << "  Skipped: #{tally[:skipped]}" if tally[:skipped] > 0
   puts line
   puts "Duration: #{total_duration}s"
 end
