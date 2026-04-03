@@ -262,6 +262,13 @@ end
 WaybackArchiver.logger = Logger.new(log).tap do |logger|
   logger.progname = 'WaybackArchiver'
   logger.level = log_level
+  logger.formatter = proc do |severity, _time, _progname, msg|
+    if severity == 'INFO'
+      "#{msg}\n"
+    else
+      "#{severity}: #{msg}\n"
+    end
+  end
 end
 
 # If no strategy has explicitly been given, then default to 'auto'
