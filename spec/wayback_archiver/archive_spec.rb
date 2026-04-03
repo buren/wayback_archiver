@@ -463,6 +463,23 @@ RSpec.describe WaybackArchiver::Archive do
       expect(results.first.status_ext).to eq('error:invalid-host-resolution')
     end
 
+    it 'handles poll_statuses returning an Array instead of a Hash' do
+      allow(adapter).to receive(:submit)
+        .with('http://a.com').and_return({ 'url' => 'http://a.com', 'job_id' => job1 })
+      allow(adapter).to receive(:submit)
+        .with('http://b.com').and_return({ 'url' => 'http://b.com', 'job_id' => job2 })
+
+      allow(adapter).to receive(:poll_statuses).and_return([
+        { 'status' => 'success', 'job_id' => job1, 'timestamp' => '20260326120000', 'original_url' => 'http://a.com' },
+        { 'status' => 'success', 'job_id' => job2, 'timestamp' => '20260326120001', 'original_url' => 'http://b.com' }
+      ])
+
+      results = described_class.post(%w[http://a.com http://b.com])
+
+      successes = results.select(&:success?)
+      expect(successes.length).to eq(2)
+    end
+
     it 'does not crash when poll_statuses returns unknown job_ids' do
       allow(adapter).to receive(:submit)
         .with('http://a.com').and_return({ 'url' => 'http://a.com', 'job_id' => job1 })

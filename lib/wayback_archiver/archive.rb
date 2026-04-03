@@ -197,7 +197,6 @@ module WaybackArchiver
       elsif job_id.nil?
         msg = response['message'] || "Unexpected submit response for #{url}"
         if msg.include?('limit of active')
-          WaybackArchiver.logger.warn("Session limit hit for #{url}")
           retry_urls << url
         else
           error = Request::ServerError.new(msg)
@@ -225,8 +224,15 @@ module WaybackArchiver
       end
 
       # SPN2 occasionally returns a JSON array instead of the expected {job_id => status} hash
+      if statuses.is_a?(Array)
+        statuses = statuses.each_with_object({}) do |entry, h|
+          jid = entry['job_id']
+          h[jid] = entry if jid
+        end
+      end
+
       unless statuses.is_a?(Hash)
-        WaybackArchiver.logger.warn("Unexpected poll response type: #{statuses.class}")
+        WaybackArchiver.logger.warn("Unexpected poll response type: #{statuses.class}, #{statuses}")
         return
       end
 
