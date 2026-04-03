@@ -69,7 +69,8 @@ module WaybackArchiver
       uri,
       max_redirects: MAX_REDIRECTS,
       raise_on_http_error: false,
-      follow_redirects: true
+      follow_redirects: true,
+      headers: {}
     )
       uri = build_uri(uri)
 
@@ -81,6 +82,7 @@ module WaybackArchiver
 
         request = Net::HTTP::Get.new(uri.request_uri)
         request['User-Agent'] = WaybackArchiver.user_agent
+        headers.each { |key, value| request[key] = value }
 
         result = perform_request(uri, http, request)
         response = result.response

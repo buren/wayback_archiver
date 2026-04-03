@@ -1,9 +1,8 @@
 require 'spec_helper'
-require 'open3'
 require 'tmpdir'
 
 RSpec.describe 'CLI --file flag' do
-  let(:bin) { File.expand_path('../../bin/wayback_archiver', __dir__) }
+  include CLIHelper
 
   around do |example|
     Dir.mktmpdir do |dir|
@@ -16,13 +15,6 @@ RSpec.describe 'CLI --file flag' do
     path = File.join(@tmpdir, name)
     File.write(path, content)
     path
-  end
-
-  def run_cli(*args, stdin_data: nil)
-    # These tests only exercise argument parsing and error paths, so no
-    # HTTP calls are made.
-    stdout, stderr, status = Open3.capture3(RbConfig.ruby, bin, *args, stdin_data: stdin_data)
-    [stdout, stderr, status]
   end
 
   describe 'file reading' do

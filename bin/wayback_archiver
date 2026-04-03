@@ -122,14 +122,18 @@ optparse = OptionParser.new do |parser|
     options[:if_not_archived_within] = value
   end
 
-  parser.on('--js-behavior-timeout=N', Integer, 'Run JS for N seconds after page load (max 30)') do |value|
-    raise ArgumentError, "js-behavior-timeout must be between 1 and 30, got #{value}" unless value.between?(1, 30)
+  parser.on('--js-behavior-timeout=N', Integer, 'Run JS for N seconds after page load (0 to skip, max 30)') do |value|
+    raise ArgumentError, "js-behavior-timeout must be between 0 and 30, got #{value}" unless value.between?(0, 30)
 
     options[:js_behavior_timeout] = value
   end
 
   parser.on('--use-user-agent=AGENT', String, 'Custom User-Agent for target page') do |value|
     options[:use_user_agent] = value
+  end
+
+  parser.on('--outlinks-availability', 'Return last-capture timestamp for outlinks') do
+    options[:outlinks_availability] = true
   end
 
   parser.separator ''

@@ -101,7 +101,8 @@ module WaybackArchiver
       cache_buster = (Time.now.to_f * 1000).to_i
       response = Request.get(
         "#{STATUS_URL}/user?_t=#{cache_buster}",
-        follow_redirects: false
+        follow_redirects: false,
+        headers: build_headers
       )
       JSON.parse(response.body)
     rescue JSON::ParserError => e
@@ -162,6 +163,7 @@ module WaybackArchiver
 
     def self.poll_until_complete(job_id)
       start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      headers = build_headers
 
       loop do
         elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time
@@ -173,7 +175,8 @@ module WaybackArchiver
 
         response = Request.get(
           "#{STATUS_URL}/#{job_id}",
-          follow_redirects: false
+          follow_redirects: false,
+          headers: headers
         )
         status = JSON.parse(response.body)
 

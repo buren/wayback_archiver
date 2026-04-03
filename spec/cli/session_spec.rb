@@ -1,20 +1,14 @@
 require 'spec_helper'
-require 'open3'
 require 'tmpdir'
 
 RSpec.describe 'CLI session flags' do
-  let(:bin) { File.expand_path('../../bin/wayback_archiver', __dir__) }
+  include CLIHelper
 
   around do |example|
     Dir.mktmpdir do |dir|
       @tmpdir = dir
       example.run
     end
-  end
-
-  def run_cli(*args, stdin_data: nil)
-    stdout, stderr, status = Open3.capture3(RbConfig.ruby, bin, *args, stdin_data: stdin_data)
-    [stdout, stderr, status]
   end
 
   def write_url_file(content, name: 'urls.txt')

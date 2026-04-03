@@ -89,6 +89,19 @@ RSpec.describe WaybackArchiver::WaybackMachine do
         expect(result.timestamp).to eq('20260326120000')
       end
 
+      it 'sends Accept and Authorization headers on status polls' do
+        stub_submit
+        stub_status(success_status)
+
+        described_class.call(url)
+
+        expect(WebMock).to have_requested(:get, status_url)
+          .with(headers: {
+            'Accept' => 'application/json',
+            'Authorization' => 'LOW test-access:test-secret'
+          })
+      end
+
       it 'returns PollTimeoutError when polling exceeds timeout' do
         stub_submit
         stub_status(status: 'pending', job_id: job_id)
@@ -152,6 +165,7 @@ RSpec.describe WaybackArchiver::WaybackMachine do
 
         described_class.call(url, js_behavior_timeout: 10)
       end
+
     end
 
     context 'error handling' do
