@@ -152,7 +152,7 @@ Run `wayback_archiver --help` for all options.
 
 ### Authentication
 
-WaybackArchiver works without authentication, but with lower rate limits (4 captures/min, 4,000/day). For full access (12 captures/min, 100,000/day) and features like screenshot download and outlink capture, get your API keys at [archive.org/account/s3.php](https://archive.org/account/s3.php).
+The Wayback Machine SPN2 API requires authentication. Get your API keys at [archive.org/account/s3.php](https://archive.org/account/s3.php).
 
 **Environment variables** (recommended):
 
@@ -219,11 +219,13 @@ This means pointing WaybackArchiver at a blog with an RSS feed will automaticall
 
 ## Migrating from v1.x
 
+> **:warning: Authentication is now required.** The Wayback Machine SPN2 API no longer allows anonymous access. You must set `WAYBACK_ACCESS_KEY` and `WAYBACK_SECRET_KEY` before archiving. Get your keys at [archive.org/account/s3.php](https://archive.org/account/s3.php).
+
 v2.0 uses the SPN2 API, replacing the old fire-and-forget SPN1 approach. Captures are now submitted asynchronously and polled for completion (handled transparently by the gem).
 
 **Key changes:**
 
-- **Authentication supported** via S3 API keys for higher rate limits and features like screenshots and outlinks
+- **Authentication required** — S3 API keys must be configured for archiving (read-only operations like `--check` still work without credentials)
 - **All results returned** including failures (v1 silently dropped errors):
   ```ruby
   # v1: results only contained successes

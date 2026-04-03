@@ -21,6 +21,14 @@ Gem::Specification.new do |spec|
 
   spec.required_ruby_version = '>= 3.1.0'
 
+  spec.post_install_message = <<~MSG
+    [wayback_archiver] BREAKING CHANGE in v2.0:
+    Authentication is now required. The Wayback Machine SPN2 API no longer
+    allows anonymous access. Set WAYBACK_ACCESS_KEY and WAYBACK_SECRET_KEY
+    environment variables before archiving.
+    Get your keys at: https://archive.org/account/s3.php
+  MSG
+
   spec.add_runtime_dependency 'logger'                     # No longer in default gems as of Ruby 4.0
   spec.add_runtime_dependency 'spidr',         '~> 0.7.1' # Crawl sites
   spec.add_runtime_dependency 'concurrent-ruby', '~> 1.3' # Concurrency primitives

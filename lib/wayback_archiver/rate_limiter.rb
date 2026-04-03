@@ -2,8 +2,7 @@ module WaybackArchiver
   # Thread-safe sliding window rate limiter.
   # Tracks timestamps of recent requests and sleeps when the rate limit is reached.
   class RateLimiter
-    AUTHENTICATED_RATE = 12 # captures per minute
-    ANONYMOUS_RATE     = 4  # captures per minute
+    RATE = 12 # captures per minute
 
     attr_reader :max_requests, :window
 
@@ -18,11 +17,10 @@ module WaybackArchiver
       @mutex = Mutex.new
     end
 
-    # Build a rate limiter based on current authentication status.
+    # Build a rate limiter for the current user.
     # @return [RateLimiter]
     def self.for_current_user
-      rate = WaybackArchiver.credentials? ? AUTHENTICATED_RATE : ANONYMOUS_RATE
-      new(max_requests: rate)
+      new(max_requests: RATE)
     end
 
     # Block until a request slot is available, then record the request.

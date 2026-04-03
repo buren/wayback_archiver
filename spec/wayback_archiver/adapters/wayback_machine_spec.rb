@@ -9,6 +9,13 @@ RSpec.describe WaybackArchiver::WaybackMachine do
   let(:status_url) { "https://web.archive.org/save/status/#{job_id}" }
 
   before do
+    WaybackArchiver.access_key = 'test-access'
+    WaybackArchiver.secret_key = 'test-secret'
+    # Re-disable rate limiting after setting credentials (setters call reset_rate_limiter!)
+    described_class.instance_variable_set(
+      :@rate_limiter,
+      WaybackArchiver::RateLimiter.new(max_requests: 999, enabled: false)
+    )
     allow(described_class).to receive(:sleep)
     allow(WaybackArchiver::Retry).to receive(:sleep)
   end
@@ -28,51 +35,43 @@ RSpec.describe WaybackArchiver::WaybackMachine do
   end
 
   describe '::call' do
-    context 'without authentication' do
-      it 'submits URL via POST and polls until success' do
-        stub_submit(url: url, job_id: job_id)
-        stub_status(
-          status: 'success', job_id: job_id, original_url: url,
-          timestamp: '20260326120000', duration_sec: 3.5,
-          resources: [url], outlinks: {}
-        )
+    context 'without credentials' do
+      it 'raises AuthenticationError' do
+        WaybackArchiver.access_key = nil
+        WaybackArchiver.secret_key = nil
 
-        result = described_class.call(url)
-
-        expect(result).to be_a(WaybackArchiver::ArchiveResult)
-        expect(result.uri).to eq(url)
-        expect(result.job_id).to eq(job_id)
-        expect(result.timestamp).to eq('20260326120000')
-        expect(result.duration_sec).to eq(3.5)
-        expect(result.resources).to eq([url])
-        expect(result.original_url).to eq(url)
-        expect(result.success?).to eq(true)
-      end
-
-      it 'does not send Authorization header' do
-        stub_request(:post, save_url)
-          .with { |req| !req.headers.key?('Authorization') }
-          .to_return(status: 200, body: { url: url, job_id: job_id }.to_json)
-        stub_status(success_status)
-
-        described_class.call(url)
+        expect { described_class.call(url) }
+          .to raise_error(WaybackArchiver::AuthenticationError, /credentials required/i)
       end
     end
 
-    context 'with authentication' do
-      before do
-        WaybackArchiver.access_key = 'test-access'
-        WaybackArchiver.secret_key = 'test-secret'
-      end
+    it 'submits URL via POST and polls until success' do
+      stub_submit(url: url, job_id: job_id)
+      stub_status(
+        status: 'success', job_id: job_id, original_url: url,
+        timestamp: '20260326120000', duration_sec: 3.5,
+        resources: [url], outlinks: {}
+      )
 
-      it 'sends Authorization header' do
-        stub_request(:post, save_url)
-          .with(headers: { 'Authorization' => 'LOW test-access:test-secret' })
-          .to_return(status: 200, body: { url: url, job_id: job_id }.to_json)
-        stub_status(success_status)
+      result = described_class.call(url)
 
-        described_class.call(url)
-      end
+      expect(result).to be_a(WaybackArchiver::ArchiveResult)
+      expect(result.uri).to eq(url)
+      expect(result.job_id).to eq(job_id)
+      expect(result.timestamp).to eq('20260326120000')
+      expect(result.duration_sec).to eq(3.5)
+      expect(result.resources).to eq([url])
+      expect(result.original_url).to eq(url)
+      expect(result.success?).to eq(true)
+    end
+
+    it 'sends Authorization header' do
+      stub_request(:post, save_url)
+        .with(headers: { 'Authorization' => 'LOW test-access:test-secret' })
+        .to_return(status: 200, body: { url: url, job_id: job_id }.to_json)
+      stub_status(success_status)
+
+      described_class.call(url)
     end
 
     context 'polling' do
@@ -230,7 +229,28 @@ RSpec.describe WaybackArchiver::WaybackMachine do
 
         expect(result.errored?).to eq(true)
         expect(result.error).to be_a(WaybackArchiver::Request::ServerError)
-        expect(result.error.message).to include('Missing job_id')
+        expect(result.error.message).to include('something unexpected')
+      end
+
+      it 'surfaces auth-required message from SPN2 response' do
+        stub_request(:post, save_url)
+          .to_return(status: 200, body: { 'message' => 'You need to be logged in to use Save Page Now.' }.to_json)
+
+        result = described_class.call(url)
+
+        expect(result.errored?).to eq(true)
+        expect(result.error).to be_a(WaybackArchiver::Request::ServerError)
+        expect(result.error.message).to include('You need to be logged in')
+      end
+
+      it 'includes URL in error when response has no message' do
+        stub_request(:post, save_url)
+          .to_return(status: 200, body: { 'status' => 'error' }.to_json)
+
+        result = described_class.call(url)
+
+        expect(result.errored?).to eq(true)
+        expect(result.error.message).to include(url)
       end
     end
 
@@ -266,11 +286,6 @@ RSpec.describe WaybackArchiver::WaybackMachine do
     end
 
     context 'screenshot' do
-      before do
-        WaybackArchiver.access_key = 'test-access'
-        WaybackArchiver.secret_key = 'test-secret'
-      end
-
       let(:screenshot_remote_url) { "http://web.archive.org/screenshot/#{url}" }
 
       it 'includes screenshot_url in result when capture_screenshot is used' do
@@ -344,15 +359,20 @@ RSpec.describe WaybackArchiver::WaybackMachine do
       expect(result.error).to be_a(JSON::ParserError)
     end
 
-    it 'sends auth headers when credentials configured' do
-      WaybackArchiver.access_key = 'test-access'
-      WaybackArchiver.secret_key = 'test-secret'
-
+    it 'sends auth headers' do
       stub_request(:post, save_url)
         .with(headers: { 'Authorization' => 'LOW test-access:test-secret' })
         .to_return(status: 200, body: { url: url, job_id: job_id }.to_json)
 
       described_class.submit(url)
+    end
+
+    it 'raises AuthenticationError without credentials' do
+      WaybackArchiver.access_key = nil
+      WaybackArchiver.secret_key = nil
+
+      expect { described_class.submit(url) }
+        .to raise_error(WaybackArchiver::AuthenticationError)
     end
   end
 
@@ -378,10 +398,7 @@ RSpec.describe WaybackArchiver::WaybackMachine do
       expect(result[job_id_2]['status']).to eq('pending')
     end
 
-    it 'sends auth headers when credentials configured' do
-      WaybackArchiver.access_key = 'test-access'
-      WaybackArchiver.secret_key = 'test-secret'
-
+    it 'sends auth headers' do
       stub_request(:post, batch_status_url)
         .with(headers: { 'Authorization' => 'LOW test-access:test-secret' })
         .to_return(status: 200, body: { job_id => { 'status' => 'success' } }.to_json)
@@ -400,9 +417,6 @@ RSpec.describe WaybackArchiver::WaybackMachine do
 
   describe '::check_user_status' do
     it 'returns available and processing counts' do
-      WaybackArchiver.access_key = 'test-access'
-      WaybackArchiver.secret_key = 'test-secret'
-
       stub_request(:get, /web\.archive\.org\/save\/status\/user\?_t=/)
         .to_return(status: 200, body: '{"available":12,"processing":3}')
 
@@ -412,6 +426,9 @@ RSpec.describe WaybackArchiver::WaybackMachine do
     end
 
     it 'raises AuthenticationError without credentials' do
+      WaybackArchiver.access_key = nil
+      WaybackArchiver.secret_key = nil
+
       expect do
         described_class.check_user_status
       end.to raise_error(WaybackArchiver::AuthenticationError)

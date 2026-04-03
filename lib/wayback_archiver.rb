@@ -20,7 +20,7 @@ module WaybackArchiver
   # Default for whether to respect robots txt files
   DEFAULT_RESPECT_ROBOTS_TXT = false
 
-  # Default concurrency for archiving URLs (4/min anonymous SPN2 limit)
+  # Default concurrency for archiving URLs (SPN2 rate limit: 12/min)
   DEFAULT_CONCURRENCY = 4
 
   # Maxmium number of links posted (-1 is no limit)

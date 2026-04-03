@@ -79,17 +79,9 @@ RSpec.describe WaybackArchiver::RateLimiter do
   end
 
   describe '.for_current_user' do
-    it 'returns 12/min limiter when authenticated' do
-      WaybackArchiver.access_key = 'key'
-      WaybackArchiver.secret_key = 'secret'
-
+    it 'returns 12/min limiter' do
       limiter = described_class.for_current_user
       expect(limiter.max_requests).to eq(12)
-    end
-
-    it 'returns 4/min limiter when anonymous' do
-      limiter = described_class.for_current_user
-      expect(limiter.max_requests).to eq(4)
     end
   end
 end

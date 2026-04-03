@@ -196,7 +196,6 @@ RSpec.describe WaybackArchiver::Archive do
       Dir.mktmpdir do |dir|
         WaybackArchiver.access_key = 'key'
         WaybackArchiver.secret_key = 'secret'
-
         screenshot_url = 'http://web.archive.org/screenshot/http://a.com'
         png_data = "\x89PNG\r\n\x1a\nfake"
 
@@ -256,7 +255,7 @@ RSpec.describe WaybackArchiver::Archive do
 
       expect(results.length).to eq(1)
       expect(results.first.errored?).to eq(true)
-      expect(results.first.error.message).to include('Missing job_id')
+      expect(results.first.error.message).to include('something unexpected')
     end
 
     it 'falls back to per-URL call for adapters without submit' do

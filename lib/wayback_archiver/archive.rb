@@ -129,7 +129,8 @@ module WaybackArchiver
               yield(result) if block
               results << result
             elsif job_id.nil?
-              error = Request::ServerError.new("Missing job_id in submit response for #{url}")
+              msg = response['message'] || "Unexpected submit response for #{url}"
+              error = Request::ServerError.new(msg)
               WaybackArchiver.logger.error(error.message)
               result = ArchiveResult.new(url, error: error)
               yield(result) if block

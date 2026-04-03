@@ -129,7 +129,8 @@ module WaybackArchiver
           return ArchiveResult.from_status(url, nil, data, status_ext: 'cached', **options)
         end
 
-        raise Request::ServerError, "Missing job_id in submit response for #{url}"
+        msg = data['message'] || "Unexpected submit response for #{url}"
+        raise Request::ServerError, msg
       end
 
       WaybackArchiver.logger.info("Capture started for #{url}, job_id: #{job_id}")
@@ -193,13 +194,17 @@ module WaybackArchiver
     private_class_method :build_post_body
 
     def self.build_headers
-      headers = { 'Accept' => 'application/json' }
-
-      if WaybackArchiver.credentials?
-        headers['Authorization'] = "LOW #{WaybackArchiver.access_key}:#{WaybackArchiver.secret_key}"
+      unless WaybackArchiver.credentials?
+        raise AuthenticationError,
+          'Wayback Machine credentials required. ' \
+          'Get your API keys at https://archive.org/account/s3.php ' \
+          'and set WAYBACK_ACCESS_KEY and WAYBACK_SECRET_KEY environment variables.'
       end
 
-      headers
+      {
+        'Accept' => 'application/json',
+        'Authorization' => "LOW #{WaybackArchiver.access_key}:#{WaybackArchiver.secret_key}"
+      }
     end
     private_class_method :build_headers
   end
