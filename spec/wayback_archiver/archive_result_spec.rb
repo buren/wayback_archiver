@@ -84,6 +84,33 @@ RSpec.describe WaybackArchiver::ArchiveResult do
     end
   end
 
+  describe '#cached?' do
+    it 'returns true for cached status_ext' do
+      result = described_class.new('http://example.com', status_ext: 'cached')
+      expect(result.cached?).to eq(true)
+    end
+
+    it 'returns false for nil status_ext' do
+      result = described_class.new('http://example.com')
+      expect(result.cached?).to eq(false)
+    end
+
+    it 'returns false for error status_ext' do
+      result = described_class.new('http://example.com', status_ext: 'error:not-found')
+      expect(result.cached?).to eq(false)
+    end
+
+    it 'is not errored' do
+      result = described_class.new('http://example.com', status_ext: 'cached')
+      expect(result.errored?).to eq(false)
+    end
+
+    it 'is considered success' do
+      result = described_class.new('http://example.com', status_ext: 'cached')
+      expect(result.success?).to eq(true)
+    end
+  end
+
   describe '#success?' do
     it 'returns true if no error' do
       expect(described_class.new(nil, error: nil).success?).to eq(true)
@@ -209,6 +236,15 @@ RSpec.describe WaybackArchiver::ArchiveResult do
       expect(result.success?).to eq(true)
       expect(result.job_id).to be_nil
       expect(result.timestamp).to eq('20260401120000')
+    end
+
+    it 'passes through status_ext on success' do
+      status = { 'status' => 'success', 'timestamp' => '20260401120000' }
+
+      result = described_class.from_status(url, nil, status, status_ext: 'cached')
+
+      expect(result.cached?).to eq(true)
+      expect(result.status_ext).to eq('cached')
     end
 
     it 'builds an error result from an error status hash' do

@@ -126,7 +126,7 @@ module WaybackArchiver
         # SPN2 returns the capture directly when if_not_archived_within matches a recent snapshot
         if data['timestamp']
           WaybackArchiver.logger.info("Recent capture returned for #{url} [#{data['timestamp']}]")
-          return ArchiveResult.from_status(url, nil, data, **options)
+          return ArchiveResult.from_status(url, nil, data, status_ext: 'cached', **options)
         end
 
         raise Request::ServerError, "Missing job_id in submit response for #{url}"

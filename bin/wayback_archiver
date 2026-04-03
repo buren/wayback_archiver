@@ -423,7 +423,8 @@ if session
 end
 
 if show_summary
-  succeeded = all_results.count { |r| r.success? && !r.skipped? }
+  succeeded = all_results.count { |r| r.success? && !r.skipped? && !r.cached? }
+  cached = all_results.count(&:cached?)
   skipped = all_results.count(&:skipped?)
   failed = all_results.count(&:errored?)
   total = all_results.length
@@ -441,6 +442,7 @@ if show_summary
     breakdown = " (#{parts.join(', ')})" if parts.any?
   end
   line = "Total: #{total}  Succeeded: #{succeeded}  Failed: #{failed}#{breakdown}"
+  line << "  Cached: #{cached}" if cached > 0
   line << "  Skipped: #{skipped}" if skipped > 0
   puts line
   puts "Duration: #{total_duration}s"

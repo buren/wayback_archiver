@@ -243,6 +243,7 @@ RSpec.describe WaybackArchiver::Archive do
       expect(results.length).to eq(2)
       cached = results.find { |r| r.uri == 'http://a.com' }
       expect(cached.success?).to eq(true)
+      expect(cached.cached?).to eq(true)
       expect(cached.timestamp).to eq('20260401120000')
       expect(cached.job_id).to be_nil
     end

@@ -125,7 +125,7 @@ module WaybackArchiver
             if job_id.nil? && response['timestamp']
               # SPN2 returns the capture directly when if_not_archived_within matches a recent snapshot
               WaybackArchiver.logger.info("Recent capture returned for #{url} [#{response['timestamp']}]")
-              result = build_result_from_status(url, nil, response, **options)
+              result = build_result_from_status(url, nil, response, status_ext: 'cached', **options)
               yield(result) if block
               results << result
             elsif job_id.nil?

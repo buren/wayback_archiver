@@ -246,6 +246,7 @@ RSpec.describe WaybackArchiver::WaybackMachine do
         result = described_class.call(url, if_not_archived_within: '7d')
 
         expect(result.success?).to eq(true)
+        expect(result.cached?).to eq(true)
         expect(result.timestamp).to eq('20260401120000')
         expect(result.job_id).to be_nil
       end

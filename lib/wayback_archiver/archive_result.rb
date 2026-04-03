@@ -48,6 +48,11 @@ module WaybackArchiver
       status_ext.is_a?(String) && status_ext.start_with?('skipped:')
     end
 
+    # @return [Boolean] true if this is a cached capture (e.g. from if_not_archived_within)
+    def cached?
+      status_ext == 'cached'
+    end
+
     # @return [Symbol, nil] :transient, :daily_limit, :permanent, or nil
     def error_category
       ErrorCodes.category(status_ext)
@@ -64,7 +69,7 @@ module WaybackArchiver
     # @param status [Hash] the status hash from the SPN2 API.
     # @param options [Hash] capture options (used for screenshot download).
     # @return [ArchiveResult]
-    def self.from_status(url, job_id, status, **options)
+    def self.from_status(url, job_id, status, status_ext: nil, **options)
       if status['status'] == 'error'
         new(
           url,
@@ -87,6 +92,7 @@ module WaybackArchiver
           screenshot_url: status['screenshot'],
           screenshot_path: screenshot_path,
           original_url: status['original_url'],
+          status_ext: status_ext,
           code: '200'
         )
       end
