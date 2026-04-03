@@ -120,9 +120,9 @@ module WaybackArchiver
       submissions = Concurrent::Hash.new
       urls.each do |url|
         pool.post do
+          WaybackArchiver.logger.info("Submitting #{url}")
           response = adapter.submit(url, **options)
           if response.is_a?(ArchiveResult)
-            # Submit failed — immediate error result
             yield(response) if block
             results << response
           else
@@ -151,6 +151,7 @@ module WaybackArchiver
 
       # Phase 2: Batch-poll pending job_ids
       pending = submissions.dup
+      WaybackArchiver.logger.info("Polling #{pending.size} pending capture(s)") unless pending.empty?
       start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
       until pending.empty?
@@ -174,7 +175,16 @@ module WaybackArchiver
           next if status['status'] == 'pending'
 
           url = pending.delete(job_id)
+          next unless url # ignore unknown job_ids
+
           result = build_result_from_status(url, job_id, status, **options)
+
+          if result.success?
+            WaybackArchiver.logger.info("Captured #{url} [#{result.formatted_timestamp}]")
+          elsif result.errored?
+            WaybackArchiver.logger.error("Capture failed for #{url}: #{result.status_ext}")
+          end
+
           yield(result) if block
           results << result
         end

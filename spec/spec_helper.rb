@@ -21,6 +21,13 @@ RSpec.configure do |config|
 
     WaybackArchiver.max_limit = WaybackArchiver::DEFAULT_MAX_LIMIT
 
+    # Stub credential env vars so tests aren't affected by the host environment
+    allow(ENV).to receive(:[]).and_call_original
+    allow(ENV).to receive(:[]).with('WAYBACK_ACCESS_KEY').and_return(nil)
+    allow(ENV).to receive(:[]).with('WAYBACK_SECRET_KEY').and_return(nil)
+    allow(ENV).to receive(:[]).with('IA_S3_ACCESS_KEY').and_return(nil)
+    allow(ENV).to receive(:[]).with('IA_S3_SECRET_KEY').and_return(nil)
+
     WaybackArchiver.access_key = nil
     WaybackArchiver.secret_key = nil
     # Disable rate limiting in tests to avoid real sleeps

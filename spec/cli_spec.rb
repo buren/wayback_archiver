@@ -134,4 +134,40 @@ RSpec.describe 'CLI' do
       expect(stderr).to include('invalid option')
     end
   end
+
+  describe 'additional CLI flags' do
+    %w[
+      --skip-archived
+      --skip-archived=3d
+      --report=PATH
+      --quiet
+    ].each do |flag|
+      name = flag.split('=').first
+
+      it "recognizes #{name}" do
+        _stdout, stderr, _status = run_cli(name, '--help')
+        expect(stderr).not_to include('invalid option')
+      end
+
+      it "shows #{name} in help output" do
+        expect(help_output).to include(name)
+      end
+    end
+
+    %w[--summary --no-summary].each do |flag|
+      it "recognizes #{flag}" do
+        _stdout, stderr, _status = run_cli(flag, '--help')
+        expect(stderr).not_to include('invalid option')
+      end
+    end
+
+    it 'shows --[no-]summary in help output' do
+      expect(help_output).to include('--[no-]summary')
+    end
+
+    it 'recognizes -q shorthand for --quiet' do
+      _stdout, stderr, _status = run_cli('-q', '--help')
+      expect(stderr).not_to include('invalid option')
+    end
+  end
 end

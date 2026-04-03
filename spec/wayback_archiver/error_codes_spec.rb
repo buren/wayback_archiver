@@ -110,4 +110,23 @@ RSpec.describe WaybackArchiver::ErrorCodes do
       expect(described_class.message(nil)).to be_nil
     end
   end
+
+  describe 'exhaustive REGISTRY validation' do
+    described_class::REGISTRY.each do |code, entry|
+      context code do
+        it 'returns the correct category' do
+          expect(described_class.category(code)).to eq(entry[:category])
+        end
+
+        it 'has a non-empty human-readable message' do
+          expect(described_class.message(code)).to be_a(String)
+          expect(described_class.message(code)).not_to be_empty
+        end
+
+        it "retryable? matches category == :transient" do
+          expect(described_class.retryable?(code)).to eq(entry[:category] == :transient)
+        end
+      end
+    end
+  end
 end

@@ -166,6 +166,44 @@ RSpec.describe WaybackArchiver::WaybackMachine do
         described_class.call(url, js_behavior_timeout: 10)
       end
 
+      it 'passes remaining boolean options as "1"' do
+        stub_request(:post, save_url)
+          .with(body: hash_including(
+            'url' => url,
+            'delay_wb_availability' => '1',
+            'skip_first_archive' => '1',
+            'outlinks_availability' => '1',
+            'email_result' => '1'
+          ))
+          .to_return(status: 200, body: { url: url, job_id: job_id }.to_json)
+        stub_status(success_status)
+
+        described_class.call(url,
+          delay_wb_availability: true,
+          skip_first_archive: true,
+          outlinks_availability: true,
+          email_result: true
+        )
+      end
+
+      it 'passes remaining value options as strings' do
+        stub_request(:post, save_url)
+          .with(body: hash_including(
+            'url' => url,
+            'capture_cookie' => 'session=abc',
+            'target_username' => 'user1',
+            'target_password' => 'pass1'
+          ))
+          .to_return(status: 200, body: { url: url, job_id: job_id }.to_json)
+        stub_status(success_status)
+
+        described_class.call(url,
+          capture_cookie: 'session=abc',
+          target_username: 'user1',
+          target_password: 'pass1'
+        )
+      end
+
     end
 
     context 'error handling' do
@@ -225,6 +263,24 @@ RSpec.describe WaybackArchiver::WaybackMachine do
         expect(result.errored?).to eq(true)
         expect(result.status_ext).to eq('error:too-many-daily-captures')
         expect(result.error_category).to eq(:daily_limit)
+      end
+
+      it 'retries when submit returns session limit error' do
+        call_count = 0
+        stub_request(:post, save_url)
+          .to_return do |_request|
+            call_count += 1
+            if call_count <= 1
+              { status: 200, body: { 'message' => 'You have already reached the limit of active Save Page Now sessions. Please wait for a minute and then try again.' }.to_json }
+            else
+              { status: 200, body: { 'url' => url, 'job_id' => job_id }.to_json }
+            end
+          end
+        stub_status(success_status)
+
+        result = described_class.call(url)
+        expect(result.success?).to eq(true)
+        expect(call_count).to be > 1
       end
 
       it 'returns ArchiveResult with error on network failure' do
@@ -481,6 +537,36 @@ RSpec.describe WaybackArchiver::WaybackMachine do
       expect do
         described_class.check_user_status
       end.to raise_error(WaybackArchiver::AuthenticationError)
+    end
+  end
+
+  describe '::system_status' do
+    let(:system_status_url) { 'https://web.archive.org/save/status/system' }
+
+    it 'returns parsed JSON from /save/status/system' do
+      stub_request(:get, system_status_url)
+        .to_return(status: 200, body: '{"status":"ok"}')
+
+      status = described_class.system_status
+      expect(status['status']).to eq('ok')
+    end
+
+    it 'does not require credentials' do
+      WaybackArchiver.access_key = nil
+      WaybackArchiver.secret_key = nil
+
+      stub_request(:get, system_status_url)
+        .to_return(status: 200, body: '{"status":"ok"}')
+
+      expect { described_class.system_status }.not_to raise_error
+    end
+
+    it 'raises ServerError on non-JSON response' do
+      stub_request(:get, system_status_url)
+        .to_return(status: 200, body: '<html>Error</html>')
+
+      expect { described_class.system_status }
+        .to raise_error(WaybackArchiver::Request::ServerError, /Invalid JSON/)
     end
   end
 end

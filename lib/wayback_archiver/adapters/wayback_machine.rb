@@ -130,7 +130,14 @@ module WaybackArchiver
           return ArchiveResult.from_status(url, nil, data, status_ext: 'cached', **options)
         end
 
+        status_ext = data['status_ext']
+        if ErrorCodes.retryable?(status_ext)
+          raise RetryableError, status_ext
+        end
+
         msg = data['message'] || "Unexpected submit response for #{url}"
+        raise RetryableError, 'error:user-session-limit' if msg.include?('limit of active')
+
         raise Request::ServerError, msg
       end
 
@@ -146,18 +153,11 @@ module WaybackArchiver
         end
 
         WaybackArchiver.logger.error("Capture failed for #{url}: #{status_ext} - #{status['message']}")
-      else
-        ts = status['timestamp']
-        formatted_ts = if ts&.match?(/\A\d{14}\z/)
-          Time.new(ts[0..3].to_i, ts[4..5].to_i, ts[6..7].to_i, ts[8..9].to_i, ts[10..11].to_i, ts[12..13].to_i, 'UTC')
-              .strftime('%Y-%m-%d %H:%M:%S UTC')
-        else
-          ts
-        end
-        WaybackArchiver.logger.info("Captured #{url} [#{formatted_ts}]")
       end
 
-      ArchiveResult.from_status(url, job_id, status, **options)
+      result = ArchiveResult.from_status(url, job_id, status, **options)
+      WaybackArchiver.logger.info("Captured #{url} [#{result.formatted_timestamp}]") if result.success?
+      result
     end
     private_class_method :submit_and_poll
 

@@ -357,6 +357,32 @@ RSpec.describe WaybackArchiver::Archive do
       expect(results.length).to eq(1)
       expect(results.first.uri).to eq('http://a.com')
     end
+
+    it 'returns empty array for empty URL list' do
+      allow(adapter).to receive(:submit)
+      allow(adapter).to receive(:poll_statuses)
+
+      results = described_class.post([])
+
+      expect(results).to eq([])
+      expect(adapter).not_to have_received(:submit)
+      expect(adapter).not_to have_received(:poll_statuses)
+    end
+
+    it 'does not crash when poll_statuses returns unknown job_ids' do
+      allow(adapter).to receive(:submit)
+        .with('http://a.com').and_return({ 'url' => 'http://a.com', 'job_id' => job1 })
+
+      allow(adapter).to receive(:poll_statuses).and_return(
+        job1 => { 'status' => 'success', 'job_id' => job1, 'timestamp' => '20260326120000', 'original_url' => 'http://a.com' },
+        'unknown-job' => { 'status' => 'success', 'job_id' => 'unknown-job', 'timestamp' => '20260326120000', 'original_url' => 'http://mystery.com' }
+      )
+
+      results = described_class.post(%w[http://a.com])
+
+      known_result = results.find { |r| r.uri == 'http://a.com' }
+      expect(known_result).to be_success
+    end
   end
 
   describe '::post_url' do

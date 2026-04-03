@@ -402,4 +402,61 @@ RSpec.describe WaybackArchiver do
       expect { described_class.adapter = 1 }.to raise_error(ArgumentError)
     end
   end
+
+  describe '::discover_urls' do
+    it 'returns Array(source) for :urls strategy' do
+      result = described_class.discover_urls(%w[http://a.com http://b.com], strategy: :urls)
+      expect(result).to eq(%w[http://a.com http://b.com])
+    end
+
+    it 'wraps a single URL string in an array for :urls strategy' do
+      result = described_class.discover_urls('http://a.com', strategy: :urls)
+      expect(result).to eq(['http://a.com'])
+    end
+
+    it 'delegates to URLCollector.sitemap for :sitemap strategy' do
+      allow(described_class::URLCollector).to receive(:sitemap).and_return(%w[http://a.com])
+
+      result = described_class.discover_urls('http://example.com', strategy: :sitemap)
+
+      expect(result).to eq(%w[http://a.com])
+      expect(described_class::URLCollector).to have_received(:sitemap).with('http://example.com')
+    end
+
+    it 'delegates to URLCollector.feed for :rss strategy' do
+      allow(described_class::URLCollector).to receive(:feed).and_return(%w[http://a.com])
+
+      result = described_class.discover_urls('http://example.com/feed.xml', strategy: :rss)
+
+      expect(result).to eq(%w[http://a.com])
+      expect(described_class::URLCollector).to have_received(:feed).with('http://example.com/feed.xml')
+    end
+
+    it 'delegates to URLCollector.crawl for :crawl strategy' do
+      hosts = ['example.com']
+      allow(described_class::URLCollector).to receive(:crawl).and_return(%w[http://a.com])
+
+      result = described_class.discover_urls('http://example.com', strategy: :crawl, hosts: hosts, limit: 10)
+
+      expect(described_class::URLCollector).to have_received(:crawl)
+        .with('http://example.com', hosts: hosts, limit: 10)
+    end
+
+    it 'uses auto discovery cascade for :auto strategy' do
+      allow(described_class::Request).to receive(:get).and_return(
+        WaybackArchiver::Response.new('200', 'OK', 'not a feed', 'http://example.com')
+      )
+      allow(described_class::Sitemapper).to receive(:autodiscover).and_return(%w[http://a.com http://b.com])
+
+      result = described_class.discover_urls('http://example.com', strategy: :auto)
+
+      expect(result).to eq(%w[http://a.com http://b.com])
+    end
+
+    it 'raises ArgumentError for unknown strategy' do
+      expect do
+        described_class.discover_urls('http://example.com', strategy: :bogus)
+      end.to raise_error(ArgumentError, /Unknown strategy/)
+    end
+  end
 end

@@ -93,6 +93,27 @@ RSpec.describe WaybackArchiver::Request do
 
       expect(result.code).to eq('400')
     end
+
+    it 'returns redirect response directly when follow_redirects is false' do
+      stub_request(:get, 'https://example.com/')
+        .to_return(status: 301, body: '', headers: { 'location' => 'https://example.com/new' })
+
+      result = described_class.get('https://example.com', follow_redirects: false)
+
+      expect(result.code).to eq('301')
+    end
+
+    it 'sends custom headers when provided' do
+      custom_headers = { 'Authorization' => 'LOW key:secret', 'Accept' => 'application/json' }
+
+      stub_request(:get, 'https://example.com/')
+        .with(headers: headers.merge(custom_headers))
+        .to_return(status: 200, body: 'ok')
+
+      result = described_class.get('https://example.com', headers: custom_headers)
+
+      expect(result.code).to eq('200')
+    end
   end
 
   describe '::build_response' do

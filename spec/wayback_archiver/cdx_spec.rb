@@ -93,6 +93,15 @@ RSpec.describe WaybackArchiver::CDX do
 
       described_class.check('http://example.com')
     end
+
+    it 'acquires rate limiter before making request' do
+      stub_request(:get, /#{Regexp.escape(cdx_url)}/)
+        .to_return(status: 200, body: cdx_json_response)
+
+      expect(described_class.rate_limiter).to receive(:acquire).once
+
+      described_class.check('http://example.com')
+    end
   end
 
   describe '.check_urls' do

@@ -68,4 +68,34 @@ RSpec.describe WaybackArchiver::Screenshot do
       end
     end
   end
+
+  describe '.maybe_download' do
+    it 'returns nil when screenshot_url is nil' do
+      result = described_class.maybe_download(nil, original_url, { screenshot_dir: '/tmp' })
+      expect(result).to be_nil
+    end
+
+    it 'returns nil when screenshot_dir is not in options' do
+      result = described_class.maybe_download(screenshot_url, original_url, {})
+      expect(result).to be_nil
+    end
+
+    it 'delegates to download when both screenshot_url and screenshot_dir are present' do
+      allow(described_class).to receive(:download).and_return('/tmp/screenshot.png')
+
+      result = described_class.maybe_download(screenshot_url, original_url, { screenshot_dir: '/tmp' })
+
+      expect(result).to eq('/tmp/screenshot.png')
+      expect(described_class).to have_received(:download)
+        .with(screenshot_url, original_url, directory: '/tmp')
+    end
+
+    it 'returns nil and logs error when download raises' do
+      allow(described_class).to receive(:download).and_raise(StandardError, 'network error')
+
+      result = described_class.maybe_download(screenshot_url, original_url, { screenshot_dir: '/tmp' })
+
+      expect(result).to be_nil
+    end
+  end
 end

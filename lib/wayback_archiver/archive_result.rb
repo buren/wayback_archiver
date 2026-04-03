@@ -98,6 +98,17 @@ module WaybackArchiver
       end
     end
 
+    # @return [String, nil] human-readable timestamp (e.g. "2026-04-03 11:44:28 UTC")
+    def formatted_timestamp
+      ts = timestamp
+      if ts&.match?(/\A\d{14}\z/)
+        Time.new(ts[0..3].to_i, ts[4..5].to_i, ts[6..7].to_i, ts[8..9].to_i, ts[10..11].to_i, ts[12..13].to_i, 'UTC')
+            .strftime('%Y-%m-%d %H:%M:%S UTC')
+      else
+        ts
+      end
+    end
+
     # @return [String, nil] URL to view the archived snapshot on the Wayback Machine
     def wayback_url
       return nil unless timestamp
