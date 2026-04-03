@@ -274,8 +274,14 @@ RSpec.describe WaybackArchiver::Archive do
         job1 => { 'status' => 'pending', 'job_id' => job1 }
       )
 
+      # available_slots uses clock_gettime (start + check), poll_until_done uses it too
       start = 100.0
-      allow(Process).to receive(:clock_gettime).and_return(start, start + 130)
+      allow(Process).to receive(:clock_gettime).and_return(
+        start,         # available_slots start_time
+        start,         # available_slots elapsed check (within timeout)
+        start,         # poll_until_done start_time
+        start + 130    # poll_until_done elapsed check (exceeds timeout)
+      )
 
       results = described_class.post(%w[http://slow.com])
 
@@ -549,14 +555,16 @@ RSpec.describe WaybackArchiver::Archive do
         expect(adapter).not_to have_received(:submit)
       end
 
-      it 'falls back to small chunk size on mid-run ClientError' do
+      it 'retries ECONNREFUSED mid-run in the wait loop then recovers' do
         call_count = 0
         allow(adapter).to receive(:check_user_status) do
           call_count += 1
           if call_count <= 1
             { 'available' => 2, 'processing' => 10 }
-          else
+          elsif call_count <= 3
             raise WaybackArchiver::Request::ClientError, 'Errno::ECONNREFUSED, Connection refused'
+          else
+            { 'available' => 2, 'processing' => 10 }
           end
         end
         allow(adapter).to receive(:submit) do |url|
@@ -570,8 +578,36 @@ RSpec.describe WaybackArchiver::Archive do
 
         results = described_class.post(%w[http://a.com http://b.com http://c.com http://d.com])
 
-        # First chunk of 2 succeeds, then ClientError on check, falls back to chunk of 2
         expect(results.select(&:success?).length).to eq(4)
+      end
+
+      it 'logs progress while waiting for slots' do
+        call_count = 0
+        allow(adapter).to receive(:check_user_status) do
+          call_count += 1
+          if call_count <= 3
+            { 'available' => 0, 'processing' => 7 }
+          else
+            { 'available' => 4, 'processing' => 3 }
+          end
+        end
+        allow(adapter).to receive(:submit) do |url|
+          { 'url' => url, 'job_id' => "job-#{url.hash.abs}" }
+        end
+        allow(adapter).to receive(:poll_statuses) do |ids|
+          ids.each_with_object({}) do |jid, h|
+            h[jid] = { 'status' => 'success', 'job_id' => jid, 'timestamp' => '20260326120000', 'original_url' => 'http://example.com' }
+          end
+        end
+
+        results = described_class.post(%w[http://a.com])
+
+        expect(results.select(&:success?).length).to eq(1)
+        # Should have waited through multiple check_user_status calls
+        expect(call_count).to be >= 3
+        # Should have logged progress while waiting
+        progress_lines = WaybackArchiver.logger.info_log.select { |l| l.include?('Progress:') }
+        expect(progress_lines.length).to be >= 2
       end
 
       it 'limits session retries to 2' do

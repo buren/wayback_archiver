@@ -280,39 +280,39 @@ module WaybackArchiver
     end
     private_class_method :poll_until_done
 
+    MAX_SLOT_WAIT = 180 # max seconds to wait for available slots
+    SLOT_WAIT_INTERVAL = 10 # seconds between status checks when waiting for slots
+
     # Determine how many URLs to submit in the next chunk.
+    # Loops until slots are available, with timeout fallback.
     # @return [Integer, :abort] number of slots available, or :abort to stop
     def self.available_slots(adapter, pending, results, counts, **options, &block)
-      status = adapter.check_user_status
-      available = status['available'].to_i
+      start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-      if available > 0
-        return available
-      end
+      loop do
+        status = begin
+          adapter.check_user_status
+        rescue Request::Error => e
+          if counts[:success] == 0 && pending.empty? && e.is_a?(Request::ClientError)
+            WaybackArchiver.logger.error("Connection refused by web.archive.org — your IP may be temporarily blocked. Try again later.")
+            return :abort
+          end
+          WaybackArchiver.logger.warn("Status check failed: #{e.message}")
+          nil
+        end
 
-      # No slots — poll pending to free sessions, then re-check
-      WaybackArchiver.logger.info("No available slots (#{status['processing']} processing), waiting for captures to complete")
-      poll_pending(adapter, pending, results, counts, **options, &block) unless pending.empty?
-      sleep(WaybackMachine::POLL_INTERVAL)
+        available = status&.dig('available').to_i
+        return available if available > 0
 
-      status = adapter.check_user_status
-      status['available'].to_i.clamp(1, RateLimiter::RATE)
-    rescue Request::Error => e
-      cold_start = counts[:success] == 0 && pending.empty?
-      if cold_start && e.is_a?(Request::ClientError)
-        WaybackArchiver.logger.error("Connection refused by web.archive.org — your IP may be temporarily blocked. Try again later.")
-        return :abort
-      end
+        elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time
+        if elapsed >= MAX_SLOT_WAIT
+          WaybackArchiver.logger.warn("No slots available after #{MAX_SLOT_WAIT}s, using fallback chunk size")
+          return FALLBACK_CHUNK_SIZE
+        end
 
-      WaybackArchiver.logger.warn("Status check failed: #{e.message}, retrying")
-      poll_pending(adapter, pending, results, counts, **options, &block) unless pending.empty?
-      sleep(WaybackMachine::POLL_INTERVAL)
-      begin
-        status = adapter.check_user_status
-        [status['available'].to_i, 1].max
-      rescue Request::Error
-        WaybackArchiver.logger.warn("Status check failed again, using fallback chunk size")
-        FALLBACK_CHUNK_SIZE
+        poll_pending(adapter, pending, results, counts, **options, &block) unless pending.empty?
+        log_progress(counts, pending)
+        sleep(SLOT_WAIT_INTERVAL)
       end
     end
     private_class_method :available_slots
