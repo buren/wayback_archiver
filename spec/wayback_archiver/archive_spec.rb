@@ -199,6 +199,7 @@ RSpec.describe WaybackArchiver::Archive do
 
     before do
       allow(described_class).to receive(:sleep)
+      allow(adapter).to receive(:check_user_status).and_return({ 'available' => 12, 'processing' => 0 })
     end
 
     it 'submits all URLs then batch-polls' do
@@ -493,6 +494,99 @@ RSpec.describe WaybackArchiver::Archive do
 
       known_result = results.find { |r| r.uri == 'http://a.com' }
       expect(known_result).to be_success
+    end
+
+    context 'dynamic chunk sizing via check_user_status' do
+      it 'uses available count to size chunks' do
+        allow(adapter).to receive(:check_user_status).and_return({ 'available' => 2, 'processing' => 10 })
+        allow(adapter).to receive(:submit) do |url|
+          { 'url' => url, 'job_id' => "job-#{url.hash.abs}" }
+        end
+        allow(adapter).to receive(:poll_statuses) do |ids|
+          ids.each_with_object({}) do |jid, h|
+            h[jid] = { 'status' => 'success', 'job_id' => jid, 'timestamp' => '20260326120000', 'original_url' => 'http://example.com' }
+          end
+        end
+
+        results = described_class.post(%w[http://a.com http://b.com http://c.com http://d.com])
+
+        expect(results.select(&:success?).length).to eq(4)
+        # With available=2, should have called check_user_status multiple times (at least 2 chunks)
+        expect(adapter).to have_received(:check_user_status).at_least(2).times
+      end
+
+      it 'waits and polls when available is 0' do
+        call_count = 0
+        allow(adapter).to receive(:check_user_status) do
+          call_count += 1
+          if call_count <= 1
+            { 'available' => 0, 'processing' => 12 }
+          else
+            { 'available' => 4, 'processing' => 8 }
+          end
+        end
+        allow(adapter).to receive(:submit)
+          .with('http://a.com').and_return({ 'url' => 'http://a.com', 'job_id' => job1 })
+        allow(adapter).to receive(:poll_statuses).and_return(
+          job1 => { 'status' => 'success', 'job_id' => job1, 'timestamp' => '20260326120000', 'original_url' => 'http://a.com' }
+        )
+
+        results = described_class.post(%w[http://a.com])
+
+        expect(results.select(&:success?).length).to eq(1)
+        expect(call_count).to be >= 2
+      end
+
+      it 'aborts on cold-start ClientError from check_user_status' do
+        allow(adapter).to receive(:check_user_status)
+          .and_raise(WaybackArchiver::Request::ClientError, 'Errno::ECONNREFUSED, Connection refused')
+        allow(adapter).to receive(:submit)
+
+        results = described_class.post(%w[http://a.com])
+
+        expect(results.length).to eq(1)
+        expect(results.first.errored?).to eq(true)
+        expect(adapter).not_to have_received(:submit)
+      end
+
+      it 'falls back to small chunk size on mid-run ClientError' do
+        call_count = 0
+        allow(adapter).to receive(:check_user_status) do
+          call_count += 1
+          if call_count <= 1
+            { 'available' => 2, 'processing' => 10 }
+          else
+            raise WaybackArchiver::Request::ClientError, 'Errno::ECONNREFUSED, Connection refused'
+          end
+        end
+        allow(adapter).to receive(:submit) do |url|
+          { 'url' => url, 'job_id' => "job-#{url.hash.abs}" }
+        end
+        allow(adapter).to receive(:poll_statuses) do |ids|
+          ids.each_with_object({}) do |jid, h|
+            h[jid] = { 'status' => 'success', 'job_id' => jid, 'timestamp' => '20260326120000', 'original_url' => 'http://example.com' }
+          end
+        end
+
+        results = described_class.post(%w[http://a.com http://b.com http://c.com http://d.com])
+
+        # First chunk of 2 succeeds, then ClientError on check, falls back to chunk of 2
+        expect(results.select(&:success?).length).to eq(4)
+      end
+
+      it 'limits session retries to 2' do
+        allow(adapter).to receive(:check_user_status).and_return({ 'available' => 12, 'processing' => 0 })
+        allow(adapter).to receive(:submit)
+          .with('http://a.com').and_return({ 'message' => 'You have already reached the limit of active Save Page Now sessions. Please wait for a minute and then try again.' })
+        allow(adapter).to receive(:poll_statuses).and_return({})
+
+        results = described_class.post(%w[http://a.com])
+
+        expect(results.length).to eq(1)
+        expect(results.first.errored?).to eq(true)
+        # Should have tried submit 3 times (1 + 2 retries)
+        expect(adapter).to have_received(:submit).exactly(3).times
+      end
     end
   end
 
