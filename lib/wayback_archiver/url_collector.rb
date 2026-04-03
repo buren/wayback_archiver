@@ -45,7 +45,7 @@ module WaybackArchiver
     #    )
     def self.crawl(url, hosts: [], limit: WaybackArchiver.max_limit)
       urls = []
-      start_at_url = Request.build_uri(url).to_s
+      start_at_url = resolve_start_url(Request.build_uri(url).to_s)
       options = {
         robots: WaybackArchiver.respect_robots_txt,
         hosts: hosts,
@@ -63,5 +63,15 @@ module WaybackArchiver
       end
       urls
     end
+
+    # Resolve a start URL through redirects so Spidr sees the final host.
+    # e.g. http://abclabs.se -> https://www.abclabs.se
+    def self.resolve_start_url(url)
+      response = Request.get(url, follow_redirects: true, raise_on_http_error: false)
+      response.uri && !response.uri.empty? ? response.uri : url
+    rescue Request::Error
+      url
+    end
+    private_class_method :resolve_start_url
   end
 end

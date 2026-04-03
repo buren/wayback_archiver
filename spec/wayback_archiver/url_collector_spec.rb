@@ -62,5 +62,43 @@ RSpec.describe WaybackArchiver::URLCollector do
 
       expect(found_urls).to eq(expected_urls_dup)
     end
+
+    it 'follows redirects to resolve the start URL before crawling' do
+      html_page = <<-HTML
+      <!DOCTYPE html>
+      <html>
+        <head><title>Testing</title></head>
+        <body>
+          <a href="https://www.example.com/about">About</a>
+        </body>
+      </html>
+      HTML
+
+      response_headers = { 'Content-Type' => 'text/html; charset=utf-8' }
+
+      # resolve_start_url follows the redirect via Request.get
+      stub_request(:get, 'http://example.com')
+        .with(headers: headers)
+        .to_return(status: 301, headers: { 'Location' => 'https://www.example.com' })
+
+      stub_request(:get, 'https://www.example.com')
+        .with(headers: headers)
+        .to_return(status: 200, body: html_page, headers: response_headers)
+
+      # Spidr crawl requests (Spidr uses its own HTTP client)
+      stub_request(:get, 'https://www.example.com/robots.txt')
+        .to_return(status: 200, body: '', headers: {})
+
+      stub_request(:get, 'https://www.example.com/')
+        .to_return(status: 200, body: html_page, headers: response_headers)
+
+      stub_request(:get, 'https://www.example.com/about')
+        .to_return(status: 200, body: '', headers: response_headers)
+
+      found_urls = described_class.crawl('http://example.com')
+
+      expect(found_urls).to include('https://www.example.com')
+      expect(found_urls).to include('https://www.example.com/about')
+    end
   end
 end
