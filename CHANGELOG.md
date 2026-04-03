@@ -19,23 +19,29 @@
 - **SPN2 capture options** — `capture_all`, `capture_outlinks`, `capture_screenshot`, `force_get`, `skip_first_archive`, `if_not_archived_within`, `js_behavior_timeout`, `use_user_agent`, `delay_wb_availability`
 - **Screenshot download** — save full-page PNG screenshots locally with `screenshot_dir:` option (requires auth)
 - **Rich results** — `ArchiveResult` now includes `job_id`, `timestamp`, `duration_sec`, `resources`, `outlinks`, `screenshot_url`, `original_url`, `status_ext`, `wayback_url`
+- **Cached capture detection** — when `if_not_archived_within` matches a recent snapshot, SPN2 returns immediately; these are tagged with `status_ext: 'cached'` and reported separately in the CLI summary
 - **Retry with backoff** — transient SPN2 errors (rate limits, service unavailable) are retried automatically with exponential backoff
+- **Expanded error classification** — 38 SPN2 error codes mapped to `:transient`, `:daily_limit`, and `:permanent` categories for smarter retry decisions
 - **Proactive rate limiter** — token bucket rate limiting to stay within SPN2 limits proactively
 - **Batch status polling** — efficient bulk archiving via `POST /save/status` with multiple job IDs
+- **CDX API integration** — `--check` queries the Wayback Machine CDX API to see if URLs are already archived; `--skip-archived[=TIMEDELTA]` skips URLs already in the archive (optionally within a time window)
+- **Resumable sessions** — `--session=PATH` writes a progressive JSONL state file during archiving; `--resume=PATH` picks up where a previous run left off, skipping already-completed URLs
+- **File input** — `--file=PATH` (or `-f`) reads URLs from a file (one per line, `#` comments supported, `-` for stdin)
 - **RSS/Atom feed strategy** — new `strategy: :rss` for archiving URLs from RSS and Atom feeds
 - **Feed autodiscovery in `:auto`** — detects RSS/Atom feeds via HTML `<link>` tags and common feed paths before falling back to crawling (see [Auto discovery](README.md#auto-discovery))
 - **Report export** — `--report=results.csv` or `--report=results.json` from the CLI
-- **CLI improvements** — summary after archiving (`--[no-]summary`), `--quiet` mode, `--rss` flag
+- **CLI improvements** — summary after archiving (`--[no-]summary`), `--quiet` mode, `--rss` flag, input validation for concurrency/limit/timeout/host patterns
 - **`Request.post`** — new HTTP POST support in the request layer
 - **GitHub Actions CI** — replaced Travis CI, testing Ruby 3.1-3.4
 - **Examples directory** — runnable scripts for all common use cases
 
-**Bug fixes:**
+**Bug fixes / internal:**
 
 - Fixed CLI typo: `Verboes` → `Verbose`
 - Removed duplicate `-h` flag in CLI
 - Fixed `:auto` strategy not passing `limit:` to all code paths
 - Added `logger`, `rss`, `csv` as explicit gem dependencies (removed from Ruby stdlib)
+- Replaced vendored `robots.rb` with `webrobots` gem
 
 ## v1.5.0
 

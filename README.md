@@ -41,6 +41,10 @@ WaybackArchiver.archive('example.com/feed.xml', strategy: :rss)
 WaybackArchiver.archive('example.com', strategy: :url)
 WaybackArchiver.archive(%w[example.com www.example.com], strategy: :urls)
 
+# Crawl across subdomains (strings or regex patterns)
+WaybackArchiver.archive('www.example.com', strategy: :crawl,
+  hosts: [/.*\.example\.com/])
+
 # Limit concurrency and total URLs
 WaybackArchiver.archive('example.com', concurrency: 10, limit: 100)
 ```
@@ -100,6 +104,12 @@ wayback_archiver example.com --access-key=KEY --secret-key=SECRET \
 # Crawl with concurrency
 wayback_archiver example.com --crawl --concurrency=8
 
+# Crawl across subdomains
+wayback_archiver www.example.com --crawl --hosts=www.example.com,blog.example.com
+
+# Crawl with regex host pattern
+wayback_archiver www.example.com --crawl --hosts='.*\.example\.com'
+
 # RSS/Atom feed
 wayback_archiver example.com/feed.xml --rss
 
@@ -108,6 +118,20 @@ wayback_archiver example.com www.example.com --urls
 
 # Sitemap
 wayback_archiver example.com/sitemap.xml --sitemap
+
+# Read URLs from a file (one per line, # comments, - for stdin)
+wayback_archiver --file=urls.txt
+cat urls.txt | wayback_archiver --file=-
+
+# Check which URLs are already archived (no archiving)
+wayback_archiver example.com --check
+
+# Skip URLs already archived within the last 7 days
+wayback_archiver example.com --skip-archived=7d
+
+# Resumable session (auto-saves progress, resumes on re-run)
+wayback_archiver example.com --session=session.jsonl
+wayback_archiver --resume=session.jsonl
 
 # Write results to CSV or JSON report
 wayback_archiver example.com --report=results.csv
@@ -209,6 +233,7 @@ v2.0 uses the SPN2 API, replacing the old fire-and-forget SPN1 approach. Capture
 - **Rich result objects** with SPN2 fields (`job_id`, `timestamp`, `wayback_url`, `duration_sec`, `resources`, `outlinks`, `screenshot_url`, `status_ext`)
 - **Default concurrency** changed from 1 to 4
 - **`:auto` strategy enhanced** — now also checks for RSS/Atom feeds before falling back to crawling
+- **New CLI features** — `--check`, `--skip-archived`, `--file`, `--session`/`--resume`, `--report`
 - **Ruby >= 3.1** required (was >= 2.0)
 - **CI moved** from Travis CI to GitHub Actions
 - **SSL verification** enabled by default
@@ -250,3 +275,6 @@ Contributions, feedback and suggestions are very welcome.
 - [wayback-machine-spn-scripts](https://github.com/overcast07/wayback-machine-spn-scripts) — Bash scripts for SPN2 with auth, outlinks, rate limiting, and resumable sessions
 - [wayback-machine-archiver](https://github.com/agude/wayback-machine-archiver) — Python CLI using SPN2 with sitemaps, screenshots, and outlinks
 - [savepagenow](https://github.com/palewire/savepagenow) — Python package with library and CLI interface
+- [spn2](https://gitlab.com/matzfan/spn2) — Ruby gem for the SPN2 REST API with job status tracking and outlink capture
+- [internetarchive](https://github.com/jjjake/internetarchive) — Python CLI and library for interacting with Internet Archive (uploads, metadata, search)
+- [Internet Archive S3-like API](https://archive.org/developers/ias3.html) — official docs for the S3-compatible API used for uploads and item management

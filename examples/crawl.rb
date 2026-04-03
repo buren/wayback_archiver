@@ -13,3 +13,14 @@ results = WaybackArchiver.archive(
 )
 
 puts "\nArchived #{results.count(&:success?)} of #{results.length} URLs"
+
+# Crawl across subdomains using hosts (strings or regex patterns)
+# results = WaybackArchiver.archive(
+#   'https://www.example.com',
+#   strategy: :crawl,
+#   hosts: ['www.example.com', 'blog.example.com'],
+#   limit: 50
+# )
+#
+# Regex pattern to match all subdomains:
+# hosts: [/.*\.example\.com/]
