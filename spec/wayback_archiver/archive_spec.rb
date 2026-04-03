@@ -71,6 +71,68 @@ RSpec.describe WaybackArchiver::Archive do
 
       expect(described_class).to have_received(:post_url).twice
     end
+
+    describe 'extension filtering' do
+      before do
+        allow(described_class).to receive(:post_url).and_return(WaybackArchiver::ArchiveResult.new(nil))
+      end
+
+      it 'filters by include_ext' do
+        urls = %w[http://a.com/doc.pdf http://a.com/page http://a.com/img.png]
+        described_class.post(urls, include_ext: %w[pdf])
+
+        expect(described_class).to have_received(:post_url).once
+        expect(described_class).to have_received(:post_url).with('http://a.com/doc.pdf')
+      end
+
+      it 'filters by exclude_ext' do
+        urls = %w[http://a.com/doc.pdf http://a.com/page http://a.com/img.png]
+        described_class.post(urls, exclude_ext: %w[pdf png])
+
+        expect(described_class).to have_received(:post_url).once
+        expect(described_class).to have_received(:post_url).with('http://a.com/page')
+      end
+
+      it 'applies include_ext then exclude_ext' do
+        urls = %w[http://a.com/a.pdf http://a.com/b.doc http://a.com/c.docx http://a.com/page]
+        described_class.post(urls, include_ext: %w[pdf doc docx], exclude_ext: %w[docx])
+
+        expect(described_class).to have_received(:post_url).twice
+        expect(described_class).to have_received(:post_url).with('http://a.com/a.pdf')
+        expect(described_class).to have_received(:post_url).with('http://a.com/b.doc')
+      end
+
+      it 'normalizes leading dots in extensions' do
+        urls = %w[http://a.com/doc.pdf http://a.com/page]
+        described_class.post(urls, include_ext: %w[.pdf])
+
+        expect(described_class).to have_received(:post_url).once
+        expect(described_class).to have_received(:post_url).with('http://a.com/doc.pdf')
+      end
+
+      it 'is case-insensitive' do
+        urls = %w[http://a.com/doc.PDF http://a.com/page]
+        described_class.post(urls, include_ext: %w[pdf])
+
+        expect(described_class).to have_received(:post_url).once
+        expect(described_class).to have_received(:post_url).with('http://a.com/doc.PDF')
+      end
+
+      it 'handles query strings and fragments' do
+        urls = %w[http://a.com/doc.pdf?v=1 http://a.com/page#section]
+        described_class.post(urls, include_ext: %w[pdf])
+
+        expect(described_class).to have_received(:post_url).once
+        expect(described_class).to have_received(:post_url).with('http://a.com/doc.pdf?v=1')
+      end
+
+      it 'does nothing when neither option is set' do
+        urls = %w[http://a.com/doc.pdf http://a.com/page]
+        described_class.post(urls)
+
+        expect(described_class).to have_received(:post_url).twice
+      end
+    end
   end
 
   describe '::crawl' do
@@ -99,6 +161,34 @@ RSpec.describe WaybackArchiver::Archive do
 
       expect(described_class).to have_received(:post_url).once
       expect(described_class).to have_received(:post_url).with('http://b.com')
+    end
+
+    it 'filters by include_ext' do
+      allow(WaybackArchiver::URLCollector).to receive(:crawl)
+        .and_yield('http://a.com/doc.pdf')
+        .and_yield('http://a.com/page')
+        .and_return(%w[http://a.com/doc.pdf http://a.com/page])
+
+      allow(described_class).to receive(:post_url).and_return(WaybackArchiver::ArchiveResult.new(nil))
+
+      described_class.crawl('http://a.com', include_ext: %w[pdf])
+
+      expect(described_class).to have_received(:post_url).once
+      expect(described_class).to have_received(:post_url).with('http://a.com/doc.pdf')
+    end
+
+    it 'filters by exclude_ext' do
+      allow(WaybackArchiver::URLCollector).to receive(:crawl)
+        .and_yield('http://a.com/doc.pdf')
+        .and_yield('http://a.com/page')
+        .and_return(%w[http://a.com/doc.pdf http://a.com/page])
+
+      allow(described_class).to receive(:post_url).and_return(WaybackArchiver::ArchiveResult.new(nil))
+
+      described_class.crawl('http://a.com', exclude_ext: %w[pdf])
+
+      expect(described_class).to have_received(:post_url).once
+      expect(described_class).to have_received(:post_url).with('http://a.com/page')
     end
   end
 

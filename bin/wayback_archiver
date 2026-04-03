@@ -147,6 +147,17 @@ optparse = OptionParser.new do |parser|
   end
 
   parser.separator ''
+  parser.separator 'Filter options:'
+
+  parser.on('--include-ext=pdf,doc', Array, 'Only archive URLs with these extensions') do |value|
+    options[:include_ext] = value
+  end
+
+  parser.on('--exclude-ext=zip,png', Array, 'Skip URLs with these extensions') do |value|
+    options[:exclude_ext] = value
+  end
+
+  parser.separator ''
   parser.separator 'Input options:'
 
   parser.on('-f', '--file=PATH', String, 'Read URLs from file (one per line, "-" for stdin)') do |value|
@@ -290,6 +301,8 @@ build_resume_command = lambda do |session_file|
     flag = key.to_s.tr('_', '-')
     if value == true
       parts << "--#{flag}"
+    elsif value.is_a?(Array)
+      parts << "--#{flag}=#{value.join(',')}"
     elsif value
       parts << "--#{flag}=#{value}"
     end

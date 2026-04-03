@@ -12,7 +12,7 @@ module WaybackArchiver
     # @param concurrency [Integer] the default is 1
     # @yield [archive_result] If a block is given, each result will be yielded
     # @yieldparam [ArchiveResult] archive_result
-    def self.post(urls, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, **options, &block)
+    def self.post(urls, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, include_ext: nil, exclude_ext: nil, **options, &block)
       WaybackArchiver.logger.info "Total URLs to be sent: #{urls.length}"
       WaybackArchiver.logger.info "Request are sent with up to #{concurrency} parallel threads"
 
@@ -29,6 +29,8 @@ module WaybackArchiver
         WaybackArchiver.logger.info "Skipped #{skipped} previously succeeded URL(s)" if skipped > 0
       end
 
+      urls_queue = filter_by_extension(urls_queue, include_ext: include_ext, exclude_ext: exclude_ext)
+
       adapter = WaybackArchiver.adapter
       if batch_capable?(adapter)
         batch_post(urls_queue, adapter, concurrency: concurrency, **options, &block)
@@ -44,14 +46,17 @@ module WaybackArchiver
     # @param [Array<String, Regexp>] hosts to crawl
     # @yield [archive_result] If a block is given, each result will be yielded
     # @yieldparam [ArchiveResult] archive_result
-    def self.crawl(source, hosts: [], concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, **options)
+    def self.crawl(source, hosts: [], concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, include_ext: nil, exclude_ext: nil, **options)
       WaybackArchiver.logger.info "Request are sent with up to #{concurrency} parallel threads"
 
       results = Concurrent::Array.new
       pool = ThreadPool.build(concurrency)
+      include_ext = normalize_extensions(include_ext)
+      exclude_ext = normalize_extensions(exclude_ext)
 
       found_urls = URLCollector.crawl(source, hosts: hosts, limit: limit) do |url|
         next if skip_urls&.include?(url)
+        next unless match_extension?(url, include_ext: include_ext, exclude_ext: exclude_ext)
 
         pool.post do
           result = post_url(url, **options)
@@ -184,6 +189,42 @@ module WaybackArchiver
       ArchiveResult.from_status(url, job_id, status, **options)
     end
     private_class_method :build_result_from_status
+
+    def self.url_extension(url)
+      path = url.split('?', 2).first.split('#', 2).first
+      File.extname(path).delete_prefix('.').downcase
+    end
+    private_class_method :url_extension
+
+    def self.normalize_extensions(exts)
+      return nil if exts.nil?
+
+      exts.map { |e| e.delete_prefix('.').downcase }.freeze
+    end
+    private_class_method :normalize_extensions
+
+    def self.match_extension?(url, include_ext:, exclude_ext:)
+      ext = url_extension(url)
+      return false if include_ext && !include_ext.include?(ext)
+      return false if exclude_ext&.include?(ext)
+
+      true
+    end
+    private_class_method :match_extension?
+
+    def self.filter_by_extension(urls, include_ext: nil, exclude_ext: nil)
+      return urls if include_ext.nil? && exclude_ext.nil?
+
+      include_ext = normalize_extensions(include_ext)
+      exclude_ext = normalize_extensions(exclude_ext)
+
+      before = urls.length
+      filtered = urls.select { |url| match_extension?(url, include_ext: include_ext, exclude_ext: exclude_ext) }
+      skipped = before - filtered.length
+      WaybackArchiver.logger.info "Filtered #{skipped} URL(s) by extension" if skipped > 0
+      filtered
+    end
+    private_class_method :filter_by_extension
 
   end
 end
