@@ -14,6 +14,26 @@ RSpec.describe WaybackArchiver do
       expect(described_class).to have_received(:auto).once
     end
 
+    it 'passes hosts to ::auto' do
+      hosts = [/example\.com/, /other\.example\.com/]
+      allow(described_class).to receive(:auto).and_return([])
+      described_class.archive('http://example.com', hosts: hosts)
+      expect(described_class).to have_received(:auto).with(
+        'http://example.com',
+        hash_including(hosts: hosts)
+      )
+    end
+
+    it 'passes hosts to ::crawl' do
+      hosts = [/example\.com/]
+      allow(described_class).to receive(:crawl).and_return([])
+      described_class.archive('http://example.com', strategy: :crawl, hosts: hosts)
+      expect(described_class).to have_received(:crawl).with(
+        'http://example.com',
+        hash_including(hosts: hosts)
+      )
+    end
+
     it 'calls ::auto when passed auto as strategy' do
       allow(described_class).to receive(:auto).and_return([])
       described_class.archive('http://example.com', strategy: :auto)
@@ -173,6 +193,20 @@ RSpec.describe WaybackArchiver do
       described_class.auto(source)
 
       expect(described_class).to have_received(:crawl).once
+    end
+
+    it 'passes hosts to crawl when falling through' do
+      hosts = [/careers\.example\.com/, /www\.example\.com/]
+      allow(described_class::Sitemapper).to receive(:autodiscover).and_return([])
+      allow(described_class::FeedParser).to receive(:autodiscover).and_return([])
+      allow(described_class).to receive(:crawl).and_return([])
+
+      described_class.auto(source, hosts: hosts)
+
+      expect(described_class).to have_received(:crawl).with(
+        source,
+        hash_including(hosts: hosts)
+      )
     end
 
     it 'handles Request::Error on source fetch gracefully' do

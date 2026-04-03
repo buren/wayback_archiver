@@ -65,7 +65,7 @@ module WaybackArchiver
 
     case strategy.to_s
     when 'crawl'   then crawl(source, concurrency: concurrency, limit: limit, hosts: hosts, skip_urls: skip_urls, **options, &block)
-    when 'auto'    then auto(source, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
+    when 'auto'    then auto(source, concurrency: concurrency, limit: limit, hosts: hosts, skip_urls: skip_urls, **options, &block)
     when 'sitemap' then sitemap(source, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
     when 'urls'    then urls(source, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
     when 'url'     then urls(source, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
@@ -87,7 +87,7 @@ module WaybackArchiver
   # @example Auto archive example.com and archive max 100 URLs
   #    WaybackArchiver.auto('example.com', limit: 100)
   # @see http://www.sitemaps.org
-  def self.auto(source, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, **options, &block)
+  def self.auto(source, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, hosts: [], skip_urls: nil, **options, &block)
     # Step 1: Fetch source URL and check if it is itself a feed
     WaybackArchiver.logger.info "Fetching #{source}"
     begin
@@ -120,7 +120,7 @@ module WaybackArchiver
     end
 
     # Step 4: Crawl
-    crawl(source, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
+    crawl(source, concurrency: concurrency, limit: limit, hosts: hosts, skip_urls: skip_urls, **options, &block)
   end
 
   # Crawl site for URLs to send to the Wayback Machine.
