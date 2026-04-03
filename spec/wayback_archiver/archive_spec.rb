@@ -225,6 +225,28 @@ RSpec.describe WaybackArchiver::Archive do
       end
     end
 
+    it 'handles cached result from submit (no job_id, has timestamp)' do
+      allow(adapter).to receive(:submit)
+        .with('http://a.com').and_return({
+          'url' => 'http://a.com', 'timestamp' => '20260401120000',
+          'original_url' => 'http://a.com'
+        })
+      allow(adapter).to receive(:submit)
+        .with('http://b.com').and_return({ 'url' => 'http://b.com', 'job_id' => job1 })
+
+      allow(adapter).to receive(:poll_statuses).and_return(
+        job1 => { 'status' => 'success', 'job_id' => job1, 'timestamp' => '20260326120000', 'original_url' => 'http://b.com' }
+      )
+
+      results = described_class.post(%w[http://a.com http://b.com])
+
+      expect(results.length).to eq(2)
+      cached = results.find { |r| r.uri == 'http://a.com' }
+      expect(cached.success?).to eq(true)
+      expect(cached.timestamp).to eq('20260401120000')
+      expect(cached.job_id).to be_nil
+    end
+
     it 'handles submit response with missing job_id as error' do
       allow(adapter).to receive(:submit)
         .with('http://a.com').and_return({ 'message' => 'something unexpected' })

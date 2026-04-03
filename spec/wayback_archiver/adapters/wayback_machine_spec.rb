@@ -234,6 +234,36 @@ RSpec.describe WaybackArchiver::WaybackMachine do
       end
     end
 
+    context 'cached result from if_not_archived_within' do
+      it 'returns successful result when submit returns a capture directly (no job_id)' do
+        stub_request(:post, save_url)
+          .to_return(status: 200, body: {
+            'url' => url, 'status' => 'success',
+            'timestamp' => '20260401120000', 'duration_sec' => 0.0,
+            'original_url' => url, 'resources' => [url]
+          }.to_json)
+
+        result = described_class.call(url, if_not_archived_within: '7d')
+
+        expect(result.success?).to eq(true)
+        expect(result.timestamp).to eq('20260401120000')
+        expect(result.job_id).to be_nil
+      end
+
+      it 'does not poll when submit returns a cached capture' do
+        stub_request(:post, save_url)
+          .to_return(status: 200, body: {
+            'url' => url, 'timestamp' => '20260401120000'
+          }.to_json)
+
+        result = described_class.call(url, if_not_archived_within: '7d')
+
+        expect(result.success?).to eq(true)
+        # No status poll requests should have been made
+        expect(WebMock).not_to have_requested(:get, /save\/status/)
+      end
+    end
+
     context 'screenshot' do
       before do
         WaybackArchiver.access_key = 'test-access'

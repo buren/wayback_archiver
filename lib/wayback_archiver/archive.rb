@@ -122,7 +122,13 @@ module WaybackArchiver
             results << response
           else
             job_id = response['job_id']
-            if job_id.nil?
+            if job_id.nil? && response['timestamp']
+              # SPN2 returns the capture directly when if_not_archived_within matches a recent snapshot
+              WaybackArchiver.logger.info("Recent capture returned for #{url} [#{response['timestamp']}]")
+              result = build_result_from_status(url, nil, response, **options)
+              yield(result) if block
+              results << result
+            elsif job_id.nil?
               error = Request::ServerError.new("Missing job_id in submit response for #{url}")
               WaybackArchiver.logger.error(error.message)
               result = ArchiveResult.new(url, error: error)

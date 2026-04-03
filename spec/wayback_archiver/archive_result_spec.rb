@@ -197,6 +197,20 @@ RSpec.describe WaybackArchiver::ArchiveResult do
       expect(result.code).to eq('200')
     end
 
+    it 'handles nil job_id for cached results' do
+      status = {
+        'status' => 'success',
+        'timestamp' => '20260401120000',
+        'original_url' => url
+      }
+
+      result = described_class.from_status(url, nil, status)
+
+      expect(result.success?).to eq(true)
+      expect(result.job_id).to be_nil
+      expect(result.timestamp).to eq('20260401120000')
+    end
+
     it 'builds an error result from an error status hash' do
       status = {
         'status' => 'error',
