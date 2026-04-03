@@ -108,7 +108,7 @@ wayback_archiver example.com --crawl --concurrency=8
 wayback_archiver www.example.com --crawl --hosts=www.example.com,blog.example.com
 
 # Crawl with regex host pattern
-wayback_archiver www.example.com --crawl --hosts='.*\.example\.com'
+wayback_archiver www.example.com --crawl --hosts=.*.example.com
 
 # RSS/Atom feed
 wayback_archiver example.com/feed.xml --rss
