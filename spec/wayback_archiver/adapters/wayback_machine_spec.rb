@@ -103,6 +103,28 @@ RSpec.describe WaybackArchiver::WaybackMachine do
       end
     end
 
+    context 'log output' do
+      it 'formats the timestamp as human-readable UTC' do
+        stub_submit
+        stub_status(success_status(timestamp: '20260403114428'))
+
+        allow(WaybackArchiver.logger).to receive(:info)
+        expect(WaybackArchiver.logger).to receive(:info).with("Captured #{url} [2026-04-03 11:44:28 UTC]")
+
+        described_class.call(url)
+      end
+
+      it 'passes through non-standard timestamps as-is' do
+        stub_submit
+        stub_status(success_status(timestamp: 'unknown'))
+
+        allow(WaybackArchiver.logger).to receive(:info)
+        expect(WaybackArchiver.logger).to receive(:info).with("Captured #{url} [unknown]")
+
+        described_class.call(url)
+      end
+    end
+
     context 'SPN2 options' do
       it 'passes boolean options as "1" in POST body' do
         stub_request(:post, save_url)

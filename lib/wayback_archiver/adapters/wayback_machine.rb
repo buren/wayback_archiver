@@ -146,7 +146,14 @@ module WaybackArchiver
 
         WaybackArchiver.logger.error("Capture failed for #{url}: #{status_ext} - #{status['message']}")
       else
-        WaybackArchiver.logger.info("Captured #{url} [#{status['timestamp']}]")
+        ts = status['timestamp']
+        formatted_ts = if ts&.match?(/\A\d{14}\z/)
+          Time.new(ts[0..3].to_i, ts[4..5].to_i, ts[6..7].to_i, ts[8..9].to_i, ts[10..11].to_i, ts[12..13].to_i, 'UTC')
+              .strftime('%Y-%m-%d %H:%M:%S UTC')
+        else
+          ts
+        end
+        WaybackArchiver.logger.info("Captured #{url} [#{formatted_ts}]")
       end
 
       ArchiveResult.from_status(url, job_id, status, **options)
