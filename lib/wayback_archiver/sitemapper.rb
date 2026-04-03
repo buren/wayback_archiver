@@ -25,6 +25,7 @@ module WaybackArchiver
     #    Sitemapper.autodiscover('https://google.com/')
     # @see http://www.sitemaps.org
     def self.autodiscover(url)
+      url = Request.build_uri(url).to_s
       WaybackArchiver.logger.info 'Looking for Sitemap(s) in /robots.txt'
       robots = WebRobots.new(WaybackArchiver.user_agent)
       sitemaps = robots.sitemaps(url)

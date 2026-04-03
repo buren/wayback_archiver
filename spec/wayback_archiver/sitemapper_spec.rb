@@ -15,6 +15,19 @@ RSpec.describe WaybackArchiver::Sitemapper do
   let(:sitemap_xml) { File.read('spec/data/sitemap.xml') }
 
   describe '::autodiscover' do
+    context 'with a URL missing the scheme' do
+      it 'normalizes the URL before querying robots.txt' do
+        stub_request(:get, 'http://www.example.com/robots.txt')
+          .to_return(status: 200, body: robots_txt, headers: { 'Content-Type' => 'text/plain' })
+
+        stub_request(:get, 'http://www.example.com/sitemap.xml')
+          .with(headers: headers)
+          .to_return(status: 200, body: sitemap_xml, headers: {})
+
+        expect(described_class.autodiscover('www.example.com')).to eq(%w[http://www.example.com/])
+      end
+    end
+
     context 'with found Sitemap location in robots.txt' do
       it 'fetches those Sitemap(s) and returns all present URLs' do
         stub_request(:get, 'http://www.example.com/robots.txt')
