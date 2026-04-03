@@ -60,9 +60,9 @@ WaybackArchiver.archive('example.com',
 WaybackArchiver.archive('example.com',
   capture_outlinks: true,          # auto-capture up to 100 linked pages (requires auth)
   screenshot_dir: './screenshots', # save screenshots locally (requires auth)
-  js_behavior_timeout: 10,        # run JS for N seconds after page load (max 30, default 5)
+  js_behavior_timeout: 10,         # run JS for N seconds after page load (max 30, default 5)
   force_get: true,                 # force HTTP GET instead of HEAD+browser
-  use_user_agent: 'MyBot/1.0',    # custom User-Agent for target page
+  use_user_agent: 'MyBot/1.0',     # custom User-Agent for target page
   delay_wb_availability: true      # delay public availability ~12h
 )
 ```
@@ -175,12 +175,12 @@ WaybackArchiver.adapter = ->(url) { puts url }
 The default `:auto` strategy tries multiple discovery methods in order, using the first one that finds URLs:
 
 ```mermaid
-flowchart TD
-    A[Fetch source URL] --> B{Is it an RSS/Atom feed?}
+flowchart LR
+    A[Fetch source URL] --> B{RSS/Atom feed?}
     B -- Yes --> Z[Archive extracted URLs]
     B -- No --> C{Sitemap found?}
     C -- Yes --> Z
-    C -- No --> D{Feed discovered via\nHTML link tags or\ncommon paths?}
+    C -- No --> D{Feed auto-discovered?}
     D -- Yes --> Z
     D -- No --> E[Crawl the site]
     E --> Z
