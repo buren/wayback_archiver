@@ -19,6 +19,13 @@ module WaybackArchiver
       @archived
     end
 
+    # @return [String, nil] formatted date (YYYY-MM-DD) of the most recent capture
+    def captured_at
+      return nil unless timestamp && timestamp.length >= 8
+
+      "#{timestamp[0..3]}-#{timestamp[4..5]}-#{timestamp[6..7]}"
+    end
+
     # @return [String, nil] URL to view the snapshot, or nil if not archived
     def wayback_url
       return nil unless timestamp

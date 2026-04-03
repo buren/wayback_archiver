@@ -85,6 +85,14 @@ RSpec.describe WaybackArchiver::CDX do
       result = described_class.check('http://example.com/path?q=1')
       expect(result).to be_a(WaybackArchiver::CheckResult)
     end
+
+    it 'requests the most recent capture using limit=-1' do
+      stub_request(:get, /#{Regexp.escape(cdx_url)}/)
+        .with { |req| req.uri.query.include?('limit=-1') }
+        .to_return(status: 200, body: cdx_json_response)
+
+      described_class.check('http://example.com')
+    end
   end
 
   describe '.check_urls' do

@@ -29,7 +29,7 @@ module WaybackArchiver
     def self.check(url, from: nil)
       rate_limiter.acquire
 
-      params = "url=#{CGI.escape(url)}&output=json&limit=1&filter=statuscode:200"
+      params = "url=#{CGI.escape(url)}&output=json&limit=-1&filter=statuscode:200"
       params << "&from=#{from}" if from
 
       response = Request.get("#{URL}?#{params}")

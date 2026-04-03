@@ -26,6 +26,18 @@ RSpec.describe WaybackArchiver::CheckResult do
     end
   end
 
+  describe '#captured_at' do
+    it 'returns a formatted date when timestamp is present' do
+      result = described_class.new('http://example.com', archived: true, timestamp: '20260326120000')
+      expect(result.captured_at).to eq('2026-03-26')
+    end
+
+    it 'returns nil when timestamp is nil' do
+      result = described_class.new('http://example.com', archived: false)
+      expect(result.captured_at).to be_nil
+    end
+  end
+
   describe '#url' do
     it 'returns the checked URL' do
       result = described_class.new('http://example.com', archived: false)

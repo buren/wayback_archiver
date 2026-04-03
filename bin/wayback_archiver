@@ -324,11 +324,12 @@ if check_mode
   check_results = WaybackArchiver.check(all_urls, concurrency: concurrency)
   check_results.sort_by!(&:url)
 
-  max_len = check_results.map { |r| r.url.length }.max || 0
   check_results.each do |r|
-    status = r.archived? ? 'archived' : 'not archived'
-    ts = r.timestamp ? "  #{r.timestamp}" : ''
-    puts "#{r.url.ljust(max_len)}  #{status}#{ts}"
+    if r.archived?
+      puts "  \u2713 #{r.url}  #{r.captured_at}  #{r.wayback_url}"
+    else
+      puts "  \u2717 #{r.url}  (not archived)"
+    end
   end
 
   if report_path
@@ -339,8 +340,8 @@ if check_mode
 
   if show_summary
     archived_count = check_results.count(&:archived?)
-    puts "\n--- Summary ---"
-    puts "Total: #{check_results.length}  Archived: #{archived_count}  Not archived: #{check_results.length - archived_count}"
+    not_archived_count = check_results.length - archived_count
+    puts "\n#{archived_count} archived, #{not_archived_count} not archived (#{check_results.length} total)"
   end
 
   exit(0)

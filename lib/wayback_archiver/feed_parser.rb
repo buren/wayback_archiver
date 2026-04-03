@@ -42,7 +42,7 @@ module WaybackArchiver
         []
       end
     rescue RSS::Error => e
-      WaybackArchiver.logger.error "Failed to parse feed: #{e.class}, #{e.message}"
+      WaybackArchiver.logger.debug "Not a valid feed: #{e.class}, #{e.message}"
       []
     end
 
