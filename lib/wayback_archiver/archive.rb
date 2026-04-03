@@ -123,19 +123,11 @@ module WaybackArchiver
       queue = urls.dup
       submitted = 0
       session_retries = Hash.new(0)
-      had_successful_submit = false
 
       until queue.empty?
-        chunk_size = available_slots(adapter, pending, results, counts, had_successful_submit, **options, &block)
+        chunk_size = available_slots(adapter, pending, results, counts, **options, &block)
         if chunk_size == :abort
-          # Record remaining queue URLs as connection errors
-          queue.each do |url|
-            error = Request::ClientError.new('Connection refused by web.archive.org')
-            result = ArchiveResult.new(url, error: error)
-            counts[:error] += 1
-            yield(result) if block
-            results << result
-          end
+          abort_remaining(queue, results, counts, &block)
           break
         end
 
@@ -154,8 +146,6 @@ module WaybackArchiver
         end
         pool.shutdown
         pool.wait_for_termination
-
-        had_successful_submit = true if pending.any?
 
         # Re-queue URLs that hit session limits
         unless retry_urls.empty?
@@ -292,7 +282,7 @@ module WaybackArchiver
 
     # Determine how many URLs to submit in the next chunk.
     # @return [Integer, :abort] number of slots available, or :abort to stop
-    def self.available_slots(adapter, pending, results, counts, had_successful_submit, **options, &block)
+    def self.available_slots(adapter, pending, results, counts, **options, &block)
       status = adapter.check_user_status
       available = status['available'].to_i
 
@@ -306,44 +296,36 @@ module WaybackArchiver
       sleep(WaybackMachine::POLL_INTERVAL)
 
       status = adapter.check_user_status
-      status['available'].to_i.clamp(1, 12)
-    rescue Request::ClientError => e
-      if had_successful_submit
-        # Mid-run: retry once
-        WaybackArchiver.logger.warn("Status check failed: #{e.message}, retrying")
-        poll_pending(adapter, pending, results, counts, **options, &block) unless pending.empty?
-        sleep(WaybackMachine::POLL_INTERVAL)
-        begin
-          status = adapter.check_user_status
-          return [status['available'].to_i, 1].max
-        rescue Request::Error
-          WaybackArchiver.logger.warn("Status check failed again, using fallback chunk size")
-          return FALLBACK_CHUNK_SIZE
-        end
-      else
-        # Cold start: abort
-        WaybackArchiver.logger.error("Connection refused by web.archive.org — your IP may be temporarily blocked. Try again later.")
-        queue_as_errors(results, counts, pending, &block)
-        :abort
-      end
+      status['available'].to_i.clamp(1, RateLimiter::RATE)
     rescue Request::Error => e
+      cold_start = counts[:success] == 0 && pending.empty?
+      if cold_start && e.is_a?(Request::ClientError)
+        WaybackArchiver.logger.error("Connection refused by web.archive.org — your IP may be temporarily blocked. Try again later.")
+        return :abort
+      end
+
       WaybackArchiver.logger.warn("Status check failed: #{e.message}, retrying")
+      poll_pending(adapter, pending, results, counts, **options, &block) unless pending.empty?
       sleep(WaybackMachine::POLL_INTERVAL)
       begin
         status = adapter.check_user_status
-        return [status['available'].to_i, 1].max
+        [status['available'].to_i, 1].max
       rescue Request::Error
         WaybackArchiver.logger.warn("Status check failed again, using fallback chunk size")
-        return FALLBACK_CHUNK_SIZE
+        FALLBACK_CHUNK_SIZE
       end
     end
     private_class_method :available_slots
 
-    def self.queue_as_errors(results, counts, pending, &block)
-      # Nothing to do — URLs still in queue won't be submitted
-      # pending jobs are handled by the submitted fallback in batch_post
+    def self.abort_remaining(queue, results, counts, &block)
+      queue.each do |url|
+        result = ArchiveResult.new(url, error: Request::ClientError.new('Connection refused by web.archive.org'))
+        counts[:error] += 1
+        yield(result) if block
+        results << result
+      end
     end
-    private_class_method :queue_as_errors
+    private_class_method :abort_remaining
 
     def self.log_progress(counts, pending)
       WaybackArchiver.logger.info("Progress: #{counts[:success]} captured, #{counts[:error]} failed, #{pending.size} pending")
