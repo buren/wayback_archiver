@@ -15,3 +15,4 @@ Runnable scripts demonstrating common WaybackArchiver use cases.
 | [report.rb](report.rb) | Writing CSV and JSON report files |
 | [custom_adapter.rb](custom_adapter.rb) | Lambda and class-based custom adapters |
 | [file_input.sh](file_input.sh) | Reading URLs from a file or stdin |
+| [two_phase.sh](two_phase.sh) | Discover URLs first, then archive separately |
