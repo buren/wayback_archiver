@@ -199,7 +199,7 @@ module WaybackArchiver
 
       request = Net::HTTP::Post.new(uri.request_uri)
       request['User-Agent'] = WaybackArchiver.user_agent
-      headers.each { |k, v| request[k] = v }
+      headers.each { |key, value| request[key] = value }
       request.set_form_data(body)
 
       result = perform_request(uri, http, request)

@@ -109,7 +109,7 @@ module WaybackArchiver
       raise Request::ServerError, "Invalid JSON in user status response: #{e.message}"
     end
 
-    # Check system status.
+    # Check system status (public endpoint, no auth required).
     # @return [Hash] with 'status' key.
     def self.system_status
       response = Request.get("#{STATUS_URL}/system", follow_redirects: false)

@@ -461,6 +461,19 @@ RSpec.describe WaybackArchiver::WaybackMachine do
       expect(status['processing']).to eq(3)
     end
 
+    it 'sends Accept and Authorization headers' do
+      stub_request(:get, /web\.archive\.org\/save\/status\/user\?_t=/)
+        .to_return(status: 200, body: '{"available":12,"processing":3}')
+
+      described_class.check_user_status
+
+      expect(WebMock).to have_requested(:get, /save\/status\/user/)
+        .with(headers: {
+          'Accept' => 'application/json',
+          'Authorization' => 'LOW test-access:test-secret'
+        })
+    end
+
     it 'raises AuthenticationError without credentials' do
       WaybackArchiver.access_key = nil
       WaybackArchiver.secret_key = nil
