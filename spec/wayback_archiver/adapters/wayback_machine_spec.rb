@@ -612,5 +612,12 @@ RSpec.describe WaybackArchiver::WaybackMachine do
       expect { described_class.system_status }
         .to raise_error(WaybackArchiver::Request::ServerError, /Invalid JSON/)
     end
+
+    it 'raises on network timeout' do
+      stub_request(:get, system_status_url).to_raise(Timeout::Error)
+
+      expect { described_class.system_status }
+        .to raise_error(WaybackArchiver::Request::ServerError)
+    end
   end
 end

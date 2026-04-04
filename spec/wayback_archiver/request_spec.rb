@@ -260,6 +260,74 @@ RSpec.describe WaybackArchiver::Request do
         described_class.post('https://example.com/save', body: {}, headers: {})
       end.to raise_error(described_class::ClientError)
     end
+
+    it 'maps IOError to ClientError' do
+      allow_any_instance_of(Net::HTTP).to receive(:request).and_raise(IOError)
+
+      expect do
+        described_class.post('https://example.com/save', body: {}, headers: {})
+      end.to raise_error(described_class::ClientError)
+    end
+
+    it 'maps OpenSSL::SSL::SSLError to ServerError' do
+      allow_any_instance_of(Net::HTTP).to receive(:request).and_raise(OpenSSL::SSL::SSLError)
+
+      expect do
+        described_class.post('https://example.com/save', body: {}, headers: {})
+      end.to raise_error(described_class::ServerError)
+    end
+
+    it 'sends User-Agent header' do
+      stub_request(:post, 'https://example.com/save')
+        .with(headers: { 'User-Agent' => WaybackArchiver.config.user_agent })
+        .to_return(status: 200, body: 'ok')
+
+      described_class.post('https://example.com/save', body: {})
+    end
+
+    it 'sends custom headers' do
+      stub_request(:post, 'https://example.com/save')
+        .with(headers: { 'Authorization' => 'LOW key:secret' })
+        .to_return(status: 200, body: 'ok')
+
+      described_class.post('https://example.com/save', body: {}, headers: { 'Authorization' => 'LOW key:secret' })
+    end
+
+    it 'decompresses gzipped response body' do
+      gz = StringIO.new
+      writer = Zlib::GzipWriter.new(gz)
+      writer.write('compressed content')
+      writer.close
+
+      stub_request(:post, 'https://example.com/save')
+        .to_return(status: 200, body: gz.string)
+
+      result = described_class.post('https://example.com/save', body: {})
+      expect(result.body).to eq('compressed content')
+    end
+  end
+
+  describe '::get error handling' do
+    it 'maps IOError to ClientError' do
+      allow_any_instance_of(Net::HTTP).to receive(:request).and_raise(IOError)
+
+      expect { described_class.get('https://example.com') }
+        .to raise_error(described_class::ClientError)
+    end
+
+    it 'maps Zlib::Error to ServerError' do
+      allow_any_instance_of(Net::HTTP).to receive(:request).and_raise(Zlib::Error)
+
+      expect { described_class.get('https://example.com') }
+        .to raise_error(described_class::ServerError)
+    end
+
+    it 'includes error class in the error message' do
+      allow_any_instance_of(Net::HTTP).to receive(:request).and_raise(SocketError.new('getaddrinfo failed'))
+
+      expect { described_class.get('https://example.com') }
+        .to raise_error(described_class::ClientError, /SocketError/)
+    end
   end
 
 end
