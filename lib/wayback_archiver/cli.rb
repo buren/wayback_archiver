@@ -398,7 +398,7 @@ module WaybackArchiver
         @skip_urls.merge(extra_skip_urls) if extra_skip_urls
       end
 
-      WaybackArchiver.logger.info("wayback_archiver v#{WaybackArchiver::VERSION} | strategy: #{@strategy} | concurrency: #{@concurrency}")
+      WaybackArchiver.logger.info(startup_banner)
       WaybackArchiver.config.listener = CLIListener.new(@stdout)
       @archive_start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
@@ -504,6 +504,16 @@ module WaybackArchiver
       wall_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - archive_start_time).round(1)
       rate = wall_time > 0 ? (total * 60.0 / wall_time).round(0) : 0
       @stdout.puts "Duration: #{wall_time}s (#{rate} URLs/min)"
+    end
+
+    def startup_banner
+      parts = ["wayback_archiver v#{WaybackArchiver::VERSION}"]
+      parts << "strategy: #{@strategy}"
+      parts << "concurrency: #{@concurrency}"
+      parts << "limit: #{@limit}" if @limit != DEFAULT_MAX_LIMIT
+      parts << "hosts: #{@hosts.length}" if @hosts.any?
+      parts << "skip-archived" if @skip_archived
+      parts.join(' | ')
     end
 
     def resume_command
