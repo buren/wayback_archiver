@@ -186,6 +186,47 @@ WaybackArchiver.logger = Rails.logger
 
 By default `wayback_archiver` doesn't respect robots.txt files. See [this Internet Archive blog post](https://blog.archive.org/2017/04/17/robots-txt-meant-for-search-engines-dont-work-well-for-web-archives/) for more information.
 
+### Event listener
+
+Subscribe to lifecycle events for progress reporting, logging, or custom integrations:
+
+```ruby
+# Subclass NullListener and override the events you care about
+class MyListener < WaybackArchiver::NullListener
+  def on_resolved(strategy:, url_count:, source:)
+    puts "Strategy: #{strategy} (#{url_count} URLs)"
+  end
+
+  def on_completed(result:)
+    puts "#{result.status_label}  #{result.uri}" unless result.submitted?
+  end
+end
+
+WaybackArchiver.listener = MyListener.new
+```
+
+Or use a hash of procs for quick one-offs:
+
+```ruby
+WaybackArchiver.listener = {
+  on_completed: ->(result:) { puts result.uri if result.success? }
+}
+```
+
+Any object works — only implement the methods you need. Unimplemented events are silently skipped.
+
+**Available events:**
+
+| Event | When | Keywords |
+|-------|------|----------|
+| `on_resolved` | Strategy determined, URL count known | `strategy:, url_count:, source:` |
+| `on_submitted` | URL submitted to SPN2 | `url:, job_id:` |
+| `on_completed` | URL finished (success, cached, error) | `result:` |
+| `on_progress` | After each poll cycle | `captured:, failed:, pending:` |
+| `on_waiting_for_slots` | Waiting for available capture slots | `processing:` |
+
+See [examples/event_listener.rb](examples/event_listener.rb) for more patterns.
+
 ### Custom adapter
 
 The adapter handles how URLs are sent to the archive. Any object responding to `#call` works:

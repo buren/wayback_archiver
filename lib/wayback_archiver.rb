@@ -2,6 +2,7 @@ require 'wayback_archiver/rate_limiter'
 require 'wayback_archiver/retry'
 require 'wayback_archiver/thread_pool'
 require 'wayback_archiver/null_logger'
+require 'wayback_archiver/listener'
 require 'wayback_archiver/version'
 require 'wayback_archiver/url_collector'
 require 'wayback_archiver/archive'
@@ -101,30 +102,29 @@ module WaybackArchiver
     if source_body
       feed_urls = FeedParser.urls(xml: source_body)
       if feed_urls.any?
-        WaybackArchiver.logger.info "Source URL is an RSS/Atom feed with #{feed_urls.length} entries"
-        WaybackArchiver.logger.info "Strategy resolved: feed (#{feed_urls.length} URLs)"
-        return urls(feed_urls, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
+        WaybackArchiver.listener.on_resolved(strategy: :feed, url_count: feed_urls.length, source: source)
+        return Archive.post(feed_urls, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
       end
     end
 
     # Step 2: Try sitemap autodiscovery
     sitemap_urls = Sitemapper.autodiscover(source)
     if sitemap_urls.any?
-      WaybackArchiver.logger.info "Strategy resolved: sitemap (#{sitemap_urls.length} URLs)"
-      return urls(sitemap_urls, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
+      WaybackArchiver.listener.on_resolved(strategy: :sitemap, url_count: sitemap_urls.length, source: source)
+      return Archive.post(sitemap_urls, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
     end
 
     # Step 3: Try feed autodiscovery (HTML link tags + common feed paths)
     feed_urls = FeedParser.autodiscover(source, html: source_body)
     if feed_urls.any?
-      WaybackArchiver.logger.info "Found RSS/Atom feed with #{feed_urls.length} entries"
-      WaybackArchiver.logger.info "Strategy resolved: feed (#{feed_urls.length} URLs)"
-      return urls(feed_urls, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
+      WaybackArchiver.listener.on_resolved(strategy: :feed, url_count: feed_urls.length, source: source)
+      return Archive.post(feed_urls, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
     end
 
     # Step 4: Crawl
-    WaybackArchiver.logger.info "Strategy resolved: crawl"
-    crawl(source, concurrency: concurrency, limit: limit, hosts: hosts, skip_urls: skip_urls, **options, &block)
+    WaybackArchiver.listener.on_resolved(strategy: :crawl, url_count: nil, source: source)
+    WaybackArchiver.logger.info "Crawling #{source}"
+    Archive.crawl(source, hosts: hosts, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
   end
 
   # Crawl site for URLs to send to the Wayback Machine.
@@ -148,6 +148,7 @@ module WaybackArchiver
   #    )
   def self.crawl(url, hosts: [], concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, **options, &block)
     WaybackArchiver.logger.info "Crawling #{url}"
+    WaybackArchiver.listener.on_resolved(strategy: :crawl, url_count: nil, source: url)
     Archive.crawl(url, hosts: hosts, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
   end
 
@@ -164,7 +165,9 @@ module WaybackArchiver
   # @see http://www.sitemaps.org
   def self.sitemap(url, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, **options, &block)
     WaybackArchiver.logger.info "Fetching Sitemap"
-    Archive.post(URLCollector.sitemap(url), concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
+    discovered_urls = URLCollector.sitemap(url)
+    WaybackArchiver.listener.on_resolved(strategy: :sitemap, url_count: discovered_urls.length, source: url)
+    Archive.post(discovered_urls, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
   end
 
   # Get URLs from an RSS or Atom feed and send them to the Wayback Machine.
@@ -179,7 +182,9 @@ module WaybackArchiver
   #    WaybackArchiver.rss('https://example.com/feed.xml', limit: 10)
   def self.rss(url, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, **options, &block)
     WaybackArchiver.logger.info "Fetching RSS/Atom feed"
-    Archive.post(URLCollector.feed(url), concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
+    discovered_urls = URLCollector.feed(url)
+    WaybackArchiver.listener.on_resolved(strategy: :rss, url_count: discovered_urls.length, source: url)
+    Archive.post(discovered_urls, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
   end
 
   # Send URL to the Wayback Machine.
@@ -193,7 +198,9 @@ module WaybackArchiver
   # @example Archive example.com, max 100 URLs
   #    WaybackArchiver.urls(%w(example.com www.example.com), limit: 100)
   def self.urls(urls, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, **options, &block)
-    Archive.post(Array(urls), concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
+    urls_array = Array(urls)
+    WaybackArchiver.listener.on_resolved(strategy: :urls, url_count: urls_array.length, source: nil)
+    Archive.post(urls_array, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
   end
 
   # Discover URLs using the specified strategy without archiving them.
@@ -333,6 +340,19 @@ module WaybackArchiver
   # @return [NullLogger] a new instance of NullLogger
   def self.default_logger!
     @logger = NullLogger.new
+  end
+
+  # Sets the event listener
+  # @return [Object] the configured listener
+  # @param [Object] listener an object responding to on_resolved, on_submitted, etc.
+  def self.listener=(listener)
+    @listener = ListenerProxy.new(listener)
+  end
+
+  # Returns the current event listener
+  # @return [ListenerProxy] the current listener proxy
+  def self.listener
+    @listener ||= ListenerProxy.new(NullListener.new)
   end
 
   # Sets the user agent

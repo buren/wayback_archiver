@@ -14,6 +14,7 @@ RSpec.configure do |config|
 
   config.before(:each) do
     WaybackArchiver.logger = TestLogger.new
+    WaybackArchiver.listener = WaybackArchiver::TestListener.new
 
     # Set defalt concurrency to 1, so we don't have to deal with concurrency
     # issues in Webmock and rspec-mocks

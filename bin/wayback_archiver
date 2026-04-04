@@ -7,6 +7,29 @@ require 'wayback_archiver'
 require 'wayback_archiver/session_file'
 require 'wayback_archiver/timedelta'
 
+class CLIListener < WaybackArchiver::NullListener
+  def initialize
+    @mutex = Mutex.new
+    @completed_count = 0
+  end
+
+  def on_resolved(strategy:, url_count:, source:)
+    count = url_count ? "#{url_count} URLs" : "discovering..."
+    puts "Strategy #{strategy} chosen: #{count}"
+  end
+
+  def on_completed(result:)
+    @mutex.synchronize do
+      @completed_count += 1
+      label = result.status_label.ljust(6)
+      detail = result.status_detail
+      line = "  [#{@completed_count}]  #{label}  #{result.uri}"
+      line << "  #{detail}" if detail
+      puts line
+    end
+  end
+end
+
 # Default values
 urls = nil
 strategy = nil
@@ -448,6 +471,10 @@ if skip_archived
   end
 end
 
+WaybackArchiver.logger.info("wayback_archiver v#{WaybackArchiver::VERSION} | strategy: #{strategy} | concurrency: #{concurrency}")
+WaybackArchiver.listener = CLIListener.new
+archive_start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
 all_results += urls.flat_map do |url|
   WaybackArchiver.archive(
     url,
@@ -515,5 +542,8 @@ if show_summary
   line << "  Cached: #{tally[:cached]}" if tally[:cached] > 0
   line << "  Skipped: #{tally[:skipped]}" if tally[:skipped] > 0
   puts line
-  puts "Duration: #{total_duration}s"
+
+  wall_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - archive_start_time).round(1)
+  rate = wall_time > 0 ? (total * 60.0 / wall_time).round(0) : 0
+  puts "Duration: #{wall_time}s (#{rate} URLs/min)"
 end

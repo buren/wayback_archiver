@@ -263,6 +263,55 @@ RSpec.describe WaybackArchiver::ArchiveResult do
     end
   end
 
+  describe '#status_label' do
+    it 'returns "ok" for a success result' do
+      result = described_class.new('http://example.com')
+      expect(result.status_label).to eq('ok')
+    end
+
+    it 'returns "FAIL" for an error result' do
+      result = described_class.new('http://example.com', status_ext: 'error:not-found')
+      expect(result.status_label).to eq('FAIL')
+    end
+
+    it 'returns "cached" for a cached result' do
+      result = described_class.new('http://example.com', status_ext: 'cached')
+      expect(result.status_label).to eq('cached')
+    end
+
+    it 'returns "skip" for a skipped result' do
+      result = described_class.new('http://example.com', status_ext: 'skipped:already-archived')
+      expect(result.status_label).to eq('skip')
+    end
+
+    it 'returns "submit" for a submitted result' do
+      result = described_class.new('http://example.com', status_ext: 'submitted')
+      expect(result.status_label).to eq('submit')
+    end
+  end
+
+  describe '#status_detail' do
+    it 'returns error message for error results' do
+      result = described_class.new('http://example.com', status_ext: 'error:not-found')
+      expect(result.status_detail).to eq('Target URL not found (HTTP 404)')
+    end
+
+    it 'returns formatted timestamp for cached results' do
+      result = described_class.new('http://example.com', status_ext: 'cached', timestamp: '20260401120000')
+      expect(result.status_detail).to eq('2026-04-01 12:00:00 UTC')
+    end
+
+    it 'returns duration for success results' do
+      result = described_class.new('http://example.com', duration_sec: 2.345)
+      expect(result.status_detail).to eq('2.3s')
+    end
+
+    it 'returns nil when no detail is available' do
+      result = described_class.new('http://example.com')
+      expect(result.status_detail).to be_nil
+    end
+  end
+
   describe 'backward compatibility' do
     it 'can be constructed with only uri' do
       result = described_class.new('http://example.com')

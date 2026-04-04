@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 # Process results as they complete using a block.
 # Useful for progress reporting or writing results to a file incrementally.
+# See also: event_listener.rb for the listener-based approach.
 
 require 'wayback_archiver'
 

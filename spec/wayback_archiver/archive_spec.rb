@@ -410,7 +410,7 @@ RSpec.describe WaybackArchiver::Archive do
 
       described_class.post(%w[http://a.com])
 
-      expect(WaybackArchiver.logger.info_log).to include('Submitting http://a.com (1/1)')
+      expect(WaybackArchiver.logger.debug_log).to include('Submitting http://a.com (1/1)')
     end
 
     it 're-queues URLs that hit session limit' do
@@ -606,7 +606,7 @@ RSpec.describe WaybackArchiver::Archive do
         # Should have waited through multiple check_user_status calls
         expect(call_count).to be >= 3
         # Should have logged progress while waiting
-        progress_lines = WaybackArchiver.logger.info_log.select { |l| l.include?('Progress:') }
+        progress_lines = WaybackArchiver.logger.info_log.select { |l| l.include?('Polling...') }
         expect(progress_lines.length).to be >= 2
       end
 

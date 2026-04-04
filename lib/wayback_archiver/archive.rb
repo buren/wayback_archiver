@@ -13,8 +13,8 @@ module WaybackArchiver
     # @yield [archive_result] If a block is given, each result will be yielded
     # @yieldparam [ArchiveResult] archive_result
     def self.post(urls, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, include_ext: nil, exclude_ext: nil, **options, &block)
-      WaybackArchiver.logger.info "Total URLs to be sent: #{urls.length}"
-      WaybackArchiver.logger.info "Request are sent with up to #{concurrency} parallel threads"
+      WaybackArchiver.logger.debug "Total URLs to be sent: #{urls.length}"
+      WaybackArchiver.logger.debug "Request are sent with up to #{concurrency} parallel threads"
 
       urls_queue = if limit == -1
                      urls
@@ -46,8 +46,8 @@ module WaybackArchiver
     # @param [Array<String, Regexp>] hosts to crawl
     # @yield [archive_result] If a block is given, each result will be yielded
     # @yieldparam [ArchiveResult] archive_result
-    def self.crawl(source, hosts: [], concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, include_ext: nil, exclude_ext: nil, **options)
-      WaybackArchiver.logger.info "Request are sent with up to #{concurrency} parallel threads"
+    def self.crawl(source, hosts: [], concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, include_ext: nil, exclude_ext: nil, **options, &block)
+      WaybackArchiver.logger.debug "Request are sent with up to #{concurrency} parallel threads"
 
       results = Concurrent::Array.new
       pool = ThreadPool.build(concurrency)
@@ -60,8 +60,7 @@ module WaybackArchiver
 
         pool.post do
           result = post_url(url, **options)
-          yield(result) if block_given?
-          results << result
+          record_result(result, results, &block)
         end
       end
       WaybackArchiver.logger.info "Crawling of #{source} finished, found #{found_urls.length} URL(s)"
@@ -98,8 +97,7 @@ module WaybackArchiver
       urls.each do |url|
         pool.post do
           result = post_url(url, **options)
-          yield(result) if block_given?
-          results << result
+          record_result(result, results, &block)
         end
       end
 
@@ -140,7 +138,7 @@ module WaybackArchiver
           submitted += 1
           n = submitted
           pool.post do
-            WaybackArchiver.logger.info("Submitting #{url} (#{n}/#{total})")
+            WaybackArchiver.logger.debug("Submitting #{url} (#{n}/#{total})")
             handle_submit_response(adapter.submit(url, **options), url, pending, results, retry_urls, **options, &block)
           end
         end
@@ -156,8 +154,7 @@ module WaybackArchiver
               WaybackArchiver.logger.error("Session limit exceeded #{MAX_SESSION_RETRIES} times for #{url}")
               result = ArchiveResult.new(url, error: Request::ServerError.new('error:user-session-limit'), status_ext: 'error:user-session-limit')
               counts[:error] += 1
-              yield(result) if block
-              results << result
+              record_result(result, results, &block)
             else
               requeued << url
             end
@@ -189,8 +186,7 @@ module WaybackArchiver
 
     def self.handle_submit_response(response, url, pending, results, retry_urls, **options, &block)
       if response.is_a?(ArchiveResult)
-        yield(response) if block
-        results << response
+        record_result(response, results, &block)
         return
       end
 
@@ -198,8 +194,7 @@ module WaybackArchiver
       if job_id.nil? && response['timestamp']
         WaybackArchiver.logger.debug("Recent capture returned for #{url} [#{response['timestamp']}]")
         result = build_result_from_status(url, nil, response, status_ext: 'cached', **options)
-        yield(result) if block
-        results << result
+        record_result(result, results, &block)
       elsif job_id.nil?
         msg = response['message'] || "Unexpected submit response for #{url}"
         if msg.include?('limit of active')
@@ -208,14 +203,13 @@ module WaybackArchiver
           error = Request::ServerError.new(msg)
           WaybackArchiver.logger.error(error.message)
           result = ArchiveResult.new(url, error: error)
-          yield(result) if block
-          results << result
+          record_result(result, results, &block)
         end
       else
         pending[job_id] = url
-        # Write a "submitted" record so resume can skip this URL
         submitted_result = ArchiveResult.new(url, job_id: job_id, status_ext: 'submitted')
         yield(submitted_result) if block
+        WaybackArchiver.listener.on_submitted(url: url, job_id: job_id)
       end
     end
     private_class_method :handle_submit_response
@@ -256,8 +250,7 @@ module WaybackArchiver
           counts[:error] += 1
           WaybackArchiver.logger.debug("Capture failed for #{url}: #{result.status_ext}")
         end
-        yield(result) if block
-        results << result
+        record_result(result, results, &block)
       end
     end
     private_class_method :poll_pending
@@ -288,6 +281,7 @@ module WaybackArchiver
     # @return [Integer, :abort] number of slots available, or :abort to stop
     def self.available_slots(adapter, pending, results, counts, **options, &block)
       start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      waiting_logged = false
 
       loop do
         status = begin
@@ -310,6 +304,12 @@ module WaybackArchiver
           return FALLBACK_CHUNK_SIZE
         end
 
+        unless waiting_logged
+          WaybackArchiver.logger.info("Waiting for available slots...")
+          WaybackArchiver.listener.on_waiting_for_slots(processing: status&.dig('processing').to_i)
+          waiting_logged = true
+        end
+
         poll_pending(adapter, pending, results, counts, **options, &block) unless pending.empty?
         log_progress(counts, pending)
         sleep(SLOT_WAIT_INTERVAL)
@@ -321,16 +321,23 @@ module WaybackArchiver
       queue.each do |url|
         result = ArchiveResult.new(url, error: Request::ClientError.new('Connection refused by web.archive.org'))
         counts[:error] += 1
-        yield(result) if block
-        results << result
+        record_result(result, results, &block)
       end
     end
     private_class_method :abort_remaining
 
     def self.log_progress(counts, pending)
-      WaybackArchiver.logger.info("Progress: #{counts[:success]} captured, #{counts[:error]} failed, #{pending.size} pending")
+      WaybackArchiver.logger.info("  Polling... #{counts[:success]} captured, #{counts[:error]} failed, #{pending.size} pending")
+      WaybackArchiver.listener.on_progress(captured: counts[:success], failed: counts[:error], pending: pending.size)
     end
     private_class_method :log_progress
+
+    def self.record_result(result, results, &block)
+      yield(result) if block
+      WaybackArchiver.listener.on_completed(result: result)
+      results << result
+    end
+    private_class_method :record_result
 
     def self.build_result_from_status(url, job_id, status, **options)
       ArchiveResult.from_status(url, job_id, status, **options)

@@ -68,6 +68,34 @@ module WaybackArchiver
       ErrorCodes.message(status_ext)
     end
 
+    # Short label for display output (e.g. "ok", "FAIL", "cached", "skip").
+    def status_label
+      if errored?
+        'FAIL'
+      elsif cached?
+        'cached'
+      elsif skipped?
+        'skip'
+      elsif submitted?
+        'submit'
+      else
+        'ok'
+      end
+    end
+
+    # Human-readable detail string for display output.
+    # For errors: the human-readable error message.
+    # For successes: the capture duration.
+    def status_detail
+      if errored?
+        error_message || status_ext
+      elsif cached?
+        formatted_timestamp
+      elsif duration_sec
+        "#{'%.1f' % duration_sec}s"
+      end
+    end
+
     # Build an ArchiveResult from a poll status hash.
     # @param url [String] the original URL that was archived.
     # @param job_id [String] the SPN2 job ID.
