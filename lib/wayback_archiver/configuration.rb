@@ -64,18 +64,5 @@ module WaybackArchiver
       @user_agent ||= USER_AGENT
     end
 
-    # Sets the adapter (must respond to #call).
-    def adapter=(adapter)
-      unless adapter.respond_to?(:call)
-        raise(ArgumentError, 'adapter must implement #call')
-      end
-
-      @adapter = adapter
-    end
-
-    # Returns the configured adapter, defaulting to WaybackMachine.
-    def adapter
-      @adapter ||= WaybackMachine
-    end
   end
 end

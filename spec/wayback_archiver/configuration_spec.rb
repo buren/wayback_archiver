@@ -28,9 +28,6 @@ RSpec.describe WaybackArchiver::Configuration do
       expect(config.user_agent).to eq(WaybackArchiver::USER_AGENT)
     end
 
-    it 'has WaybackMachine as default adapter' do
-      expect(config.adapter).to eq(WaybackArchiver::WaybackMachine)
-    end
   end
 
   describe '#concurrency' do
@@ -144,17 +141,6 @@ RSpec.describe WaybackArchiver::Configuration do
     end
   end
 
-  describe '#adapter' do
-    it 'can be set to an object responding to #call' do
-      adapter = ->(url) { url }
-      config.adapter = adapter
-      expect(config.adapter).to eq(adapter)
-    end
-
-    it 'raises ArgumentError for objects not responding to #call' do
-      expect { config.adapter = Object.new }.to raise_error(ArgumentError, /must implement #call/)
-    end
-  end
 end
 
 RSpec.describe WaybackArchiver do

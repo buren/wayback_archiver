@@ -227,14 +227,6 @@ Any object works — only implement the methods you need. Unimplemented events a
 
 See [examples/event_listener.rb](examples/event_listener.rb) for more patterns.
 
-### Custom adapter
-
-The adapter handles how URLs are sent to the archive. Any object responding to `#call` works:
-
-```ruby
-WaybackArchiver.config.adapter = ->(url) { puts url }
-```
-
 ## Auto discovery
 
 The default `:auto` strategy tries multiple discovery methods in order, using the first one that finds URLs:

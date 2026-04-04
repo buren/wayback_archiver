@@ -107,22 +107,21 @@ RSpec.describe 'Listener events' do
   end
 
   describe 'on_submitted and on_completed in batch mode' do
-    let(:adapter) { WaybackArchiver::WaybackMachine }
     let(:job1) { 'spn2-job1' }
     let(:job2) { 'spn2-job2' }
 
     before do
-      allow(adapter).to receive(:check_user_status)
+      allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status)
         .and_return({ 'available' => 12, 'processing' => 0 })
       allow(WaybackArchiver::Archive).to receive(:sleep)
     end
 
     it 'fires on_submitted for each URL that gets a job_id' do
-      allow(adapter).to receive(:submit)
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit)
         .with('http://a.com').and_return({ 'url' => 'http://a.com', 'job_id' => job1 })
-      allow(adapter).to receive(:submit)
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit)
         .with('http://b.com').and_return({ 'url' => 'http://b.com', 'job_id' => job2 })
-      allow(adapter).to receive(:poll_statuses).and_return(
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses).and_return(
         job1 => { 'status' => 'success', 'job_id' => job1, 'timestamp' => '20260326120000', 'original_url' => 'http://a.com' },
         job2 => { 'status' => 'success', 'job_id' => job2, 'timestamp' => '20260326120000', 'original_url' => 'http://b.com' }
       )
@@ -135,9 +134,9 @@ RSpec.describe 'Listener events' do
     end
 
     it 'fires on_completed for success results' do
-      allow(adapter).to receive(:submit)
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit)
         .with('http://a.com').and_return({ 'url' => 'http://a.com', 'job_id' => job1 })
-      allow(adapter).to receive(:poll_statuses).and_return(
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses).and_return(
         job1 => { 'status' => 'success', 'job_id' => job1, 'timestamp' => '20260326120000', 'original_url' => 'http://a.com' }
       )
 
@@ -149,9 +148,9 @@ RSpec.describe 'Listener events' do
     end
 
     it 'fires on_completed for error results' do
-      allow(adapter).to receive(:submit)
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit)
         .with('http://a.com').and_return({ 'url' => 'http://a.com', 'job_id' => job1 })
-      allow(adapter).to receive(:poll_statuses).and_return(
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses).and_return(
         job1 => { 'status' => 'error', 'job_id' => job1, 'status_ext' => 'error:not-found', 'message' => 'Not found' }
       )
 
@@ -163,9 +162,9 @@ RSpec.describe 'Listener events' do
     end
 
     it 'fires on_completed for cached results' do
-      allow(adapter).to receive(:submit)
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit)
         .with('http://a.com').and_return({ 'timestamp' => '20260326120000', 'original_url' => 'http://a.com' })
-      allow(adapter).to receive(:poll_statuses).and_return({})
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses).and_return({})
 
       WaybackArchiver::Archive.post(%w[http://a.com])
 
@@ -175,9 +174,9 @@ RSpec.describe 'Listener events' do
     end
 
     it 'does not fire on_completed for submitted-only results' do
-      allow(adapter).to receive(:submit)
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit)
         .with('http://a.com').and_return({ 'url' => 'http://a.com', 'job_id' => job1 })
-      allow(adapter).to receive(:poll_statuses).and_return(
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses).and_return(
         job1 => { 'status' => 'success', 'job_id' => job1, 'timestamp' => '20260326120000', 'original_url' => 'http://a.com' }
       )
 
@@ -189,9 +188,9 @@ RSpec.describe 'Listener events' do
     end
 
     it 'coexists with block callback' do
-      allow(adapter).to receive(:submit)
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit)
         .with('http://a.com').and_return({ 'url' => 'http://a.com', 'job_id' => job1 })
-      allow(adapter).to receive(:poll_statuses).and_return(
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses).and_return(
         job1 => { 'status' => 'success', 'job_id' => job1, 'timestamp' => '20260326120000', 'original_url' => 'http://a.com' }
       )
 
@@ -206,18 +205,16 @@ RSpec.describe 'Listener events' do
   end
 
   describe 'on_progress' do
-    let(:adapter) { WaybackArchiver::WaybackMachine }
-
     before do
-      allow(adapter).to receive(:check_user_status)
+      allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status)
         .and_return({ 'available' => 12, 'processing' => 0 })
       allow(WaybackArchiver::Archive).to receive(:sleep)
     end
 
     it 'fires during poll cycles' do
-      allow(adapter).to receive(:submit)
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit)
         .with('http://a.com').and_return({ 'url' => 'http://a.com', 'job_id' => 'j1' })
-      allow(adapter).to receive(:poll_statuses).and_return(
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses).and_return(
         'j1' => { 'status' => 'success', 'job_id' => 'j1', 'timestamp' => '20260326120000', 'original_url' => 'http://a.com' }
       )
 
@@ -232,15 +229,13 @@ RSpec.describe 'Listener events' do
   end
 
   describe 'on_waiting_for_slots' do
-    let(:adapter) { WaybackArchiver::WaybackMachine }
-
     before do
       allow(WaybackArchiver::Archive).to receive(:sleep)
     end
 
     it 'fires when no slots are available' do
       call_count = 0
-      allow(adapter).to receive(:check_user_status) do
+      allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status) do
         call_count += 1
         if call_count <= 2
           { 'available' => 0, 'processing' => 7 }
@@ -248,9 +243,9 @@ RSpec.describe 'Listener events' do
           { 'available' => 4, 'processing' => 3 }
         end
       end
-      allow(adapter).to receive(:submit)
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit)
         .with('http://a.com').and_return({ 'url' => 'http://a.com', 'job_id' => 'j1' })
-      allow(adapter).to receive(:poll_statuses).and_return(
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses).and_return(
         'j1' => { 'status' => 'success', 'job_id' => 'j1', 'timestamp' => '20260326120000', 'original_url' => 'http://a.com' }
       )
 
@@ -258,21 +253,6 @@ RSpec.describe 'Listener events' do
 
       expect(listener.waiting_for_slots_events.length).to eq(1)
       expect(listener.waiting_for_slots_events.first[:processing]).to eq(7)
-    end
-  end
-
-  describe 'on_completed in sequential mode' do
-    it 'fires for each URL result' do
-      adapter = double('adapter')
-      allow(adapter).to receive(:call) do |url|
-        WaybackArchiver::ArchiveResult.new(url)
-      end
-      # Not batch-capable (no submit/poll_statuses)
-      allow(WaybackArchiver.config).to receive(:adapter).and_return(adapter)
-
-      WaybackArchiver::Archive.post(%w[http://a.com http://b.com])
-
-      expect(listener.completed_events.length).to eq(2)
     end
   end
 end

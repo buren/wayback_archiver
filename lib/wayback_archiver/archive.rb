@@ -31,12 +31,7 @@ module WaybackArchiver
 
       urls_queue = filter_by_extension(urls_queue, include_ext: include_ext, exclude_ext: exclude_ext)
 
-      adapter = WaybackArchiver.config.adapter
-      if batch_capable?(adapter)
-        batch_post(urls_queue, adapter, concurrency: concurrency, **options, &block)
-      else
-        sequential_post(urls_queue, concurrency: concurrency, **options, &block)
-      end
+      batch_post(urls_queue, concurrency: concurrency, **options, &block)
     end
 
     # Send URLs to Wayback Machine by crawling the site.
@@ -75,45 +70,14 @@ module WaybackArchiver
     # @return [ArchiveResult] the sent URL.
     # @param [String] url to send.
     def self.post_url(url, **options)
-      adapter = WaybackArchiver.config.adapter
-      if options.any? && adapter.method(:call).parameters.any? { |type, _| %i[key keyrest].include?(type) }
-        adapter.call(url, **options)
-      else
-        adapter.call(url)
-      end
+      WaybackMachine.call(url, **options)
     end
-
-    # Check if the adapter supports batch submit+poll.
-    def self.batch_capable?(adapter)
-      adapter.respond_to?(:submit) && adapter.respond_to?(:poll_statuses)
-    end
-    private_class_method :batch_capable?
-
-    # Fallback: per-URL submit+poll via post_url (used for custom adapters).
-    def self.sequential_post(urls, concurrency:, **options, &block)
-      results = Concurrent::Array.new
-      pool = ThreadPool.build(concurrency)
-
-      urls.each do |url|
-        pool.post do
-          result = post_url(url, **options)
-          record_result(result, results, &block)
-        end
-      end
-
-      pool.shutdown
-      pool.wait_for_termination
-
-      WaybackArchiver.logger.info "#{results.count(&:success?)} of #{results.length} URL(s) posted to Wayback Machine"
-      results
-    end
-    private_class_method :sequential_post
 
     FALLBACK_CHUNK_SIZE = 2 # conservative fallback when check_user_status fails mid-run
     MAX_SESSION_RETRIES = 2 # safety net for race conditions with dynamic sizing
 
     # Batch mode: submit URLs in chunks with intermediate polling.
-    def self.batch_post(urls, adapter, concurrency:, **options, &block)
+    def self.batch_post(urls, concurrency:, **options, &block)
       results = Concurrent::Array.new
       pending = Concurrent::Hash.new
       counts = Concurrent::Hash.new(0) # :success, :error — incremental counters
@@ -123,7 +87,7 @@ module WaybackArchiver
       session_retries = Hash.new(0)
 
       until queue.empty?
-        chunk_size = available_slots(adapter, pending, results, counts, **options, &block)
+        chunk_size = available_slots(pending, results, counts, **options, &block)
         if chunk_size == :abort
           abort_remaining(queue, results, counts, &block)
           break
@@ -139,7 +103,7 @@ module WaybackArchiver
           n = submitted
           pool.post do
             WaybackArchiver.logger.debug("Submitting #{url} (#{n}/#{total})")
-            handle_submit_response(adapter.submit(url, **options), url, pending, results, retry_urls, **options, &block)
+            handle_submit_response(WaybackMachine.submit(url, **options), url, pending, results, retry_urls, **options, &block)
           end
         end
         pool.shutdown
@@ -166,12 +130,12 @@ module WaybackArchiver
         end
 
         # Intermediate poll to check progress and free sessions
-        poll_pending(adapter, pending, results, counts, **options, &block) unless pending.empty?
+        poll_pending(pending, results, counts, **options, &block) unless pending.empty?
         log_progress(counts, pending)
       end
 
       # Final poll phase: loop until all pending resolve or timeout
-      poll_until_done(adapter, pending, results, counts, **options, &block) unless pending.empty?
+      poll_until_done(pending, results, counts, **options, &block) unless pending.empty?
 
       # Any URLs still pending after final poll were submitted but unconfirmed
       pending.each do |job_id, url|
@@ -215,9 +179,9 @@ module WaybackArchiver
     private_class_method :handle_submit_response
 
     # Single poll pass: collect completed results from pending jobs.
-    def self.poll_pending(adapter, pending, results, counts, **options, &block)
+    def self.poll_pending(pending, results, counts, **options, &block)
       statuses = begin
-        adapter.poll_statuses(pending.keys)
+        WaybackMachine.poll_statuses(pending.keys)
       rescue Request::Error => e
         WaybackArchiver.logger.warn("Poll failed: #{e.message}")
         return
@@ -256,7 +220,7 @@ module WaybackArchiver
     private_class_method :poll_pending
 
     # Poll in a loop until all pending jobs complete or timeout.
-    def self.poll_until_done(adapter, pending, results, counts, **options, &block)
+    def self.poll_until_done(pending, results, counts, **options, &block)
       start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
       until pending.empty?
@@ -267,7 +231,7 @@ module WaybackArchiver
         end
 
         sleep(WaybackMachine::POLL_INTERVAL)
-        poll_pending(adapter, pending, results, counts, **options, &block)
+        poll_pending(pending, results, counts, **options, &block)
         log_progress(counts, pending) unless pending.empty?
       end
     end
@@ -279,13 +243,13 @@ module WaybackArchiver
     # Determine how many URLs to submit in the next chunk.
     # Loops until slots are available, with timeout fallback.
     # @return [Integer, :abort] number of slots available, or :abort to stop
-    def self.available_slots(adapter, pending, results, counts, **options, &block)
+    def self.available_slots(pending, results, counts, **options, &block)
       start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       waiting_logged = false
 
       loop do
         status = begin
-          adapter.check_user_status
+          WaybackMachine.check_user_status
         rescue Request::Error => e
           if counts[:success] == 0 && pending.empty? && e.is_a?(Request::ClientError)
             WaybackArchiver.logger.error("Connection refused by web.archive.org — your IP may be temporarily blocked. Try again later.")
@@ -310,7 +274,7 @@ module WaybackArchiver
           waiting_logged = true
         end
 
-        poll_pending(adapter, pending, results, counts, **options, &block) unless pending.empty?
+        poll_pending(pending, results, counts, **options, &block) unless pending.empty?
         log_progress(counts, pending)
         sleep(SLOT_WAIT_INTERVAL)
       end

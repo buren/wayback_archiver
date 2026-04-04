@@ -14,6 +14,5 @@ Runnable scripts demonstrating common WaybackArchiver use cases.
 | [screenshots.rb](screenshots.rb) | Downloading screenshots of archived pages |
 | [report.rb](report.rb) | Writing CSV and JSON report files |
 | [event_listener.rb](event_listener.rb) | Event listeners for progress, errors, and lifecycle hooks |
-| [custom_adapter.rb](custom_adapter.rb) | Lambda and class-based custom adapters |
 | [file_input.sh](file_input.sh) | Reading URLs from a file or stdin |
 | [two_phase.sh](two_phase.sh) | Discover URLs first, then archive separately |

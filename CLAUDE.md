@@ -14,11 +14,9 @@ Ruby gem wrapping the Internet Archive's SPN2 API. CLI binary (`bin/wayback_arch
 
 **Strategy dispatch**: `WaybackArchiver.archive(url, strategy:)` routes to crawl/sitemap/rss/urls/auto. Auto cascades: feed → sitemap → feed autodiscovery → crawl.
 
-**Configuration**: `WaybackArchiver.config` returns a `Configuration` instance holding all settings (adapter, concurrency, credentials, etc.). `WaybackArchiver.logger` and `.listener` are convenience delegates. All other config goes through `config`.
+**Configuration**: `WaybackArchiver.config` returns a `Configuration` instance holding all settings (concurrency, credentials, etc.). `WaybackArchiver.logger` and `.listener` are convenience delegates. All other config goes through `config`.
 
-**Adapter pattern**: `WaybackArchiver.config.adapter` (default: `WaybackMachine`). Must respond to `#call(url, **options)`. Batch-capable adapters also implement `#submit` and `#poll_statuses`.
-
-**Options flow**: CLI → `options` hash → `WaybackArchiver.archive(**options)` → `Archive.post`/`Archive.crawl`. SPN2-specific options pass through via `**options` to the adapter. Filtering options (`skip_urls`, `include_ext`, `exclude_ext`) are consumed by `Archive` before reaching the adapter.
+**Options flow**: CLI → `options` hash → `WaybackArchiver.archive(**options)` → `Archive.post`/`Archive.crawl`. SPN2-specific options pass through via `**options` to `WaybackMachine`. Filtering options (`skip_urls`, `include_ext`, `exclude_ext`) are consumed by `Archive` before reaching `WaybackMachine`.
 
 **Concurrency**: `concurrent-ruby` thread pools. `ThreadPool.build(1)` returns `ImmediateExecutor` (synchronous); `build(n)` returns `FixedThreadPool`.
 
@@ -33,7 +31,7 @@ Ruby gem wrapping the Internet Archive's SPN2 API. CLI binary (`bin/wayback_arch
 
 ## SPN2 API reference
 
-The authoritative API docs are in `docs/spn2-api.md` (converted from the official Google Doc). Covers capture requests, status polling, error codes, rate limits, and all supported parameters. Consult this when modifying the WaybackMachine adapter or adding SPN2 features.
+The authoritative API docs are in `docs/spn2-api.md` (converted from the official Google Doc). Covers capture requests, status polling, error codes, rate limits, and all supported parameters. Consult this when modifying `WaybackMachine` or adding SPN2 features.
 
 ## Key files
 
