@@ -23,6 +23,7 @@ session_path = nil
 no_session = false
 resume_path = nil
 check_mode = false
+status_mode = false
 skip_archived = false
 skip_archived_within = nil
 
@@ -206,6 +207,10 @@ optparse = OptionParser.new do |parser|
     report_path = value
   end
 
+  parser.on('--status', 'Show SPN2 system and user status, then exit') do
+    status_mode = true
+  end
+
   parser.on_tail('-h', '--help', 'Show this message') do
     puts parser
     exit
@@ -218,6 +223,32 @@ optparse = OptionParser.new do |parser|
 end
 
 optparse.parse!
+
+if status_mode
+  begin
+    system_status = WaybackArchiver::WaybackMachine.system_status
+    puts "System: #{system_status['status']}"
+  rescue => e
+    puts "System: unreachable (#{e.message})"
+  end
+
+  begin
+    user_status = WaybackArchiver::WaybackMachine.check_user_status
+    available = user_status['available']
+    processing = user_status['processing']
+    daily = user_status['daily_captures']
+    daily_limit = user_status['daily_captures_limit']
+    line = "Available: #{available}, Processing: #{processing}"
+    line << ", Daily captures: #{daily}/#{daily_limit}" if daily && daily_limit
+    puts line
+  rescue WaybackArchiver::AuthenticationError
+    puts "User: credentials required (set WAYBACK_ACCESS_KEY and WAYBACK_SECRET_KEY)"
+  rescue => e
+    puts "User: unreachable (#{e.message})"
+  end
+
+  exit(0)
+end
 
 if check_mode && skip_archived
   raise ArgumentError, "--check and --skip-archived are mutually exclusive"

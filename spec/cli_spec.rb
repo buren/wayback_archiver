@@ -127,6 +127,17 @@ RSpec.describe 'CLI' do
     end
   end
 
+  describe '--status' do
+    it 'is recognized as a valid flag' do
+      _stdout, stderr, _status = run_cli('--status', '--help')
+      expect(stderr).not_to include('invalid option')
+    end
+
+    it 'appears in help output' do
+      expect(help_output).to include('--status')
+    end
+  end
+
   describe 'unknown flags' do
     it 'rejects unrecognized options' do
       _stdout, stderr, status = run_cli('--bogus-flag', 'http://example.com')
