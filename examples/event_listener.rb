@@ -26,7 +26,7 @@ class ProgressListener < WaybackArchiver::NullListener
   end
 end
 
-WaybackArchiver.listener = ProgressListener.new
+WaybackArchiver.config.listener = ProgressListener.new
 
 results = WaybackArchiver.archive(
   %w[https://example.com https://example.com/about],
@@ -36,7 +36,7 @@ results = WaybackArchiver.archive(
 puts "\nDone. #{results.count(&:success?)} succeeded."
 
 # Option 2: Hash of procs (lightweight, no class needed)
-WaybackArchiver.listener = {
+WaybackArchiver.config.listener = {
   on_completed: ->(result:) { puts "Archived: #{result.uri}" if result.success? }
 }
 
@@ -51,6 +51,6 @@ def tracker.count
   @count || 0
 end
 
-WaybackArchiver.listener = tracker
+WaybackArchiver.config.listener = tracker
 WaybackArchiver.archive('https://example.com', strategy: :url)
 puts "Tracker saw #{tracker.count} completions"

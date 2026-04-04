@@ -81,7 +81,7 @@ module WaybackArchiver
         http = build_http(uri)
 
         request = Net::HTTP::Get.new(uri.request_uri)
-        request['User-Agent'] = WaybackArchiver.user_agent
+        request['User-Agent'] = WaybackArchiver.config.user_agent
         headers.each { |key, value| request[key] = value }
 
         result = perform_request(uri, http, request)
@@ -198,7 +198,7 @@ module WaybackArchiver
       http = build_http(uri)
 
       request = Net::HTTP::Post.new(uri.request_uri)
-      request['User-Agent'] = WaybackArchiver.user_agent
+      request['User-Agent'] = WaybackArchiver.config.user_agent
       headers.each { |key, value| request[key] = value }
       request.set_form_data(body)
 

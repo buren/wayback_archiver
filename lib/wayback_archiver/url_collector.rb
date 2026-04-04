@@ -43,13 +43,13 @@ module WaybackArchiver
     #        /host[\d]+\.example\.com/
     #      ]
     #    )
-    def self.crawl(url, hosts: [], limit: WaybackArchiver.max_limit)
+    def self.crawl(url, hosts: [], limit: WaybackArchiver.config.max_limit)
       urls = []
       start_at_url = resolve_start_url(Request.build_uri(url).to_s)
       options = {
-        robots: WaybackArchiver.respect_robots_txt,
+        robots: WaybackArchiver.config.respect_robots_txt,
         hosts: hosts,
-        user_agent: WaybackArchiver.user_agent
+        user_agent: WaybackArchiver.config.user_agent
       }
       options[:limit] = limit unless limit == -1
 

@@ -12,7 +12,7 @@ module WaybackArchiver
     # @param concurrency [Integer] the default is 1
     # @yield [archive_result] If a block is given, each result will be yielded
     # @yieldparam [ArchiveResult] archive_result
-    def self.post(urls, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, include_ext: nil, exclude_ext: nil, **options, &block)
+    def self.post(urls, concurrency: WaybackArchiver.config.concurrency, limit: WaybackArchiver.config.max_limit, skip_urls: nil, include_ext: nil, exclude_ext: nil, **options, &block)
       WaybackArchiver.logger.debug "Total URLs to be sent: #{urls.length}"
       WaybackArchiver.logger.debug "Request are sent with up to #{concurrency} parallel threads"
 
@@ -31,7 +31,7 @@ module WaybackArchiver
 
       urls_queue = filter_by_extension(urls_queue, include_ext: include_ext, exclude_ext: exclude_ext)
 
-      adapter = WaybackArchiver.adapter
+      adapter = WaybackArchiver.config.adapter
       if batch_capable?(adapter)
         batch_post(urls_queue, adapter, concurrency: concurrency, **options, &block)
       else
@@ -46,7 +46,7 @@ module WaybackArchiver
     # @param [Array<String, Regexp>] hosts to crawl
     # @yield [archive_result] If a block is given, each result will be yielded
     # @yieldparam [ArchiveResult] archive_result
-    def self.crawl(source, hosts: [], concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, include_ext: nil, exclude_ext: nil, **options, &block)
+    def self.crawl(source, hosts: [], concurrency: WaybackArchiver.config.concurrency, limit: WaybackArchiver.config.max_limit, skip_urls: nil, include_ext: nil, exclude_ext: nil, **options, &block)
       WaybackArchiver.logger.debug "Request are sent with up to #{concurrency} parallel threads"
 
       results = Concurrent::Array.new
@@ -75,7 +75,7 @@ module WaybackArchiver
     # @return [ArchiveResult] the sent URL.
     # @param [String] url to send.
     def self.post_url(url, **options)
-      adapter = WaybackArchiver.adapter
+      adapter = WaybackArchiver.config.adapter
       if options.any? && adapter.method(:call).parameters.any? { |type, _| %i[key keyrest].include?(type) }
         adapter.call(url, **options)
       else

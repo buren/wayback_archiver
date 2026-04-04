@@ -9,7 +9,7 @@ WaybackArchiver.configure do |config|
   config.secret_key = ENV.fetch('WAYBACK_SECRET_KEY')
 end
 
-WaybackArchiver.logger = Logger.new($stdout)
+WaybackArchiver.config.logger = Logger.new($stdout)
 
 screenshot_dir = File.expand_path('screenshots', __dir__)
 Dir.mkdir(screenshot_dir) unless Dir.exist?(screenshot_dir)

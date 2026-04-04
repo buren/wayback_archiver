@@ -13,7 +13,7 @@ WaybackArchiver.configure do |config|
   config.secret_key = ENV.fetch('WAYBACK_SECRET_KEY')
 end
 
-WaybackArchiver.logger = Logger.new($stdout)
+WaybackArchiver.config.logger = Logger.new($stdout)
 
 # Archive with outlink capture enabled
 results = WaybackArchiver.archive(

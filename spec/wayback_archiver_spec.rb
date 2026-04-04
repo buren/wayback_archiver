@@ -310,108 +310,108 @@ RSpec.describe WaybackArchiver do
     end
   end
 
-  describe '::default_logger!' do
+  describe 'default logger' do
     it 'has NullLogger as the default logger' do
-      described_class.default_logger!
+      described_class.config.logger = nil
       expect(described_class.logger.class).to eq(described_class::NullLogger)
     end
   end
 
-  describe '::logger=' do
+  describe 'config.logger=' do
     it 'can set logger' do
       MyLogger = Struct.new(:name).new('buren')
-      described_class.logger = MyLogger
+      described_class.config.logger = MyLogger
       expect(described_class.logger).to eq(MyLogger)
     end
   end
 
   describe '::user_agent=' do
     it 'can set user_agent' do
-      described_class.user_agent = 'buren'
-      expect(described_class.user_agent).to eq('buren')
+      described_class.config.user_agent = 'buren'
+      expect(described_class.config.user_agent).to eq('buren')
     end
   end
 
   describe '::concurrency=' do
     it 'can set concurrency' do
-      described_class.concurrency = 1
-      expect(described_class.concurrency).to eq(1)
+      described_class.config.concurrency = 1
+      expect(described_class.config.concurrency).to eq(1)
     end
   end
 
   describe '::max_limit=' do
     it 'can set max_limit' do
-      described_class.max_limit = 1
-      expect(described_class.max_limit).to eq(1)
+      described_class.config.max_limit = 1
+      expect(described_class.config.max_limit).to eq(1)
     end
   end
 
   describe '::access_key' do
     it 'can set and get access_key' do
-      described_class.access_key = 'my-access-key'
-      expect(described_class.access_key).to eq('my-access-key')
+      described_class.config.access_key = 'my-access-key'
+      expect(described_class.config.access_key).to eq('my-access-key')
     end
 
     it 'falls back to WAYBACK_ACCESS_KEY env var' do
       allow(ENV).to receive(:[]).and_call_original
       allow(ENV).to receive(:[]).with('WAYBACK_ACCESS_KEY').and_return('env-key')
-      expect(described_class.access_key).to eq('env-key')
+      expect(described_class.config.access_key).to eq('env-key')
     end
 
     it 'falls back to IA_S3_ACCESS_KEY env var' do
       allow(ENV).to receive(:[]).and_call_original
       allow(ENV).to receive(:[]).with('WAYBACK_ACCESS_KEY').and_return(nil)
       allow(ENV).to receive(:[]).with('IA_S3_ACCESS_KEY').and_return('ia-key')
-      expect(described_class.access_key).to eq('ia-key')
+      expect(described_class.config.access_key).to eq('ia-key')
     end
 
     it 'prefers programmatic value over env var' do
       allow(ENV).to receive(:[]).and_call_original
       allow(ENV).to receive(:[]).with('WAYBACK_ACCESS_KEY').and_return('env-key')
-      described_class.access_key = 'programmatic-key'
-      expect(described_class.access_key).to eq('programmatic-key')
+      described_class.config.access_key = 'programmatic-key'
+      expect(described_class.config.access_key).to eq('programmatic-key')
     end
   end
 
   describe '::secret_key' do
     it 'can set and get secret_key' do
-      described_class.secret_key = 'my-secret-key'
-      expect(described_class.secret_key).to eq('my-secret-key')
+      described_class.config.secret_key = 'my-secret-key'
+      expect(described_class.config.secret_key).to eq('my-secret-key')
     end
 
     it 'falls back to WAYBACK_SECRET_KEY env var' do
       allow(ENV).to receive(:[]).and_call_original
       allow(ENV).to receive(:[]).with('WAYBACK_SECRET_KEY').and_return('env-secret')
-      expect(described_class.secret_key).to eq('env-secret')
+      expect(described_class.config.secret_key).to eq('env-secret')
     end
 
     it 'falls back to IA_S3_SECRET_KEY env var' do
       allow(ENV).to receive(:[]).and_call_original
       allow(ENV).to receive(:[]).with('WAYBACK_SECRET_KEY').and_return(nil)
       allow(ENV).to receive(:[]).with('IA_S3_SECRET_KEY').and_return('ia-secret')
-      expect(described_class.secret_key).to eq('ia-secret')
+      expect(described_class.config.secret_key).to eq('ia-secret')
     end
   end
 
   describe '::credentials?' do
     it 'returns true when both keys are present' do
-      described_class.access_key = 'key'
-      described_class.secret_key = 'secret'
-      expect(described_class.credentials?).to eq(true)
+      described_class.config.access_key = 'key'
+      described_class.config.secret_key = 'secret'
+      expect(described_class.config.credentials?).to eq(true)
     end
 
     it 'returns false when access_key is missing' do
-      described_class.secret_key = 'secret'
-      expect(described_class.credentials?).to eq(false)
+      described_class.config.secret_key = 'secret'
+      expect(described_class.config.credentials?).to eq(false)
     end
 
     it 'returns false when secret_key is missing' do
-      described_class.access_key = 'key'
-      expect(described_class.credentials?).to eq(false)
+      described_class.config.access_key = 'key'
+      expect(described_class.config.credentials?).to eq(false)
     end
 
     it 'returns false when both keys are missing' do
-      expect(described_class.credentials?).to eq(false)
+      expect(described_class.config.credentials?).to eq(false)
     end
   end
 
@@ -423,26 +423,26 @@ RSpec.describe WaybackArchiver do
         config.secret_key = 'block-secret'
       end
 
-      expect(described_class.concurrency).to eq(8)
-      expect(described_class.access_key).to eq('block-key')
-      expect(described_class.secret_key).to eq('block-secret')
+      expect(described_class.config.concurrency).to eq(8)
+      expect(described_class.config.access_key).to eq('block-key')
+      expect(described_class.config.secret_key).to eq('block-secret')
     end
 
-    it 'returns self' do
+    it 'returns the config' do
       result = described_class.configure { |c| }
-      expect(result).to eq(described_class)
+      expect(result).to eq(described_class.config)
     end
   end
 
   describe '::adapter=' do
     it 'can set adapter' do
       adapter = WaybackArchiver::WaybackMachine
-      described_class.adapter = adapter
-      expect(described_class.adapter).to match(adapter)
+      described_class.config.adapter = adapter
+      expect(described_class.config.adapter).to match(adapter)
     end
 
     it 'raises error unless all adapter respond to #call' do
-      expect { described_class.adapter = 1 }.to raise_error(ArgumentError)
+      expect { described_class.config.adapter = 1 }.to raise_error(ArgumentError)
     end
   end
 
@@ -454,7 +454,7 @@ RSpec.describe WaybackArchiver do
       described_class.check(urls)
 
       expect(described_class::CDX).to have_received(:check_urls)
-        .with(urls, concurrency: WaybackArchiver.concurrency)
+        .with(urls, concurrency: WaybackArchiver.config.concurrency)
     end
 
     it 'passes block through to CDX.check_urls' do
@@ -472,8 +472,8 @@ RSpec.describe WaybackArchiver do
 
   describe '::respect_robots_txt=' do
     it 'can set and get respect_robots_txt' do
-      described_class.respect_robots_txt = false
-      expect(described_class.respect_robots_txt).to eq(false)
+      described_class.config.respect_robots_txt = false
+      expect(described_class.config.respect_robots_txt).to eq(false)
     end
   end
 

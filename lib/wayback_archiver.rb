@@ -3,6 +3,7 @@ require 'wayback_archiver/retry'
 require 'wayback_archiver/thread_pool'
 require 'wayback_archiver/null_logger'
 require 'wayback_archiver/listener'
+require 'wayback_archiver/configuration'
 require 'wayback_archiver/version'
 require 'wayback_archiver/url_collector'
 require 'wayback_archiver/archive'
@@ -61,7 +62,7 @@ module WaybackArchiver
   #        /host[\d]+\.example\.com/
   #      ]
   #    )
-  def self.archive(source, legacy_strategy = nil, strategy: :auto, hosts: [], concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, **options, &block)
+  def self.archive(source, legacy_strategy = nil, strategy: :auto, hosts: [], concurrency: config.concurrency, limit: config.max_limit, skip_urls: nil, **options, &block)
     strategy = legacy_strategy || strategy
 
     case strategy.to_s
@@ -88,7 +89,7 @@ module WaybackArchiver
   # @example Auto archive example.com and archive max 100 URLs
   #    WaybackArchiver.auto('example.com', limit: 100)
   # @see http://www.sitemaps.org
-  def self.auto(source, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, hosts: [], skip_urls: nil, **options, &block)
+  def self.auto(source, concurrency: config.concurrency, limit: config.max_limit, hosts: [], skip_urls: nil, **options, &block)
     # Step 1: Fetch source URL and check if it is itself a feed
     WaybackArchiver.logger.info "Fetching #{source}"
     begin
@@ -146,7 +147,7 @@ module WaybackArchiver
   #        /host[\d]+\.example\.com/
   #      ]
   #    )
-  def self.crawl(url, hosts: [], concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, **options, &block)
+  def self.crawl(url, hosts: [], concurrency: config.concurrency, limit: config.max_limit, skip_urls: nil, **options, &block)
     WaybackArchiver.logger.info "Crawling #{url}"
     WaybackArchiver.listener.on_resolved(strategy: :crawl, url_count: nil, source: url)
     Archive.crawl(url, hosts: hosts, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
@@ -163,7 +164,7 @@ module WaybackArchiver
   # @example Get example.com sitemap archive max 100 URLs
   #    WaybackArchiver.sitemap('example.com/sitemap.xml', limit: 100)
   # @see http://www.sitemaps.org
-  def self.sitemap(url, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, **options, &block)
+  def self.sitemap(url, concurrency: config.concurrency, limit: config.max_limit, skip_urls: nil, **options, &block)
     WaybackArchiver.logger.info "Fetching Sitemap"
     discovered_urls = URLCollector.sitemap(url)
     WaybackArchiver.listener.on_resolved(strategy: :sitemap, url_count: discovered_urls.length, source: url)
@@ -180,7 +181,7 @@ module WaybackArchiver
   #    WaybackArchiver.rss('https://example.com/feed.xml', concurrency: 2)
   # @example Archive RSS feed URLs with a limit
   #    WaybackArchiver.rss('https://example.com/feed.xml', limit: 10)
-  def self.rss(url, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, **options, &block)
+  def self.rss(url, concurrency: config.concurrency, limit: config.max_limit, skip_urls: nil, **options, &block)
     WaybackArchiver.logger.info "Fetching RSS/Atom feed"
     discovered_urls = URLCollector.feed(url)
     WaybackArchiver.listener.on_resolved(strategy: :rss, url_count: discovered_urls.length, source: url)
@@ -197,7 +198,7 @@ module WaybackArchiver
   #    WaybackArchiver.urls(%w(example.com google.com))
   # @example Archive example.com, max 100 URLs
   #    WaybackArchiver.urls(%w(example.com www.example.com), limit: 100)
-  def self.urls(urls, concurrency: WaybackArchiver.concurrency, limit: WaybackArchiver.max_limit, skip_urls: nil, **options, &block)
+  def self.urls(urls, concurrency: config.concurrency, limit: config.max_limit, skip_urls: nil, **options, &block)
     urls_array = Array(urls)
     WaybackArchiver.listener.on_resolved(strategy: :urls, url_count: urls_array.length, source: nil)
     Archive.post(urls_array, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
@@ -209,7 +210,7 @@ module WaybackArchiver
   # @param [String/Symbol] strategy for URL discovery.
   # @param [Array<String, Regexp>] hosts to crawl (crawl strategy only).
   # @param [Integer] limit max number of URLs.
-  def self.discover_urls(source, strategy: 'auto', hosts: [], limit: max_limit)
+  def self.discover_urls(source, strategy: 'auto', hosts: [], limit: config.max_limit)
     case strategy.to_s
     when 'urls', 'url'
       Array(source)
@@ -231,12 +232,12 @@ module WaybackArchiver
   # @param [Array<String>] urls to check.
   # @param [Integer] concurrency number of concurrent CDX requests.
   # @yield [CheckResult] each result as it completes.
-  def self.check(urls, concurrency: WaybackArchiver.concurrency, &block)
+  def self.check(urls, concurrency: config.concurrency, &block)
     CDX.check_urls(urls, concurrency: concurrency, &block)
   end
 
   # Auto-discover URLs without archiving (mirrors the auto strategy logic).
-  def self.discover_urls_auto(source, hosts: [], limit: max_limit)
+  def self.discover_urls_auto(source, hosts: [], limit: config.max_limit)
     WaybackArchiver.logger.info "Fetching #{source}"
     begin
       response = Request.get(source, raise_on_http_error: false)
@@ -270,9 +271,15 @@ module WaybackArchiver
   end
   private_class_method :discover_urls_auto
 
+  # Returns the configuration object.
+  # @return [Configuration]
+  def self.config
+    @config ||= Configuration.new
+  end
+
   # Configure WaybackArchiver with a block.
-  # @yield [WaybackArchiver] the module itself for configuration.
-  # @return [WaybackArchiver]
+  # @yield [Configuration] the configuration object.
+  # @return [Configuration]
   # @example
   #   WaybackArchiver.configure do |config|
   #     config.access_key = 'your-access-key'
@@ -280,147 +287,19 @@ module WaybackArchiver
   #     config.concurrency = 8
   #   end
   def self.configure
-    yield self
-    self
+    yield config
+    config
+  end
+
+  # Convenience delegates — avoids verbose WaybackArchiver.config.logger calls.
+  def self.logger
+    config.logger
+  end
+
+  def self.listener
+    config.listener
   end
 
   # Error raised when authentication is required but credentials are missing
   class AuthenticationError < StandardError; end
-
-  # Sets the Internet Archive S3 access key
-  # @return [String, nil] the configured access key
-  # @param [String, nil] key the access key
-  def self.access_key=(key)
-    @access_key = key
-    WaybackMachine.reset_rate_limiter!
-  end
-
-  # Returns the configured access key, falling back to environment variables
-  # @return [String, nil] the access key
-  def self.access_key
-    @access_key || ENV['WAYBACK_ACCESS_KEY'] || ENV['IA_S3_ACCESS_KEY']
-  end
-
-  # Sets the Internet Archive S3 secret key
-  # @return [String, nil] the configured secret key
-  # @param [String, nil] key the secret key
-  def self.secret_key=(key)
-    @secret_key = key
-    WaybackMachine.reset_rate_limiter!
-  end
-
-  # Returns the configured secret key, falling back to environment variables
-  # @return [String, nil] the secret key
-  def self.secret_key
-    @secret_key || ENV['WAYBACK_SECRET_KEY'] || ENV['IA_S3_SECRET_KEY']
-  end
-
-  # Returns whether both access_key and secret_key are configured
-  # @return [Boolean]
-  def self.credentials?
-    !access_key.nil? && !secret_key.nil?
-  end
-
-  # Set logger
-  # @return [Object] the set logger
-  # @param [Object] logger an object than response to quacks like a Logger
-  # @example set a logger that prints to standard out (STDOUT)
-  #    WaybackArchiver.logger = Logger.new(STDOUT)
-  def self.logger=(logger)
-    @logger = logger
-  end
-
-  # Returns the current logger
-  # @return [Object] the current logger instance
-  def self.logger
-    @logger ||= NullLogger.new
-  end
-
-  # Resets the logger to the default
-  # @return [NullLogger] a new instance of NullLogger
-  def self.default_logger!
-    @logger = NullLogger.new
-  end
-
-  # Sets the event listener
-  # @return [Object] the configured listener
-  # @param [Object] listener an object responding to on_resolved, on_submitted, etc.
-  def self.listener=(listener)
-    @listener = ListenerProxy.new(listener)
-  end
-
-  # Returns the current event listener
-  # @return [ListenerProxy] the current listener proxy
-  def self.listener
-    @listener ||= ListenerProxy.new(NullListener.new)
-  end
-
-  # Sets the user agent
-  # @return [String] the configured user agent
-  # @param [String] user_agent the desired user agent
-  def self.user_agent=(user_agent)
-    @user_agent = user_agent
-  end
-
-  # Returns the configured user agent
-  # @return [String] the configured or the default user agent
-  def self.user_agent
-    @user_agent ||= USER_AGENT
-  end
-
-  # Sets the default respect_robots_txt
-  # @return [Boolean] the desired default for respect_robots_txt
-  # @param [Boolean] respect_robots_txt the desired default
-  def self.respect_robots_txt=(respect_robots_txt)
-    @respect_robots_txt = respect_robots_txt
-  end
-
-  # Returns the default respect_robots_txt
-  # @return [Boolean] the configured or the default respect_robots_txt
-  def self.respect_robots_txt
-    @respect_robots_txt ||= DEFAULT_RESPECT_ROBOTS_TXT
-  end
-
-  # Sets the default concurrency
-  # @return [Integer] the desired default concurrency
-  # @param [Integer] concurrency the desired default concurrency
-  def self.concurrency=(concurrency)
-    @concurrency = concurrency
-  end
-
-  # Returns the default concurrency
-  # @return [Integer] the configured or the default concurrency
-  def self.concurrency
-    @concurrency ||= DEFAULT_CONCURRENCY
-  end
-
-  # Sets the default max_limit
-  # @return [Integer] the desired default max_limit
-  # @param [Integer] max_limit the desired default max_limit
-  def self.max_limit=(max_limit)
-    @max_limit = max_limit
-  end
-
-  # Returns the default max_limit
-  # @return [Integer] the configured or the default max_limit
-  def self.max_limit
-    @max_limit ||= DEFAULT_MAX_LIMIT
-  end
-
-  # Sets the adapter
-  # @return [Object, #call>] the configured adapter
-  # @param [Object, #call>] the adapter
-  def self.adapter=(adapter)
-    unless adapter.respond_to?(:call)
-      raise(ArgumentError, 'adapter must implement #call')
-    end
-
-    @adapter = adapter
-  end
-
-  # Returns the configured adapter
-  # @return [Integer] the configured or the default adapter
-  def self.adapter
-    @adapter ||= WaybackMachine
-  end
 end

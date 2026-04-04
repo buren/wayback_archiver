@@ -180,8 +180,8 @@ end
 Individual setters also work:
 
 ```ruby
-WaybackArchiver.concurrency = 4
-WaybackArchiver.logger = Rails.logger
+WaybackArchiver.config.concurrency = 4
+WaybackArchiver.config.logger = Rails.logger
 ```
 
 By default `wayback_archiver` doesn't respect robots.txt files. See [this Internet Archive blog post](https://blog.archive.org/2017/04/17/robots-txt-meant-for-search-engines-dont-work-well-for-web-archives/) for more information.
@@ -202,13 +202,13 @@ class MyListener < WaybackArchiver::NullListener
   end
 end
 
-WaybackArchiver.listener = MyListener.new
+WaybackArchiver.config.listener = MyListener.new
 ```
 
 Or use a hash of procs for quick one-offs:
 
 ```ruby
-WaybackArchiver.listener = {
+WaybackArchiver.config.listener = {
   on_completed: ->(result:) { puts result.uri if result.success? }
 }
 ```
@@ -232,7 +232,7 @@ See [examples/event_listener.rb](examples/event_listener.rb) for more patterns.
 The adapter handles how URLs are sent to the archive. Any object responding to `#call` works:
 
 ```ruby
-WaybackArchiver.adapter = ->(url) { puts url }
+WaybackArchiver.config.adapter = ->(url) { puts url }
 ```
 
 ## Auto discovery
@@ -280,6 +280,7 @@ v2.0 uses the SPN2 API, replacing the old fire-and-forget SPN1 approach. Capture
 - **Ruby >= 3.1** required (was >= 2.0)
 - **CI moved** from Travis CI to GitHub Actions
 - **SSL verification** enabled by default
+- **Configuration moved to `WaybackArchiver.config`** — settings like `concurrency`, `adapter`, `access_key` etc. are now accessed via `WaybackArchiver.config.concurrency` instead of `WaybackArchiver.concurrency`. The `configure` block is unchanged. `WaybackArchiver.logger` and `WaybackArchiver.listener` remain available as convenience getters.
 
 The public API (`archive`, `crawl`, `sitemap`, `urls`) is unchanged. Existing code that calls `WaybackArchiver.archive(url, strategy: :auto)` will continue to work — see [Auto discovery](#auto-discovery) for the updated behavior. See the [CHANGELOG](CHANGELOG.md) for all new features.
 

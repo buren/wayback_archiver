@@ -9,8 +9,8 @@ RSpec.describe WaybackArchiver::WaybackMachine do
   let(:status_url) { "https://web.archive.org/save/status/#{job_id}" }
 
   before do
-    WaybackArchiver.access_key = 'test-access'
-    WaybackArchiver.secret_key = 'test-secret'
+    WaybackArchiver.config.access_key = 'test-access'
+    WaybackArchiver.config.secret_key = 'test-secret'
     # Re-disable rate limiting after setting credentials (setters call reset_rate_limiter!)
     described_class.instance_variable_set(
       :@rate_limiter,
@@ -37,8 +37,8 @@ RSpec.describe WaybackArchiver::WaybackMachine do
   describe '::call' do
     context 'without credentials' do
       it 'raises AuthenticationError' do
-        WaybackArchiver.access_key = nil
-        WaybackArchiver.secret_key = nil
+        WaybackArchiver.config.access_key = nil
+        WaybackArchiver.config.secret_key = nil
 
         expect { described_class.call(url) }
           .to raise_error(WaybackArchiver::AuthenticationError, /credentials required/i)
@@ -496,8 +496,8 @@ RSpec.describe WaybackArchiver::WaybackMachine do
     end
 
     it 'raises AuthenticationError without credentials' do
-      WaybackArchiver.access_key = nil
-      WaybackArchiver.secret_key = nil
+      WaybackArchiver.config.access_key = nil
+      WaybackArchiver.config.secret_key = nil
 
       expect { described_class.submit(url) }
         .to raise_error(WaybackArchiver::AuthenticationError)
@@ -567,8 +567,8 @@ RSpec.describe WaybackArchiver::WaybackMachine do
     end
 
     it 'raises AuthenticationError without credentials' do
-      WaybackArchiver.access_key = nil
-      WaybackArchiver.secret_key = nil
+      WaybackArchiver.config.access_key = nil
+      WaybackArchiver.config.secret_key = nil
 
       expect do
         described_class.check_user_status
@@ -596,8 +596,8 @@ RSpec.describe WaybackArchiver::WaybackMachine do
     end
 
     it 'does not require credentials' do
-      WaybackArchiver.access_key = nil
-      WaybackArchiver.secret_key = nil
+      WaybackArchiver.config.access_key = nil
+      WaybackArchiver.config.secret_key = nil
 
       stub_request(:get, system_status_url)
         .to_return(status: 200, body: '{"status":"ok"}')

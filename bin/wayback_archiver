@@ -36,8 +36,8 @@ strategy = nil
 file_path = nil
 log = STDOUT
 log_level = Logger::INFO
-concurrency = WaybackArchiver.concurrency
-limit = WaybackArchiver.max_limit
+concurrency = WaybackArchiver.config.concurrency
+limit = WaybackArchiver.config.max_limit
 hosts = []
 options = {}
 show_summary = true
@@ -102,11 +102,11 @@ optparse = OptionParser.new do |parser|
   parser.separator 'Authentication (get keys at https://archive.org/account/s3.php):'
 
   parser.on('--access-key=KEY', String, 'Internet Archive S3 access key') do |value|
-    WaybackArchiver.access_key = value
+    WaybackArchiver.config.access_key = value
   end
 
   parser.on('--secret-key=KEY', String, 'Internet Archive S3 secret key') do |value|
-    WaybackArchiver.secret_key = value
+    WaybackArchiver.config.secret_key = value
   end
 
   parser.separator ''
@@ -328,7 +328,7 @@ if urls.empty?
   raise ArgumentError, "[<url>] or --file is required"
 end
 
-WaybackArchiver.logger = Logger.new(log).tap do |logger|
+WaybackArchiver.config.logger = Logger.new(log).tap do |logger|
   logger.progname = 'WaybackArchiver'
   logger.level = log_level
   logger.formatter = proc do |severity, _time, _progname, msg|
@@ -472,7 +472,7 @@ if skip_archived
 end
 
 WaybackArchiver.logger.info("wayback_archiver v#{WaybackArchiver::VERSION} | strategy: #{strategy} | concurrency: #{concurrency}")
-WaybackArchiver.listener = CLIListener.new
+WaybackArchiver.config.listener = CLIListener.new
 archive_start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
 all_results += urls.flat_map do |url|

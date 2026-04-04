@@ -96,7 +96,7 @@ module WaybackArchiver
     # @return [Hash] with 'available' and 'processing' keys.
     # @raise [AuthenticationError] if no credentials configured.
     def self.check_user_status
-      raise AuthenticationError, 'Credentials required for user status' unless WaybackArchiver.credentials?
+      raise AuthenticationError, 'Credentials required for user status' unless WaybackArchiver.config.credentials?
 
       cache_buster = (Time.now.to_f * 1000).to_i
       response = Request.get(
@@ -204,7 +204,7 @@ module WaybackArchiver
     private_class_method :build_post_body
 
     def self.build_headers
-      unless WaybackArchiver.credentials?
+      unless WaybackArchiver.config.credentials?
         raise AuthenticationError,
           'Wayback Machine credentials required. ' \
           'Get your API keys at https://archive.org/account/s3.php ' \
@@ -213,7 +213,7 @@ module WaybackArchiver
 
       {
         'Accept' => 'application/json',
-        'Authorization' => "LOW #{WaybackArchiver.access_key}:#{WaybackArchiver.secret_key}"
+        'Authorization' => "LOW #{WaybackArchiver.config.access_key}:#{WaybackArchiver.config.secret_key}"
       }
     end
     private_class_method :build_headers

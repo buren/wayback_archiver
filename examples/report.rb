@@ -5,7 +5,7 @@
 require 'wayback_archiver'
 require 'wayback_archiver/report'
 
-WaybackArchiver.logger = Logger.new($stdout)
+WaybackArchiver.config.logger = Logger.new($stdout)
 
 results = WaybackArchiver.archive(
   %w[https://example.com https://example.com/about],

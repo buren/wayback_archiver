@@ -12,7 +12,7 @@ dry_run_adapter = ->(url, **_options) do
   WaybackArchiver::ArchiveResult.new(url, code: '200')
 end
 
-WaybackArchiver.adapter = dry_run_adapter
+WaybackArchiver.config.adapter = dry_run_adapter
 
 results = WaybackArchiver.archive(
   %w[https://example.com https://example.com/about],
@@ -33,7 +33,7 @@ class LoggingAdapter
   end
 end
 
-WaybackArchiver.adapter = LoggingAdapter.new('/tmp/archived_urls.log')
+WaybackArchiver.config.adapter = LoggingAdapter.new('/tmp/archived_urls.log')
 
 results = WaybackArchiver.archive('https://example.com', strategy: :url)
 puts "Logged to /tmp/archived_urls.log"

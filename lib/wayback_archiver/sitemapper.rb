@@ -27,7 +27,7 @@ module WaybackArchiver
     def self.autodiscover(url)
       url = Request.build_uri(url).to_s
       WaybackArchiver.logger.info 'Looking for Sitemap(s) in /robots.txt'
-      robots = WebRobots.new(WaybackArchiver.user_agent)
+      robots = WebRobots.new(WaybackArchiver.config.user_agent)
       sitemaps = robots.sitemaps(url)
 
       if sitemaps.any?

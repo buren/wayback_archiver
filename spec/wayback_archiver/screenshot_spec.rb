@@ -9,8 +9,8 @@ RSpec.describe WaybackArchiver::Screenshot do
   describe '.download' do
     context 'with credentials' do
       before do
-        WaybackArchiver.access_key = 'key'
-        WaybackArchiver.secret_key = 'secret'
+        WaybackArchiver.config.access_key = 'key'
+        WaybackArchiver.config.secret_key = 'secret'
       end
 
       it 'downloads screenshot and saves to directory' do

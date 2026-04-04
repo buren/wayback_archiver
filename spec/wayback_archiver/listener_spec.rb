@@ -268,7 +268,7 @@ RSpec.describe 'Listener events' do
         WaybackArchiver::ArchiveResult.new(url)
       end
       # Not batch-capable (no submit/poll_statuses)
-      allow(WaybackArchiver).to receive(:adapter).and_return(adapter)
+      allow(WaybackArchiver.config).to receive(:adapter).and_return(adapter)
 
       WaybackArchiver::Archive.post(%w[http://a.com http://b.com])
 

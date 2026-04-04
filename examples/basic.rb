@@ -10,7 +10,7 @@ require 'wayback_archiver'
 # end
 
 # Enable logging to see what's happening
-WaybackArchiver.logger = Logger.new($stdout)
+WaybackArchiver.config.logger = Logger.new($stdout)
 
 results = WaybackArchiver.archive('https://example.com', strategy: :url)
 

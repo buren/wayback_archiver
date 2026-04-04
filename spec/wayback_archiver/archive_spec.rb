@@ -7,11 +7,11 @@ RSpec.describe WaybackArchiver::Archive do
     let(:simple_adapter) { ->(u) { WaybackArchiver::ArchiveResult.new(u) } }
 
     before do
-      WaybackArchiver.adapter = simple_adapter
+      WaybackArchiver.config.adapter = simple_adapter
     end
 
     after do
-      WaybackArchiver.adapter = WaybackArchiver::WaybackMachine
+      WaybackArchiver.config.adapter = WaybackArchiver::WaybackMachine
     end
 
     it 'calls ::post_url for each URL' do
@@ -292,8 +292,8 @@ RSpec.describe WaybackArchiver::Archive do
 
     it 'downloads screenshots in batch mode when screenshot_dir is provided' do
       Dir.mktmpdir do |dir|
-        WaybackArchiver.access_key = 'key'
-        WaybackArchiver.secret_key = 'secret'
+        WaybackArchiver.config.access_key = 'key'
+        WaybackArchiver.config.secret_key = 'secret'
         screenshot_url = 'http://web.archive.org/screenshot/http://a.com'
         png_data = "\x89PNG\r\n\x1a\nfake"
 
@@ -358,9 +358,9 @@ RSpec.describe WaybackArchiver::Archive do
 
     it 'falls back to per-URL call for adapters without submit' do
       simple_adapter = ->(u) { WaybackArchiver::ArchiveResult.new(u) }
-      WaybackArchiver.adapter = simple_adapter
+      WaybackArchiver.config.adapter = simple_adapter
       results = described_class.post(%w[http://a.com])
-      WaybackArchiver.adapter = WaybackArchiver::WaybackMachine
+      WaybackArchiver.config.adapter = WaybackArchiver::WaybackMachine
 
       expect(results.length).to eq(1)
       expect(results.first.uri).to eq('http://a.com')
@@ -654,9 +654,9 @@ RSpec.describe WaybackArchiver::Archive do
       url = 'https://example.com'
       simple_adapter = ->(u) { WaybackArchiver::ArchiveResult.new(u) }
 
-      WaybackArchiver.adapter = simple_adapter
+      WaybackArchiver.config.adapter = simple_adapter
       result = described_class.post_url(url, capture_all: true)
-      WaybackArchiver.adapter = WaybackArchiver::WaybackMachine
+      WaybackArchiver.config.adapter = WaybackArchiver::WaybackMachine
 
       expect(result.uri).to eq(url)
     end

@@ -3,7 +3,7 @@
 
 require 'wayback_archiver'
 
-WaybackArchiver.logger = Logger.new($stdout)
+WaybackArchiver.config.logger = Logger.new($stdout)
 
 urls = %w[
   https://example.com

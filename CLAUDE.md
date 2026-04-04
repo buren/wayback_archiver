@@ -14,7 +14,9 @@ Ruby gem wrapping the Internet Archive's SPN2 API. CLI binary (`bin/wayback_arch
 
 **Strategy dispatch**: `WaybackArchiver.archive(url, strategy:)` routes to crawl/sitemap/rss/urls/auto. Auto cascades: feed → sitemap → feed autodiscovery → crawl.
 
-**Adapter pattern**: `WaybackArchiver.adapter` (default: `WaybackMachine`). Must respond to `#call(url, **options)`. Batch-capable adapters also implement `#submit` and `#poll_statuses`.
+**Configuration**: `WaybackArchiver.config` returns a `Configuration` instance holding all settings (adapter, concurrency, credentials, etc.). `WaybackArchiver.logger` and `.listener` are convenience delegates. All other config goes through `config`.
+
+**Adapter pattern**: `WaybackArchiver.config.adapter` (default: `WaybackMachine`). Must respond to `#call(url, **options)`. Batch-capable adapters also implement `#submit` and `#poll_statuses`.
 
 **Options flow**: CLI → `options` hash → `WaybackArchiver.archive(**options)` → `Archive.post`/`Archive.crawl`. SPN2-specific options pass through via `**options` to the adapter. Filtering options (`skip_urls`, `include_ext`, `exclude_ext`) are consumed by `Archive` before reaching the adapter.
 
@@ -35,7 +37,8 @@ The authoritative API docs are in `docs/spn2-api.md` (converted from the officia
 
 ## Key files
 
-- `lib/wayback_archiver.rb` — module config, strategy dispatch, `discover_urls`
+- `lib/wayback_archiver.rb` — strategy dispatch, `discover_urls`, convenience delegates
+- `lib/wayback_archiver/configuration.rb` — `Configuration` class (all settings)
 - `lib/wayback_archiver/archive.rb` — `post`, `crawl`, `batch_post`, URL filtering
 - `lib/wayback_archiver/adapters/wayback_machine.rb` — SPN2 submit/poll, rate limiting
 - `bin/wayback_archiver` — CLI entry point, OptionParser, session management, summary

@@ -11,7 +11,7 @@ module WaybackArchiver
     # @raise [AuthenticationError] if credentials are not configured.
     # @raise [ArgumentError] if the directory does not exist.
     def self.download(screenshot_url, original_url, directory:)
-      unless WaybackArchiver.credentials?
+      unless WaybackArchiver.config.credentials?
         raise AuthenticationError, 'Credentials required for screenshot download'
       end
 
