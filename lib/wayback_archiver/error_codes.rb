@@ -25,6 +25,7 @@ module WaybackArchiver
       'error:gateway-timeout'          => { message: 'Target server timeout (HTTP 504)',               category: :transient },
       'error:bad-gateway'              => { message: 'Bad Gateway (HTTP 502)',                         category: :transient },
       'error:capture-location-error'   => { message: 'Cannot find created capture location',           category: :transient },
+      'error:no-captures'              => { message: 'Capture produced no content',                     category: :transient },
 
       # -- Daily limit: won't succeed on immediate retry, resets next day --
       'error:too-many-daily-captures'     => { message: 'URL captured 10 times today',                    category: :daily_limit },

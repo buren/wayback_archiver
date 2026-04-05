@@ -3,13 +3,13 @@ require 'wayback_archiver/error_codes'
 
 RSpec.describe WaybackArchiver::ErrorCodes do
   describe 'REGISTRY' do
-    it 'has 38 entries total' do
-      expect(described_class::REGISTRY.size).to eq(38)
+    it 'has 39 entries total' do
+      expect(described_class::REGISTRY.size).to eq(39)
     end
 
-    it 'has 16 transient entries' do
+    it 'has 17 transient entries' do
       count = described_class::REGISTRY.count { |_, v| v[:category] == :transient }
-      expect(count).to eq(16)
+      expect(count).to eq(17)
     end
 
     it 'has 4 daily_limit entries' do
