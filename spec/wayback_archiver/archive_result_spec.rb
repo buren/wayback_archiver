@@ -306,6 +306,12 @@ RSpec.describe WaybackArchiver::ArchiveResult do
       expect(result.status_detail).to eq('2.3s')
     end
 
+    it 'falls back to error exception message when status_ext is nil' do
+      error = StandardError.new('Connection refused')
+      result = described_class.new('http://example.com', error: error)
+      expect(result.status_detail).to eq('Connection refused')
+    end
+
     it 'returns nil when no detail is available' do
       result = described_class.new('http://example.com')
       expect(result.status_detail).to be_nil

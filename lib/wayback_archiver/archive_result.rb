@@ -88,7 +88,7 @@ module WaybackArchiver
     # For successes: the capture duration.
     def status_detail
       if errored?
-        error_message || status_ext
+        error_message || status_ext || error&.message
       elsif cached?
         formatted_timestamp
       elsif duration_sec

@@ -21,6 +21,7 @@ module WaybackArchiver
     end
 
     def on_batch_start(total:)
+      @stdout.puts
       return unless @renderer
 
       @renderer.set_total(total)

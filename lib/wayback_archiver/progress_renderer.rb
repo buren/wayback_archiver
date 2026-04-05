@@ -125,14 +125,14 @@ module WaybackArchiver
       return unless @footer_drawn
 
       # \e[A = move cursor up one line, \e[2K = clear entire line, \r = carriage return
-      @stdout.write("\e[A\e[2K\e[A\e[2K\r")
+      @stdout.write("\e[A\e[2K\e[A\e[2K\e[A\e[2K\r")
       @footer_drawn = false
     end
 
     def render_footer
       line1 = build_progress_line
-      line2 = "  #{@state}"
-      @stdout.write("#{line1}\n#{line2}\n")
+      line2 = @state
+      @stdout.write("\n#{line1}\n#{line2}\n")
       @footer_drawn = true
     end
 
@@ -144,12 +144,13 @@ module WaybackArchiver
     def build_progress_line
       stats = build_stats_string
       width = terminal_width
-      bar_width = [width - 6 - stats.length, MAX_BAR_WIDTH].min
+      # Line format: "[BAR]  STATS" — overhead is "[" (1) + "]  " (3) = 4
+      bar_width = [width - 4 - stats.length, MAX_BAR_WIDTH].min
 
       if bar_width >= MIN_BAR_WIDTH
-        "  [#{build_bar(bar_width)}]  #{stats}"
+        "[#{build_bar(bar_width)}]  #{stats}"
       else
-        "  #{stats}"
+        stats
       end
     end
 
@@ -164,7 +165,7 @@ module WaybackArchiver
         rate_per_min = 60.0 / spu
         remaining = @total - @completed
         eta_seconds = remaining * spu
-        parts << "~#{format_duration(eta_seconds)} left (#{format('%.1f', rate_per_min)} URLs/min)"
+        parts << "~#{format_duration(eta_seconds)} left (~#{rate_per_min.round} URLs/min)"
       end
 
       parts.join(" \u00b7 ") # \u00b7 = · (middle dot)

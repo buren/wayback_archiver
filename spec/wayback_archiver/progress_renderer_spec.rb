@@ -183,7 +183,7 @@ RSpec.describe WaybackArchiver::ProgressRenderer do
       5.times { renderer.record_completion(errored: false) }
       renderer.repaint
 
-      expect(clean_output).to include('12.0 URLs/min')
+      expect(clean_output).to include('~12 URLs/min')
     end
 
     it 'switches to EMA-based rate after 20 completions' do
@@ -195,7 +195,7 @@ RSpec.describe WaybackArchiver::ProgressRenderer do
       renderer.instance_variable_set(:@ema_seconds_per_url, 20.0)
       renderer.repaint
 
-      expect(clean_output).to include('3.0 URLs/min')
+      expect(clean_output).to include('~3 URLs/min')
     end
   end
 
