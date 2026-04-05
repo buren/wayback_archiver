@@ -22,6 +22,10 @@ module WaybackArchiver
     STATE_POLLING = 'Polling...'
     STATE_WAITING = 'Waiting for available slots...'
 
+    CURSOR_UP = "\e[A"
+    CLEAR_LINE = "\e[2K"
+    FOOTER_LINES = 3 # blank line + progress bar + state
+
     def initialize(stdout, terminal_width: nil)
       @stdout = stdout
       @terminal_width_override = terminal_width
@@ -124,8 +128,7 @@ module WaybackArchiver
     def clear_footer
       return unless @footer_drawn
 
-      # \e[A = move cursor up one line, \e[2K = clear entire line, \r = carriage return
-      @stdout.write("\e[A\e[2K\e[A\e[2K\e[A\e[2K\r")
+      @stdout.write("#{CURSOR_UP}#{CLEAR_LINE}" * FOOTER_LINES + "\r")
       @footer_drawn = false
     end
 
