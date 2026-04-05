@@ -562,38 +562,102 @@ RSpec.describe WaybackArchiver::CLI do
   end
 
   describe WaybackArchiver::CLIListener do
-    let(:listener) { described_class.new(stdout) }
+    describe 'non-TTY mode' do
+      let(:listener) { described_class.new(stdout) }
 
-    describe '#on_resolved' do
-      it 'prints strategy and URL count' do
-        listener.on_resolved(strategy: :sitemap, url_count: 42, source: 'http://example.com')
-        expect(stdout_output).to include('sitemap')
-        expect(stdout_output).to include('42 URLs')
+      describe '#on_resolved' do
+        it 'prints strategy and URL count' do
+          listener.on_resolved(strategy: :sitemap, url_count: 42, source: 'http://example.com')
+          expect(stdout_output).to include('sitemap')
+          expect(stdout_output).to include('42 URLs')
+        end
+
+        it 'prints discovering when url_count is nil' do
+          listener.on_resolved(strategy: :crawl, url_count: nil, source: 'http://example.com')
+          expect(stdout_output).to include('discovering...')
+        end
       end
 
-      it 'prints discovering when url_count is nil' do
-        listener.on_resolved(strategy: :crawl, url_count: nil, source: 'http://example.com')
-        expect(stdout_output).to include('discovering...')
+      describe '#on_completed' do
+        it 'prints result with counter' do
+          result = WaybackArchiver::ArchiveResult.new('http://example.com', timestamp: '20240101000000')
+          listener.on_completed(result: result)
+
+          expect(stdout_output).to include('[1]')
+          expect(stdout_output).to include('http://example.com')
+        end
+
+        it 'increments counter across calls' do
+          result1 = WaybackArchiver::ArchiveResult.new('http://a.com', timestamp: '20240101000000')
+          result2 = WaybackArchiver::ArchiveResult.new('http://b.com', timestamp: '20240101000000')
+          listener.on_completed(result: result1)
+          listener.on_completed(result: result2)
+
+          expect(stdout_output).to include('[1]')
+          expect(stdout_output).to include('[2]')
+        end
+      end
+
+      describe '#on_progress' do
+        it 'does not print anything' do
+          listener.on_progress(captured: 5, failed: 0, pending: 3)
+          expect(stdout_output).to eq('')
+        end
+      end
+
+      describe '#on_waiting_for_slots' do
+        it 'does not print anything' do
+          listener.on_waiting_for_slots(processing: 7)
+          expect(stdout_output).to eq('')
+        end
       end
     end
 
-    describe '#on_completed' do
-      it 'prints result with counter' do
+    describe 'TTY mode' do
+      let(:listener) { described_class.new(stdout, tty: true) }
+
+      def clean_output
+        stdout_output.gsub(/\e\[[0-9;]*[A-Za-z]/, '')
+      end
+
+      it 'renders progress footer after on_batch_start' do
+        listener.on_batch_start(total: 100)
+
+        expect(clean_output).to include('0/100')
+        expect(clean_output).to include('Submitting...')
+      end
+
+      it 'prints completed URL above footer' do
+        listener.on_batch_start(total: 10)
         result = WaybackArchiver::ArchiveResult.new('http://example.com', timestamp: '20240101000000')
         listener.on_completed(result: result)
 
-        expect(stdout_output).to include('[1]')
-        expect(stdout_output).to include('http://example.com')
+        expect(clean_output).to include('[1]')
+        expect(clean_output).to include('http://example.com')
+        expect(clean_output).to include('1/10')
       end
 
-      it 'increments counter across calls' do
-        result1 = WaybackArchiver::ArchiveResult.new('http://a.com', timestamp: '20240101000000')
-        result2 = WaybackArchiver::ArchiveResult.new('http://b.com', timestamp: '20240101000000')
-        listener.on_completed(result: result1)
-        listener.on_completed(result: result2)
+      it 'updates pending count on progress' do
+        listener.on_batch_start(total: 10)
+        listener.on_progress(captured: 2, failed: 0, pending: 5)
 
-        expect(stdout_output).to include('[1]')
-        expect(stdout_output).to include('[2]')
+        expect(clean_output).to include('5 pending')
+        expect(clean_output).to include('Polling...')
+      end
+
+      it 'shows waiting state' do
+        listener.on_batch_start(total: 10)
+        listener.on_waiting_for_slots(processing: 7)
+
+        expect(clean_output).to include('Waiting for available slots...')
+      end
+
+      it 'clears footer on finish' do
+        listener.on_batch_start(total: 10)
+        listener.finish
+
+        # After finish, the ANSI clear sequences should have been written
+        expect(stdout_output).to include("\e[A")
       end
     end
   end

@@ -10,6 +10,7 @@ module WaybackArchiver
     def on_completed(result:); end
     def on_progress(captured:, failed:, pending:); end
     def on_waiting_for_slots(processing:); end
+    def on_batch_start(total:); end
   end
 
   # Wraps any object or hash of procs as a safe listener.

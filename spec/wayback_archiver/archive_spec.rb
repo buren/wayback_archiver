@@ -590,8 +590,8 @@ RSpec.describe WaybackArchiver::Archive do
         expect(results.select(&:success?).length).to eq(1)
         # Should have waited through multiple check_user_status calls
         expect(call_count).to be >= 3
-        # Should have logged progress while waiting
-        progress_lines = WaybackArchiver.logger.info_log.select { |l| l.include?('Polling...') }
+        # Should have logged progress while waiting (debug level)
+        progress_lines = WaybackArchiver.logger.debug_log.select { |l| l.include?('Polling...') }
         expect(progress_lines.length).to be >= 2
       end
 

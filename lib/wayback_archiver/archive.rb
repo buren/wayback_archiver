@@ -82,6 +82,7 @@ module WaybackArchiver
       pending = Concurrent::Hash.new
       counts = Concurrent::Hash.new(0) # :success, :error — incremental counters
       total = urls.length
+      WaybackArchiver.listener.on_batch_start(total: total)
       queue = urls.dup
       submitted = 0
       session_retries = Hash.new(0)
@@ -269,7 +270,7 @@ module WaybackArchiver
         end
 
         unless waiting_logged
-          WaybackArchiver.logger.info("Waiting for available slots...")
+          WaybackArchiver.logger.debug("Waiting for available slots...")
           WaybackArchiver.listener.on_waiting_for_slots(processing: status&.dig('processing').to_i)
           waiting_logged = true
         end
@@ -291,7 +292,7 @@ module WaybackArchiver
     private_class_method :abort_remaining
 
     def self.log_progress(counts, pending)
-      WaybackArchiver.logger.info("  Polling... #{counts[:success]} captured, #{counts[:error]} failed, #{pending.size} pending")
+      WaybackArchiver.logger.debug("  Polling... #{counts[:success]} captured, #{counts[:error]} failed, #{pending.size} pending")
       WaybackArchiver.listener.on_progress(captured: counts[:success], failed: counts[:error], pending: pending.size)
     end
     private_class_method :log_progress

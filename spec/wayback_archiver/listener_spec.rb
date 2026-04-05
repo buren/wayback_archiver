@@ -24,6 +24,10 @@ RSpec.describe WaybackArchiver::NullListener do
     it 'responds to on_waiting_for_slots' do
       expect(listener.on_waiting_for_slots(processing: 5)).to be_nil
     end
+
+    it 'responds to on_batch_start' do
+      expect(listener.on_batch_start(total: 100)).to be_nil
+    end
   end
 end
 
@@ -201,6 +205,27 @@ RSpec.describe 'Listener events' do
       expect(block_results.length).to eq(2)
       expect(listener.submitted_events.length).to eq(1)
       expect(listener.completed_events.length).to eq(1)
+    end
+  end
+
+  describe 'on_batch_start' do
+    before do
+      allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status)
+        .and_return({ 'available' => 12, 'processing' => 0 })
+      allow(WaybackArchiver::Archive).to receive(:sleep)
+    end
+
+    it 'fires at the start of batch_post with post-filtering URL count' do
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit)
+        .and_return({ 'url' => 'http://a.com', 'job_id' => 'j1' })
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses).and_return(
+        'j1' => { 'status' => 'success', 'job_id' => 'j1', 'timestamp' => '20260326120000', 'original_url' => 'http://a.com' }
+      )
+
+      WaybackArchiver::Archive.post(%w[http://a.com http://b.com], skip_urls: Set.new(['http://b.com']))
+
+      expect(listener.batch_start_events.length).to eq(1)
+      expect(listener.batch_start_events.first[:total]).to eq(1)
     end
   end
 

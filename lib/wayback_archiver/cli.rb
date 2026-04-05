@@ -3,13 +3,16 @@ require 'shellwords'
 require 'wayback_archiver'
 require 'wayback_archiver/session_file'
 require 'wayback_archiver/timedelta'
+require 'wayback_archiver/progress_renderer'
 
 module WaybackArchiver
   class CLIListener < NullListener
-    def initialize(stdout)
+    def initialize(stdout, tty: stdout.respond_to?(:tty?) && stdout.tty?)
       @stdout = stdout
+      @tty = tty
       @mutex = Mutex.new
       @completed_count = 0
+      @renderer = ProgressRenderer.new(stdout) if @tty
     end
 
     def on_resolved(strategy:, url_count:, source:)
@@ -17,15 +20,50 @@ module WaybackArchiver
       @stdout.puts "Strategy #{strategy} chosen: #{count}"
     end
 
+    def on_batch_start(total:)
+      return unless @renderer
+
+      @renderer.set_total(total)
+      @renderer.start
+      @renderer.repaint
+    end
+
+    def on_submitted(url:, job_id:)
+      @renderer&.set_state(ProgressRenderer::STATE_SUBMITTING)
+    end
+
     def on_completed(result:)
-      @mutex.synchronize do
-        @completed_count += 1
-        label = result.status_label.ljust(6)
-        detail = result.status_detail
-        line = "  [#{@completed_count}]  #{label}  #{result.uri}"
-        line << "  #{detail}" if detail
-        @stdout.puts line
+      if @renderer
+        n = @renderer.record_completion(errored: result.errored?)
+        @renderer.print_result(format_result_line(n, result))
+      else
+        @mutex.synchronize do
+          @completed_count += 1
+          @stdout.puts format_result_line(@completed_count, result)
+        end
       end
+    end
+
+    def on_progress(captured:, failed:, pending:)
+      @renderer&.update_progress(pending: pending)
+    end
+
+    def on_waiting_for_slots(processing:)
+      @renderer&.set_state(ProgressRenderer::STATE_WAITING)
+    end
+
+    def finish
+      @renderer&.finish
+    end
+
+    private
+
+    def format_result_line(n, result)
+      label = result.status_label.ljust(6)
+      detail = result.status_detail
+      line = "  [#{n}]  #{label}  #{result.uri}"
+      line << "  #{detail}" if detail
+      line
     end
   end
 
@@ -73,6 +111,7 @@ module WaybackArchiver
       install_signal_handler
 
       results = run_archive
+      @cli_listener&.finish
       write_report(results)
       cleanup_session(results)
       print_summary(results, @archive_start_time) if @show_summary
@@ -399,7 +438,8 @@ module WaybackArchiver
       end
 
       WaybackArchiver.logger.info(startup_banner)
-      WaybackArchiver.config.listener = CLIListener.new(@stdout)
+      @cli_listener = CLIListener.new(@stdout)
+      WaybackArchiver.config.listener = @cli_listener
       @archive_start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
       all_results.concat(@urls.flat_map do |url|

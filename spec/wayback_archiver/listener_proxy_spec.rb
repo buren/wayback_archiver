@@ -7,6 +7,7 @@ RSpec.describe WaybackArchiver::ListenerProxy do
       proxy = described_class.new(listener)
 
       proxy.on_resolved(strategy: :sitemap, url_count: 5, source: 'http://example.com')
+      proxy.on_batch_start(total: 5)
       proxy.on_submitted(url: 'http://example.com', job_id: 'j1')
       result = WaybackArchiver::ArchiveResult.new('http://example.com')
       proxy.on_completed(result: result)
@@ -14,6 +15,7 @@ RSpec.describe WaybackArchiver::ListenerProxy do
       proxy.on_waiting_for_slots(processing: 3)
 
       expect(listener.resolved_events.length).to eq(1)
+      expect(listener.batch_start_events.length).to eq(1)
       expect(listener.submitted_events.length).to eq(1)
       expect(listener.completed_events.length).to eq(1)
       expect(listener.progress_events.length).to eq(1)
