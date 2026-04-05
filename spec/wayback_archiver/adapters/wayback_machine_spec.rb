@@ -283,13 +283,31 @@ RSpec.describe WaybackArchiver::WaybackMachine do
         expect(call_count).to be > 1
       end
 
-      it 'returns ArchiveResult with error on network failure' do
-        stub_request(:post, save_url).to_raise(Timeout::Error)
+      it 'retries connection errors and succeeds' do
+        call_count = 0
+        stub_request(:post, save_url)
+          .to_return do |_request|
+            call_count += 1
+            if call_count <= 1
+              raise Errno::ECONNREFUSED, 'Connection refused'
+            else
+              { status: 200, body: { 'url' => url, 'job_id' => job_id }.to_json }
+            end
+          end
+        stub_status(success_status)
+
+        result = described_class.call(url)
+        expect(result.success?).to eq(true)
+        expect(call_count).to be > 1
+      end
+
+      it 'returns ArchiveResult with error after exhausting connection retries' do
+        stub_request(:post, save_url).to_raise(Errno::ECONNREFUSED)
 
         result = described_class.call(url)
 
         expect(result.errored?).to eq(true)
-        expect(result.error).to be_a(WaybackArchiver::Request::ServerError)
+        expect(result.error).to be_a(WaybackArchiver::Request::Error)
       end
 
       it 'returns ArchiveResult with error when submit returns non-JSON' do
@@ -469,12 +487,10 @@ RSpec.describe WaybackArchiver::WaybackMachine do
       described_class.submit(url, capture_all: true)
     end
 
-    it 'returns ArchiveResult with error on network failure' do
+    it 'raises Request::Error on network failure' do
       stub_request(:post, save_url).to_raise(Timeout::Error)
 
-      result = described_class.submit(url)
-      expect(result).to be_a(WaybackArchiver::ArchiveResult)
-      expect(result.errored?).to eq(true)
+      expect { described_class.submit(url) }.to raise_error(WaybackArchiver::Request::Error)
     end
 
     it 'returns ArchiveResult with error when response is not JSON' do

@@ -15,11 +15,11 @@ module WaybackArchiver
     # @yield the block to execute.
     # @return the block's return value.
     # @raise [RetryableError] if all retries are exhausted.
-    def self.with_backoff(max_retries: DEFAULT_MAX_RETRIES, base_delay: DEFAULT_BASE_DELAY, max_delay: DEFAULT_MAX_DELAY)
+    def self.with_backoff(max_retries: DEFAULT_MAX_RETRIES, base_delay: DEFAULT_BASE_DELAY, max_delay: DEFAULT_MAX_DELAY, retry_on: [RetryableError])
       retries = 0
       begin
         yield
-      rescue RetryableError => e
+      rescue *retry_on => e
         retries += 1
         raise if retries > max_retries
 

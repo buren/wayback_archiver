@@ -47,9 +47,10 @@ module WaybackArchiver
     # @param [String] url to archive.
     # @param [Hash] options SPN2 capture options.
     def self.call(url, **options)
-      Retry.with_backoff do
+      Retry.with_backoff(retry_on: [RetryableError, Request::Error]) do
         submit_and_poll(url, **options)
       end
+    # Request::Error here catches connection errors that exhausted all retries in with_backoff
     rescue PollTimeoutError, Request::Error, JSON::ParserError => e
       WaybackArchiver.logger.error("Failed to archive #{url}: #{e.class}, #{e.message}")
       ArchiveResult.new(url, error: e)
@@ -72,7 +73,7 @@ module WaybackArchiver
       WaybackArchiver.logger.debug("Submitting #{url} to SPN2")
       response = Request.post(SAVE_URL, body: body, headers: headers)
       JSON.parse(response.body)
-    rescue Request::Error, JSON::ParserError => e
+    rescue JSON::ParserError => e
       WaybackArchiver.logger.error("Failed to submit #{url}: #{e.class}, #{e.message}")
       ArchiveResult.new(url, error: e)
     end
@@ -138,7 +139,8 @@ module WaybackArchiver
         msg = data['message'] || "Unexpected submit response for #{url}"
         raise RetryableError, 'error:user-session-limit' if msg.include?('limit of active')
 
-        raise Request::ServerError, msg
+        WaybackArchiver.logger.error("Submit failed for #{url}: #{msg}")
+        return ArchiveResult.new(url, error: Request::ServerError.new(msg), status_ext: status_ext)
       end
 
       WaybackArchiver.logger.info("Capture started for #{url}, job_id: #{job_id}")

@@ -74,7 +74,7 @@ module WaybackArchiver
     end
 
     FALLBACK_CHUNK_SIZE = 2 # conservative fallback when check_user_status fails mid-run
-    MAX_SESSION_RETRIES = 2 # safety net for race conditions with dynamic sizing
+    MAX_RETRIES = 3 # per-URL retry cap for transient errors (session limits, connection errors)
 
     # Batch mode: submit URLs in chunks with intermediate polling.
     def self.batch_post(urls, concurrency:, **options, &block)
@@ -85,7 +85,7 @@ module WaybackArchiver
       WaybackArchiver.listener.on_batch_start(total: total)
       queue = urls.dup
       submitted = 0
-      session_retries = Hash.new(0)
+      retries = Hash.new(0)
 
       until queue.empty?
         chunk_size = available_slots(pending, results, counts, **options, &block)
@@ -105,19 +105,22 @@ module WaybackArchiver
           pool.post do
             WaybackArchiver.logger.debug("Submitting #{url} (#{n}/#{total})")
             handle_submit_response(WaybackMachine.submit(url, **options), url, pending, results, retry_urls, **options, &block)
+          rescue Request::Error => e
+            WaybackArchiver.logger.warn("Connection error for #{url}: #{e.message}")
+            retry_urls << url
           end
         end
         pool.shutdown
         pool.wait_for_termination
 
-        # Re-queue URLs that hit session limits
+        # Re-queue URLs that hit transient errors (session limits, connection errors)
         unless retry_urls.empty?
           requeued = []
           retry_urls.each do |url|
-            session_retries[url] += 1
-            if session_retries[url] > MAX_SESSION_RETRIES
-              WaybackArchiver.logger.error("Session limit exceeded #{MAX_SESSION_RETRIES} times for #{url}")
-              result = ArchiveResult.new(url, error: Request::ServerError.new('error:user-session-limit'), status_ext: 'error:user-session-limit')
+            retries[url] += 1
+            if retries[url] > MAX_RETRIES
+              WaybackArchiver.logger.error("Retry limit exceeded (#{MAX_RETRIES}) for #{url}")
+              result = ArchiveResult.new(url, error: Request::ServerError.new('retry limit exceeded'))
               counts[:error] += 1
               record_result(result, results, &block)
             else
@@ -125,7 +128,7 @@ module WaybackArchiver
             end
           end
           unless requeued.empty?
-            WaybackArchiver.logger.warn("Re-queuing #{requeued.size} URL(s) that hit session limit")
+            WaybackArchiver.logger.warn("Re-queuing #{requeued.size} URL(s) due to transient error")
             queue.unshift(*requeued)
           end
         end

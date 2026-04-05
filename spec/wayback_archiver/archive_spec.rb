@@ -410,6 +410,29 @@ RSpec.describe WaybackArchiver::Archive do
       expect(call_count).to eq(2)
     end
 
+    it 're-queues URLs that hit connection errors' do
+      job1 = 'job-aaa'
+      call_count = 0
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit).with('http://a.com') do
+        call_count += 1
+        if call_count <= 1
+          raise WaybackArchiver::Request::ClientError, 'Errno::ECONNREFUSED, Connection refused'
+        else
+          { 'url' => 'http://a.com', 'job_id' => job1 }
+        end
+      end
+
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses).and_return(
+        job1 => { 'status' => 'success', 'job_id' => job1, 'timestamp' => '20260326120000', 'original_url' => 'http://a.com' }
+      )
+
+      results = described_class.post(%w[http://a.com])
+
+      expect(results.length).to eq(1)
+      expect(results.first.success?).to eq(true)
+      expect(call_count).to eq(2)
+    end
+
     it 'handles poll_statuses raising Request::Error gracefully' do
       job1 = 'job-aaa'
 
@@ -595,7 +618,7 @@ RSpec.describe WaybackArchiver::Archive do
         expect(progress_lines.length).to be >= 2
       end
 
-      it 'limits session retries to 2' do
+      it 'limits retries to MAX_RETRIES' do
         allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status).and_return({ 'available' => 12, 'processing' => 0 })
         allow(WaybackArchiver::WaybackMachine).to receive(:submit)
           .with('http://a.com').and_return({ 'message' => 'You have already reached the limit of active Save Page Now sessions. Please wait for a minute and then try again.' })
@@ -605,8 +628,8 @@ RSpec.describe WaybackArchiver::Archive do
 
         expect(results.length).to eq(1)
         expect(results.first.errored?).to eq(true)
-        # Should have tried submit 3 times (1 + 2 retries)
-        expect(WaybackArchiver::WaybackMachine).to have_received(:submit).exactly(3).times
+        # Should have tried submit 4 times (1 + 3 retries)
+        expect(WaybackArchiver::WaybackMachine).to have_received(:submit).exactly(4).times
       end
     end
   end

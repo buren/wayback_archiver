@@ -60,6 +60,43 @@ RSpec.describe WaybackArchiver::Retry do
       expect(delays[2]).to be_between(8, 8.9)
     end
 
+    it 'retries custom exception classes via retry_on' do
+      attempts = 0
+      result = described_class.with_backoff(max_retries: 3, retry_on: [WaybackArchiver::Request::Error]) do
+        attempts += 1
+        raise WaybackArchiver::Request::ClientError, 'connection refused' if attempts < 2
+        'ok'
+      end
+
+      expect(result).to eq('ok')
+      expect(attempts).to eq(2)
+    end
+
+    it 'retries multiple exception classes via retry_on' do
+      attempts = 0
+      result = described_class.with_backoff(max_retries: 3, retry_on: [WaybackArchiver::RetryableError, WaybackArchiver::Request::Error]) do
+        attempts += 1
+        raise WaybackArchiver::Request::ClientError, 'connection refused' if attempts == 1
+        raise WaybackArchiver::RetryableError, 'rate limited' if attempts == 2
+        'ok'
+      end
+
+      expect(result).to eq('ok')
+      expect(attempts).to eq(3)
+    end
+
+    it 'does not retry exceptions not in retry_on' do
+      attempts = 0
+      expect do
+        described_class.with_backoff(max_retries: 3, retry_on: [WaybackArchiver::Request::Error]) do
+          attempts += 1
+          raise WaybackArchiver::RetryableError, 'not in retry_on'
+        end
+      end.to raise_error(WaybackArchiver::RetryableError)
+
+      expect(attempts).to eq(1)
+    end
+
     it 'caps delay at max_delay' do
       delays = []
       allow(described_class).to receive(:sleep) { |d| delays << d }
