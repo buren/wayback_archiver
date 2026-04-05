@@ -90,42 +90,16 @@ module WaybackArchiver
   #    WaybackArchiver.auto('example.com', limit: 100)
   # @see http://www.sitemaps.org
   def self.auto(source, concurrency: config.concurrency, limit: config.max_limit, hosts: [], skip_urls: nil, **options, &block)
-    # Step 1: Fetch source URL and check if it is itself a feed
-    WaybackArchiver.logger.info "Fetching #{source}"
-    begin
-      response = Request.get(source, raise_on_http_error: false)
-      source_body = response.success? ? response.body : nil
-    rescue Request::Error => e
-      WaybackArchiver.logger.error "Error fetching #{source}: #{e.message}"
-      source_body = nil
-    end
+    strategy, urls = resolve_auto_strategy(source)
 
-    if source_body
-      feed_urls = FeedParser.urls(xml: source_body)
-      if feed_urls.any?
-        WaybackArchiver.listener.on_resolved(strategy: :feed, url_count: feed_urls.length, source: source)
-        return Archive.post(feed_urls, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
-      end
+    if strategy == :crawl
+      WaybackArchiver.listener.on_resolved(strategy: :crawl, url_count: nil, source: source)
+      WaybackArchiver.logger.info "Crawling #{source}"
+      Archive.crawl(source, hosts: hosts, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
+    else
+      WaybackArchiver.listener.on_resolved(strategy: strategy, url_count: urls.length, source: source)
+      Archive.post(urls, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
     end
-
-    # Step 2: Try sitemap autodiscovery
-    sitemap_urls = Sitemapper.autodiscover(source)
-    if sitemap_urls.any?
-      WaybackArchiver.listener.on_resolved(strategy: :sitemap, url_count: sitemap_urls.length, source: source)
-      return Archive.post(sitemap_urls, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
-    end
-
-    # Step 3: Try feed autodiscovery (HTML link tags + common feed paths)
-    feed_urls = FeedParser.autodiscover(source, html: source_body)
-    if feed_urls.any?
-      WaybackArchiver.listener.on_resolved(strategy: :feed, url_count: feed_urls.length, source: source)
-      return Archive.post(feed_urls, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
-    end
-
-    # Step 4: Crawl
-    WaybackArchiver.listener.on_resolved(strategy: :crawl, url_count: nil, source: source)
-    WaybackArchiver.logger.info "Crawling #{source}"
-    Archive.crawl(source, hosts: hosts, concurrency: concurrency, limit: limit, skip_urls: skip_urls, **options, &block)
   end
 
   # Crawl site for URLs to send to the Wayback Machine.
@@ -238,38 +212,44 @@ module WaybackArchiver
 
   # Auto-discover URLs without archiving (mirrors the auto strategy logic).
   def self.discover_urls_auto(source, hosts: [], limit: config.max_limit)
+    strategy, urls = resolve_auto_strategy(source)
+
+    if strategy == :crawl
+      WaybackArchiver.logger.info "Strategy resolved: crawl"
+      URLCollector.crawl(source, hosts: hosts, limit: limit)
+    else
+      WaybackArchiver.logger.info "Strategy resolved: #{strategy} (#{urls.length} URLs)"
+      urls
+    end
+  end
+  private_class_method :discover_urls_auto
+
+  # Resolve the auto strategy by trying feed, sitemap, feed autodiscovery, then crawl.
+  # @return [Array(Symbol, Array<String>)] [strategy, urls]
+  def self.resolve_auto_strategy(source)
     WaybackArchiver.logger.info "Fetching #{source}"
     begin
       response = Request.get(source, raise_on_http_error: false)
       source_body = response.success? ? response.body : nil
-    rescue Request::Error
+    rescue Request::Error => e
+      WaybackArchiver.logger.error "Error fetching #{source}: #{e.message}"
       source_body = nil
     end
 
     if source_body
       feed_urls = FeedParser.urls(xml: source_body)
-      if feed_urls.any?
-        WaybackArchiver.logger.info "Strategy resolved: feed (#{feed_urls.length} URLs)"
-        return feed_urls
-      end
+      return [:feed, feed_urls] if feed_urls.any?
     end
 
     sitemap_urls = Sitemapper.autodiscover(source)
-    if sitemap_urls.any?
-      WaybackArchiver.logger.info "Strategy resolved: sitemap (#{sitemap_urls.length} URLs)"
-      return sitemap_urls
-    end
+    return [:sitemap, sitemap_urls] if sitemap_urls.any?
 
     feed_urls = FeedParser.autodiscover(source, html: source_body)
-    if feed_urls.any?
-      WaybackArchiver.logger.info "Strategy resolved: feed (#{feed_urls.length} URLs)"
-      return feed_urls
-    end
+    return [:feed, feed_urls] if feed_urls.any?
 
-    WaybackArchiver.logger.info "Strategy resolved: crawl"
-    URLCollector.crawl(source, hosts: hosts, limit: limit)
+    [:crawl, []]
   end
-  private_class_method :discover_urls_auto
+  private_class_method :resolve_auto_strategy
 
   # Returns the configuration object.
   # @return [Configuration]
