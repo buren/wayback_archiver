@@ -173,6 +173,95 @@ RSpec.describe WaybackArchiver::Archive, 'integration' do
     end
   end
 
+  describe 'transient poll error → re-submit → success' do
+    it 're-queues URL on transient poll error and succeeds on second attempt' do
+      url = 'http://example.com/proxy-retry'
+      job1 = 'job-fail'
+      job2 = 'job-ok'
+
+      # First submit → job1, second submit → job2
+      stub_request(:post, 'https://web.archive.org/save')
+        .with(body: hash_including('url' => url))
+        .to_return(
+          { status: 200, body: { 'url' => url, 'job_id' => job1 }.to_json },
+          { status: 200, body: { 'url' => url, 'job_id' => job2 }.to_json }
+        )
+
+      # First poll: job1 returns transient error
+      # Second poll: job2 succeeds
+      stub_request(:post, 'https://web.archive.org/save/status')
+        .to_return(
+          { status: 200, body: { job1 => { 'status' => 'error', 'job_id' => job1, 'status_ext' => 'error:proxy-error' } }.to_json },
+          { status: 200, body: { job2 => success_status(job2, url) }.to_json }
+        )
+
+      results = described_class.post([url], concurrency: 1)
+
+      expect(results.length).to eq(1)
+      expect(results.first.success?).to eq(true)
+      expect(results.first.uri).to eq(url)
+
+      # Submit called twice (original + re-queue after transient poll error)
+      expect(WebMock).to have_requested(:post, 'https://web.archive.org/save')
+        .with(body: hash_including('url' => url))
+        .times(2)
+    end
+
+    it 'fails after exceeding max retries from transient poll errors' do
+      url = 'http://example.com/always-proxy-error'
+
+      # Every submit returns a new job_id
+      call_count = 0
+      stub_request(:post, 'https://web.archive.org/save')
+        .with(body: hash_including('url' => url))
+        .to_return do |_req|
+          call_count += 1
+          { status: 200, body: { 'url' => url, 'job_id' => "job-#{call_count}" }.to_json }
+        end
+
+      # Every poll returns transient error
+      stub_request(:post, 'https://web.archive.org/save/status')
+        .to_return do |req|
+          body = URI.decode_www_form(req.body).to_h
+          job_ids = body['job_ids'].split(',')
+          statuses = job_ids.to_h { |jid| [jid, { 'status' => 'error', 'job_id' => jid, 'status_ext' => 'error:bad-gateway' }] }
+          { status: 200, body: statuses.to_json }
+        end
+
+      results = described_class.post([url], concurrency: 1)
+
+      expect(results.length).to eq(1)
+      expect(results.first.errored?).to eq(true)
+
+      # 1 initial + MAX_RETRIES (3) = 4 submit attempts
+      expect(WebMock).to have_requested(:post, 'https://web.archive.org/save')
+        .with(body: hash_including('url' => url))
+        .times(4)
+    end
+
+    it 'does not re-queue permanent poll errors' do
+      url = 'http://example.com/blocked'
+      job_id = 'job-blocked'
+
+      stub_submit(url, { 'url' => url, 'job_id' => job_id })
+
+      stub_batch_poll(
+        job_id => { 'status' => 'error', 'job_id' => job_id, 'status_ext' => 'error:blocked-url' }
+      )
+
+      results = described_class.post([url], concurrency: 1)
+
+      expect(results.length).to eq(1)
+      expect(results.first.errored?).to eq(true)
+      expect(results.first.status_ext).to eq('error:blocked-url')
+
+      # Only 1 submit — no re-queue for permanent errors
+      expect(WebMock).to have_requested(:post, 'https://web.archive.org/save')
+        .with(body: hash_including('url' => url))
+        .times(1)
+    end
+  end
+
   describe 'cached result (if_not_archived_within)' do
     it 'returns cached result without polling when server has recent snapshot' do
       url = 'http://example.com/cached'
