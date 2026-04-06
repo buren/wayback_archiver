@@ -509,16 +509,48 @@ RSpec.describe WaybackArchiver::CLI do
       expect(stdout_output).to include('permanent')
     end
 
-    it 'shows duration and rate' do
-      results = [
-        WaybackArchiver::ArchiveResult.new('http://a.com', timestamp: '20240101000000'),
-      ]
-
-      start = Process.clock_gettime(Process::CLOCK_MONOTONIC) - 10.0
+    it 'formats duration as seconds for short runs' do
+      results = [WaybackArchiver::ArchiveResult.new('http://a.com', timestamp: '20240101000000')]
+      start = Process.clock_gettime(Process::CLOCK_MONOTONIC) - 42.0
       cli = build_cli('http://example.com')
       cli.send(:print_summary, results, start)
 
-      expect(stdout_output).to include('Duration:')
+      expect(stdout_output).to include('Duration: 42s')
+    end
+
+    it 'formats duration as minutes and seconds' do
+      results = [WaybackArchiver::ArchiveResult.new('http://a.com', timestamp: '20240101000000')]
+      start = Process.clock_gettime(Process::CLOCK_MONOTONIC) - 754.0
+      cli = build_cli('http://example.com')
+      cli.send(:print_summary, results, start)
+
+      expect(stdout_output).to include('Duration: 12m 34s')
+    end
+
+    it 'formats duration as hours, minutes, and seconds' do
+      results = [WaybackArchiver::ArchiveResult.new('http://a.com', timestamp: '20240101000000')]
+      start = Process.clock_gettime(Process::CLOCK_MONOTONIC) - 5025.0
+      cli = build_cli('http://example.com')
+      cli.send(:print_summary, results, start)
+
+      expect(stdout_output).to include('Duration: 1h 23m 45s')
+    end
+
+    it 'clamps sub-second durations to 1s' do
+      results = [WaybackArchiver::ArchiveResult.new('http://a.com', timestamp: '20240101000000')]
+      start = Process.clock_gettime(Process::CLOCK_MONOTONIC) - 0.1
+      cli = build_cli('http://example.com')
+      cli.send(:print_summary, results, start)
+
+      expect(stdout_output).to include('Duration: 1s')
+    end
+
+    it 'shows URLs/min rate' do
+      results = [WaybackArchiver::ArchiveResult.new('http://a.com', timestamp: '20240101000000')]
+      start = Process.clock_gettime(Process::CLOCK_MONOTONIC) - 120.0
+      cli = build_cli('http://example.com')
+      cli.send(:print_summary, results, start)
+
       expect(stdout_output).to include('URLs/min')
     end
   end

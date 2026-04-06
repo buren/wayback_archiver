@@ -542,9 +542,21 @@ module WaybackArchiver
       line << "  Skipped: #{tally[:skipped]}" if tally[:skipped] > 0
       @stdout.puts line
 
-      wall_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - archive_start_time).round(1)
-      rate = wall_time > 0 ? (total * 60.0 / wall_time).round(0) : 0
-      @stdout.puts "Duration: #{wall_time}s (#{rate} URLs/min)"
+      wall_seconds = [1, (Process.clock_gettime(Process::CLOCK_MONOTONIC) - archive_start_time).round(0).to_i].max
+      rate = (total * 60.0 / wall_seconds).round(0)
+      @stdout.puts "Duration: #{format_duration(wall_seconds)} (#{rate} URLs/min)"
+    end
+
+    def format_duration(total_seconds)
+      hours, remainder = total_seconds.divmod(3600)
+      minutes, seconds = remainder.divmod(60)
+      if hours > 0
+        "#{hours}h #{minutes}m #{seconds}s"
+      elsif minutes > 0
+        "#{minutes}m #{seconds}s"
+      else
+        "#{seconds}s"
+      end
     end
 
     def startup_banner
