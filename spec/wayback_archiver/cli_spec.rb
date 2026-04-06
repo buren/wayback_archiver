@@ -216,12 +216,24 @@ RSpec.describe WaybackArchiver::CLI do
       cli.run
 
       expect(WaybackArchiver).to have_received(:archive).with(
-        'http://example.com',
+        ['http://example.com'],
         hash_including(
           strategy: 'urls',
           capture_all: true,
           force_get: true
         )
+      )
+    end
+
+    it 'passes all urls in one call for urls strategy' do
+      cli = build_cli('--urls', '--no-session', '--no-summary', 'http://a.com', 'http://b.com', 'http://c.com')
+      allow(WaybackArchiver).to receive(:archive).and_return([])
+
+      cli.run
+
+      expect(WaybackArchiver).to have_received(:archive).once.with(
+        ['http://a.com', 'http://b.com', 'http://c.com'],
+        hash_including(strategy: 'urls')
       )
     end
 

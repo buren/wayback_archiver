@@ -239,20 +239,37 @@ module WaybackArchiver
       WaybackArchiver.config.listener = @cli_listener
       @archive_start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-      all_results.concat(@options.urls.flat_map do |url|
-        WaybackArchiver.archive(
-          url,
-          hosts: @options.hosts,
-          strategy: @options.strategy,
-          concurrency: @options.concurrency,
-          limit: @options.limit,
-          skip_urls: @skip_urls,
-          **@options.spn2_options
-        ) do |result|
-          @session&.write_result(result)
-          @archive_results << result unless result.submitted?
-        end
-      end)
+      archive_block = proc do |result|
+        @session&.write_result(result)
+        @archive_results << result unless result.submitted?
+      end
+
+      results = if %w[urls url].include?(@options.strategy)
+                  WaybackArchiver.archive(
+                    @options.urls,
+                    hosts: @options.hosts,
+                    strategy: @options.strategy,
+                    concurrency: @options.concurrency,
+                    limit: @options.limit,
+                    skip_urls: @skip_urls,
+                    **@options.spn2_options,
+                    &archive_block
+                  )
+                else
+                  @options.urls.flat_map do |url|
+                    WaybackArchiver.archive(
+                      url,
+                      hosts: @options.hosts,
+                      strategy: @options.strategy,
+                      concurrency: @options.concurrency,
+                      limit: @options.limit,
+                      skip_urls: @skip_urls,
+                      **@options.spn2_options,
+                      &archive_block
+                    )
+                  end
+                end
+      all_results.concat(results)
 
       all_results
     end
