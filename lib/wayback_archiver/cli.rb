@@ -111,6 +111,7 @@ module WaybackArchiver
       return run_check if @options.check_mode
 
       setup_session
+      @archive_results = []
       install_signal_handler
 
       results = run_archive
@@ -118,7 +119,7 @@ module WaybackArchiver
       cleanup_session(results)
       @summary.print_summary(results, @archive_start_time) if @options.show_summary
     ensure
-      @cli_listener&.finish
+      @cli_listener&.finish unless @interrupted
       @log_output&.renderer = nil
       @session&.close
     end
@@ -249,6 +250,7 @@ module WaybackArchiver
           **@options.spn2_options
         ) do |result|
           @session&.write_result(result)
+          @archive_results << result unless result.submitted?
         end
       end)
 
@@ -302,9 +304,20 @@ module WaybackArchiver
 
       cmd = resume_command
       stderr = @stderr
+      stdout = @stdout
+      summary = @summary
+      cli_ref = self
 
       Signal.trap('INT') do
-        stderr.puts "\nInterrupted. Resume with:"
+        # Clear the sticky progress footer before writing the summary,
+        # otherwise the ensure block's finish call would erase our output
+        # with ANSI cursor-up sequences.
+        stdout.write(ProgressRenderer::CLEAR_FOOTER) if stdout.respond_to?(:tty?) && stdout.tty?
+        cli_ref.instance_variable_set(:@interrupted, true)
+        results = cli_ref.instance_variable_get(:@archive_results)
+        start_time = cli_ref.instance_variable_get(:@archive_start_time)
+        summary.print_summary(results, start_time) if results.length > 0 && start_time
+        stderr.puts "Interrupted. Resume with:"
         stderr.puts "  #{cmd}"
         exit(1)
       end
