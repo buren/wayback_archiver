@@ -29,7 +29,7 @@ module WaybackArchiver
         WaybackArchiver.logger.info "Skipped #{skipped} previously succeeded URL(s)" if skipped > 0
       end
 
-      urls_queue = filter_by_extension(urls_queue, include_ext: include_ext, exclude_ext: exclude_ext)
+      urls_queue = URLFilter.new(include_ext: include_ext, exclude_ext: exclude_ext).apply(urls_queue)
 
       batch_post(urls_queue, concurrency: concurrency, **options, &block)
     end
@@ -46,12 +46,11 @@ module WaybackArchiver
 
       results = Concurrent::Array.new
       pool = ThreadPool.build(concurrency)
-      include_ext = normalize_extensions(include_ext)
-      exclude_ext = normalize_extensions(exclude_ext)
+      filter = URLFilter.new(include_ext: include_ext, exclude_ext: exclude_ext)
 
       found_urls = URLCollector.crawl(source, hosts: hosts, limit: limit) do |url|
         next if skip_urls&.include?(url)
-        next unless match_extension?(url, include_ext: include_ext, exclude_ext: exclude_ext)
+        next unless filter.match?(url)
 
         pool.post do
           result = post_url(url, **options)
@@ -331,42 +330,6 @@ module WaybackArchiver
       ArchiveResult.from_status(url, job_id, status, **options)
     end
     private_class_method :build_result_from_status
-
-    def self.url_extension(url)
-      path = url.split('?', 2).first.split('#', 2).first
-      File.extname(path).delete_prefix('.').downcase
-    end
-    private_class_method :url_extension
-
-    def self.normalize_extensions(exts)
-      return nil if exts.nil?
-
-      exts.map { |e| e.delete_prefix('.').downcase }.freeze
-    end
-    private_class_method :normalize_extensions
-
-    def self.match_extension?(url, include_ext:, exclude_ext:)
-      ext = url_extension(url)
-      return false if include_ext && !include_ext.include?(ext)
-      return false if exclude_ext&.include?(ext)
-
-      true
-    end
-    private_class_method :match_extension?
-
-    def self.filter_by_extension(urls, include_ext: nil, exclude_ext: nil)
-      return urls if include_ext.nil? && exclude_ext.nil?
-
-      include_ext = normalize_extensions(include_ext)
-      exclude_ext = normalize_extensions(exclude_ext)
-
-      before = urls.length
-      filtered = urls.select { |url| match_extension?(url, include_ext: include_ext, exclude_ext: exclude_ext) }
-      skipped = before - filtered.length
-      WaybackArchiver.logger.info "Filtered #{skipped} URL(s) by extension" if skipped > 0
-      filtered
-    end
-    private_class_method :filter_by_extension
 
   end
 end
