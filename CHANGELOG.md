@@ -31,18 +31,35 @@
 - **RSS/Atom feed strategy** — new `strategy: :rss` for archiving URLs from RSS and Atom feeds
 - **Feed autodiscovery in `:auto`** — detects RSS/Atom feeds via HTML `<link>` tags and common feed paths before falling back to crawling (see [Auto discovery](README.md#auto-discovery))
 - **Report export** — `--report=results.csv` or `--report=results.json` from the CLI
-- **CLI improvements** — summary after archiving (`--[no-]summary`), `--quiet` mode, `--rss` flag, input validation for concurrency/limit/timeout/host patterns
+- **Event listener system** — subscribe to lifecycle events (`on_resolved`, `on_submitted`, `on_completed`, `on_progress`, `on_batch_start`, `on_waiting_for_slots`) for custom progress reporting. Subclass `NullListener`, pass a hash of procs, or use any object — unimplemented events are silently skipped.
+- **Configuration class** — all settings extracted into `WaybackArchiver::Configuration`, accessed via `WaybackArchiver.config`. The `configure` block and convenience getters (`logger`, `listener`) are unchanged.
+- **SPN2 system/user status** — `--status` flag queries `POST /save/status/system` and `POST /save/status/user` and exits
+- **URL extension filtering** — `--include-ext=pdf,doc` archives only matching URLs; `--exclude-ext=zip,png` skips matching URLs. Available via Ruby API as `include_ext:` / `exclude_ext:` parameters.
+- **Outlinks availability** — `--outlinks-availability` returns last-capture timestamps for outlinks
+- **TTY progress bar** — sticky two-line footer with adaptive progress bar, ETA (exponential moving average), and state indicator (Submitting/Polling/Waiting). Automatically hidden on non-TTY output.
+- **Connection error retry** — transient connection errors (timeouts, refused, reset) retried with exponential backoff (up to 3 attempts)
+- **Ctrl+C handling** — graceful interrupt shows summary of progress so far and a `--resume` command to continue
+- **Dynamic chunk sizing** — batch submissions adapt chunk size based on `check_user_status` response and available capture slots
+- **CLI improvements** — summary after archiving (`--[no-]summary`), `--quiet` mode, `--rss` flag, input validation for concurrency/limit/timeout/host patterns, startup banner showing limit/hosts/skip-archived, human-readable duration in summary (h/m/s)
 - **`Request.post`** — new HTTP POST support in the request layer
-- **GitHub Actions CI** — replaced Travis CI, testing Ruby 3.1-3.4
+- **GitHub Actions CI** — replaced Travis CI, testing Ruby 3.1–3.4
 - **Examples directory** — runnable scripts for all common use cases
+- **`bin/console`** — IRB console with the gem pre-loaded for local development
 
 **Bug fixes / internal:**
 
 - Fixed CLI typo: `Verboes` → `Verbose`
 - Removed duplicate `-h` flag in CLI
 - Fixed `:auto` strategy not passing `limit:` to all code paths
+- Fixed `:auto` strategy not passing `hosts:` to crawl
+- Fixed crawler not following redirects to different hosts
+- Fixed `Sitemapper.autodiscover` crash on URLs without scheme
+- Fixed `poll_statuses` Array response causing lost results and bloated pending list
+- Re-queue transient poll errors for fresh submit in batch mode
+- Route log output through progress renderer to prevent footer corruption
 - Added `logger`, `rss`, `csv` as explicit gem dependencies (removed from Ruby stdlib)
 - Replaced vendored `robots.rb` with `webrobots` gem
+- Refactored CLI into focused classes (`CLI`, `CLIListener`, `CLI::OptionParser`, `CLI::ProgressRenderer`, `CLI::Summary`)
 
 ## v1.5.0
 

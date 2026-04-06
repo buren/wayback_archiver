@@ -47,6 +47,12 @@ WaybackArchiver.archive('www.example.com', strategy: :crawl,
 
 # Limit concurrency and total URLs
 WaybackArchiver.archive('example.com', concurrency: 10, limit: 100)
+
+# Filter by file extension
+WaybackArchiver.archive('example.com', strategy: :crawl,
+  include_ext: %w[html pdf])  # only archive these extensions
+WaybackArchiver.archive('example.com', strategy: :crawl,
+  exclude_ext: %w[zip png jpg])  # skip these extensions
 ```
 
 **SPN2 capture options:**
@@ -128,6 +134,13 @@ wayback_archiver example.com --check
 
 # Skip URLs already archived within the last 7 days
 wayback_archiver example.com --skip-archived=7d
+
+# Filter by file extension
+wayback_archiver example.com --crawl --include-ext=html,pdf
+wayback_archiver example.com --crawl --exclude-ext=zip,png,jpg
+
+# Check SPN2 system and user status
+wayback_archiver --status --access-key=KEY --secret-key=SECRET
 
 # Resumable session (auto-saves progress, resumes on re-run)
 wayback_archiver example.com --session=session.jsonl
@@ -220,6 +233,7 @@ Any object works — only implement the methods you need. Unimplemented events a
 | Event | When | Keywords |
 |-------|------|----------|
 | `on_resolved` | Strategy determined, URL count known | `strategy:, url_count:, source:` |
+| `on_batch_start` | Batch archiving begins | `total:` |
 | `on_submitted` | URL submitted to SPN2 | `url:, job_id:` |
 | `on_completed` | URL finished (success, cached, error) | `result:` |
 | `on_progress` | After each poll cycle | `captured:, failed:, pending:` |
@@ -268,7 +282,7 @@ v2.0 uses the SPN2 API, replacing the old fire-and-forget SPN1 approach. Capture
 - **Rich result objects** with SPN2 fields (`job_id`, `timestamp`, `wayback_url`, `duration_sec`, `resources`, `outlinks`, `screenshot_url`, `status_ext`)
 - **Default concurrency** changed from 1 to 4
 - **`:auto` strategy enhanced** — now also checks for RSS/Atom feeds before falling back to crawling
-- **New CLI features** — `--check`, `--skip-archived`, `--file`, `--session`/`--resume`, `--report`
+- **New CLI features** — `--check`, `--skip-archived`, `--file`, `--session`/`--resume`, `--report`, `--status`, `--include-ext`/`--exclude-ext`
 - **Ruby >= 3.1** required (was >= 2.0)
 - **CI moved** from Travis CI to GitHub Actions
 - **SSL verification** enabled by default
