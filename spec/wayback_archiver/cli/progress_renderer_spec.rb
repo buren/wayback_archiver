@@ -213,6 +213,32 @@ RSpec.describe WaybackArchiver::CLI::ProgressRenderer do
     end
   end
 
+  describe '#print_above' do
+    before do
+      renderer.set_total(10)
+      renderer.start
+      renderer.repaint
+    end
+
+    it 'clears footer, writes text, then redraws footer' do
+      output_before = output.dup
+      renderer.print_above("WARN: something happened\n")
+      new_output = output[output_before.length..]
+
+      # Should contain: clear escape, the warn text, then a fresh footer
+      expect(new_output).to include("\e[A")
+      expect(new_output).to include('WARN: something happened')
+      expect(clean_output).to include('0/10')
+    end
+
+    it 'writes directly when no footer is drawn' do
+      fresh_renderer = described_class.new(stdout, terminal_width: 80)
+      fresh_renderer.print_above("some text\n")
+
+      expect(clean_output).to include('some text')
+    end
+  end
+
   describe 'thread safety' do
     it 'handles concurrent record_completion calls' do
       renderer.set_total(100)

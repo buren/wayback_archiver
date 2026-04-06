@@ -242,6 +242,33 @@ RSpec.describe WaybackArchiver::CLI do
     end
   end
 
+  describe WaybackArchiver::CLI::FooterAwareOutput do
+    let(:io) { StringIO.new }
+    let(:output) { described_class.new(io) }
+
+    it 'writes directly to IO when no renderer is set' do
+      output.write("hello\n")
+      expect(io.string).to eq("hello\n")
+    end
+
+    it 'routes through renderer when one is set' do
+      renderer = instance_double(WaybackArchiver::CLI::ProgressRenderer)
+      expect(renderer).to receive(:print_above).with("WARN: error\n")
+
+      output.renderer = renderer
+      output.write("WARN: error\n")
+    end
+
+    it 'reverts to direct IO when renderer is cleared' do
+      renderer = instance_double(WaybackArchiver::CLI::ProgressRenderer)
+      output.renderer = renderer
+      output.renderer = nil
+      output.write("direct\n")
+
+      expect(io.string).to eq("direct\n")
+    end
+  end
+
   describe '#install_signal_handler' do
     it 'does nothing without a session' do
       cli = build_cli('--no-session', '--no-summary', '--urls', 'http://example.com')

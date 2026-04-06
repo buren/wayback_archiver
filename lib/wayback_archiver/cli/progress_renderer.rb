@@ -76,6 +76,12 @@ module WaybackArchiver
         end
       end
 
+      # Write raw text above the footer. Unlike print_result, does not
+      # append a newline — the caller (e.g. Logger) is expected to include it.
+      def print_above(text)
+        write_above_footer { @stdout.write(text) }
+      end
+
       # Update pending count and set state to "Polling...", then repaint.
       def update_progress(pending:)
         @mutex.synchronize do
@@ -108,6 +114,15 @@ module WaybackArchiver
       end
 
       private
+
+      def write_above_footer
+        @mutex.synchronize do
+          had_footer = @footer_drawn
+          clear_footer if had_footer
+          yield
+          render_footer if had_footer
+        end
+      end
 
       # Collapse burst completions (from a single poll resolving multiple jobs)
       # into one EMA sample: N URLs in T seconds → T/N seconds per URL.

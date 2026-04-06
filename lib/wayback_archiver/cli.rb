@@ -7,6 +7,8 @@ require 'wayback_archiver/cli/summary'
 
 module WaybackArchiver
   class CLIListener < NullListener
+    attr_reader :renderer
+
     def initialize(stdout, tty: stdout.respond_to?(:tty?) && stdout.tty?)
       @stdout = stdout
       @tty = tty
@@ -69,6 +71,26 @@ module WaybackArchiver
   end
 
   class CLI
+    # IO wrapper that routes writes through the progress renderer's
+    # clear/write/redraw cycle so log messages don't collide with
+    # the sticky footer.
+    class FooterAwareOutput
+      def initialize(io)
+        @io = io
+        @renderer = nil
+      end
+
+      attr_writer :renderer
+
+      def write(str)
+        r = @renderer
+        r ? r.print_above(str) : @io.write(str)
+      end
+
+      # no-op: don't close the underlying IO (typically STDOUT)
+      def close; end
+    end
+
     def self.run(argv = ARGV, stdout: $stdout, stderr: $stderr)
       new(argv, stdout: stdout, stderr: stderr).run
     end
@@ -92,18 +114,25 @@ module WaybackArchiver
       install_signal_handler
 
       results = run_archive
-      @cli_listener&.finish
       @summary.write_report(results, @options.report_path)
       cleanup_session(results)
       @summary.print_summary(results, @archive_start_time) if @options.show_summary
     ensure
+      @cli_listener&.finish
+      @log_output&.renderer = nil
       @session&.close
     end
 
     private
 
     def setup_logger
-      WaybackArchiver.config.logger = Logger.new(@options.log).tap do |logger|
+      log_target = @options.log
+      if log_target == STDOUT
+        @log_output = FooterAwareOutput.new(log_target)
+        log_target = @log_output
+      end
+
+      WaybackArchiver.config.logger = Logger.new(log_target).tap do |logger|
         logger.progname = 'WaybackArchiver'
         logger.level = @options.log_level
         logger.formatter = proc do |severity, _time, _progname, msg|
@@ -205,6 +234,7 @@ module WaybackArchiver
 
       WaybackArchiver.logger.info(@summary.startup_banner(@options))
       @cli_listener = CLIListener.new(@stdout)
+      @log_output&.renderer = @cli_listener.renderer
       WaybackArchiver.config.listener = @cli_listener
       @archive_start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
