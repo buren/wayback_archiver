@@ -1,8 +1,8 @@
 require 'spec_helper'
 require 'stringio'
-require 'wayback_archiver/progress_renderer'
+require 'wayback_archiver/cli/progress_renderer'
 
-RSpec.describe WaybackArchiver::ProgressRenderer do
+RSpec.describe WaybackArchiver::CLI::ProgressRenderer do
   let(:stdout) { StringIO.new }
   let(:renderer) { described_class.new(stdout, terminal_width: 80) }
 

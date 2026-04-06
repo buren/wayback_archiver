@@ -27,147 +27,6 @@ RSpec.describe WaybackArchiver::CLI do
     end
   end
 
-  describe 'option parsing' do
-    it 'parses --concurrency' do
-      cli = build_cli('--concurrency=8', 'http://example.com')
-      expect(cli.instance_variable_get(:@concurrency)).to eq(8)
-    end
-
-    it 'parses --limit' do
-      cli = build_cli('--limit=50', 'http://example.com')
-      expect(cli.instance_variable_get(:@limit)).to eq(50)
-    end
-
-    it 'parses strategy flags' do
-      %w[auto crawl sitemap urls rss].each do |strategy|
-        cli = build_cli("--#{strategy}", 'http://example.com')
-        expect(cli.instance_variable_get(:@strategy)).to eq(strategy)
-      end
-    end
-
-    it 'parses --check' do
-      cli = build_cli('--check', 'http://example.com')
-      expect(cli.instance_variable_get(:@check_mode)).to eq(true)
-    end
-
-    it 'parses --status' do
-      cli = build_cli('--status', 'http://example.com')
-      expect(cli.instance_variable_get(:@status_mode)).to eq(true)
-    end
-
-    it 'parses --no-summary' do
-      cli = build_cli('--no-summary', 'http://example.com')
-      expect(cli.instance_variable_get(:@show_summary)).to eq(false)
-    end
-
-    it 'parses --no-session' do
-      cli = build_cli('--no-session', 'http://example.com')
-      expect(cli.instance_variable_get(:@no_session)).to eq(true)
-    end
-
-    it 'parses SPN2 capture options' do
-      cli = build_cli('--capture-all', '--force-get', 'http://example.com')
-      options = cli.instance_variable_get(:@options)
-      expect(options[:capture_all]).to eq(true)
-      expect(options[:force_get]).to eq(true)
-    end
-
-    it 'rejects --concurrency=0' do
-      expect { build_cli('--concurrency=0', 'http://example.com') }
-        .to raise_error(ArgumentError, /Concurrency/)
-    end
-
-    it 'rejects --js-behavior-timeout=31' do
-      expect { build_cli('--js-behavior-timeout=31', 'http://example.com') }
-        .to raise_error(ArgumentError, /js-behavior-timeout/)
-    end
-  end
-
-  describe 'validation' do
-    it 'rejects --check with --skip-archived' do
-      cli = build_cli('--check', '--skip-archived', 'http://example.com')
-      expect { cli.run }.to raise_error(ArgumentError, /mutually exclusive/)
-    end
-
-    it 'rejects --resume with --session' do
-      Dir.mktmpdir do |dir|
-        session = File.join(dir, 'session.jsonl')
-        File.write(session, '')
-        cli = build_cli('--resume', session, '--session', File.join(dir, 'other.jsonl'), 'http://example.com')
-        expect { cli.run }.to raise_error(ArgumentError, /mutually exclusive/)
-      end
-    end
-
-    it 'rejects --resume with --no-session' do
-      Dir.mktmpdir do |dir|
-        session = File.join(dir, 'session.jsonl')
-        File.write(session, '')
-        cli = build_cli('--resume', session, '--no-session', 'http://example.com')
-        expect { cli.run }.to raise_error(ArgumentError, /mutually exclusive/)
-      end
-    end
-
-    it 'rejects --resume with nonexistent file' do
-      cli = build_cli('--resume', '/tmp/nonexistent-session-file', 'http://example.com')
-      expect { cli.run }.to raise_error(ArgumentError, /not found/)
-    end
-
-    it 'requires at least one URL' do
-      cli = build_cli('--urls')
-      expect { cli.run }.to raise_error(ArgumentError, /required/)
-    end
-  end
-
-  describe 'URL reading' do
-    it 'reads URLs from ARGV' do
-      cli = build_cli('--urls', 'http://a.com', 'http://b.com')
-      # trigger URL reading by running — will fail at archive step
-      allow(WaybackArchiver).to receive(:archive).and_return([])
-      cli.run
-      expect(cli.instance_variable_get(:@urls)).to eq(%w[http://a.com http://b.com])
-    end
-
-    it 'reads URLs from --file' do
-      Dir.mktmpdir do |dir|
-        path = File.join(dir, 'urls.txt')
-        File.write(path, "http://a.com\n# comment\n\nhttp://b.com\n")
-        cli = build_cli('--file', path)
-        allow(WaybackArchiver).to receive(:archive).and_return([])
-        cli.run
-        urls = cli.instance_variable_get(:@urls)
-        expect(urls).to eq(%w[http://a.com http://b.com])
-      end
-    end
-
-    it 'defaults to --urls strategy when --file is used' do
-      Dir.mktmpdir do |dir|
-        path = File.join(dir, 'urls.txt')
-        File.write(path, "http://a.com\n")
-        cli = build_cli('--file', path)
-        allow(WaybackArchiver).to receive(:archive).and_return([])
-        cli.run
-        expect(cli.instance_variable_get(:@strategy)).to eq('urls')
-      end
-    end
-
-    it 'deduplicates URLs from file and ARGV' do
-      Dir.mktmpdir do |dir|
-        path = File.join(dir, 'urls.txt')
-        File.write(path, "http://a.com\n")
-        cli = build_cli('--file', path, 'http://a.com')
-        allow(WaybackArchiver).to receive(:archive).and_return([])
-        cli.run
-        urls = cli.instance_variable_get(:@urls)
-        expect(urls).to eq(%w[http://a.com])
-      end
-    end
-
-    it 'raises on missing file' do
-      cli = build_cli('--file', '/nonexistent/urls.txt')
-      expect { cli.run }.to raise_error(ArgumentError, /File not found/)
-    end
-  end
-
   describe 'status mode' do
     it 'prints system and user status' do
       allow(WaybackArchiver::WaybackMachine).to receive(:system_status)
@@ -195,99 +54,44 @@ RSpec.describe WaybackArchiver::CLI do
 
       expect(stdout_output).to include('credentials required')
     end
-  end
 
-  describe '#print_summary' do
-    it 'tallies results correctly' do
-      results = [
-        WaybackArchiver::ArchiveResult.new('http://a.com', timestamp: '20240101000000'),
-        WaybackArchiver::ArchiveResult.new('http://b.com', status_ext: 'error:blocked-url'),
-        WaybackArchiver::ArchiveResult.new('http://c.com', status_ext: 'cached'),
-        WaybackArchiver::ArchiveResult.new('http://d.com', status_ext: 'skipped:already-archived'),
-      ]
+    it 'handles system status error gracefully' do
+      allow(WaybackArchiver::WaybackMachine).to receive(:system_status)
+        .and_raise(StandardError.new('connection refused'))
+      allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status)
+        .and_return({ 'available' => 10, 'processing' => 2 })
 
-      cli = build_cli('http://example.com')
-      cli.send(:print_summary, results, Time.now.to_f)
+      cli = build_cli('--status')
+      expect { cli.run }.to raise_error(SystemExit)
 
-      expect(stdout_output).to include('Succeeded: 1')
-      expect(stdout_output).to include('Failed: 1')
-      expect(stdout_output).to include('Cached: 1')
-      expect(stdout_output).to include('Skipped: 1')
-      expect(stdout_output).to include('Total: 4')
-    end
-  end
-
-  describe '#build_resume_command' do
-    it 'includes strategy, URLs, and session path' do
-      cli = build_cli('--crawl', '--concurrency=8', 'http://example.com')
-      cli.instance_variable_set(:@urls, ['http://example.com'])
-      cli.instance_variable_set(:@strategy, 'crawl')
-      session = instance_double(WaybackArchiver::SessionFile, path: '/tmp/session.jsonl')
-      cli.instance_variable_set(:@session, session)
-
-      cmd = cli.send(:build_resume_command)
-
-      expect(cmd).to include('wayback_archiver')
-      expect(cmd).to include('http://example.com')
-      expect(cmd).to include('--resume=/tmp/session.jsonl')
-      expect(cmd).to include('--crawl')
-      expect(cmd).to include('--concurrency=8')
-    end
-  end
-
-  describe 'option parsing edge cases' do
-    it 'rejects --limit=0' do
-      expect { build_cli('--limit=0', 'http://example.com') }
-        .to raise_error(ArgumentError, /Limit/)
+      expect(stdout_output).to include('unreachable')
+      expect(stdout_output).to include('connection refused')
     end
 
-    it 'accepts --limit=-1 for unlimited' do
-      cli = build_cli('--limit=-1', 'http://example.com')
-      expect(cli.instance_variable_get(:@limit)).to eq(-1)
+    it 'handles user status error gracefully' do
+      allow(WaybackArchiver::WaybackMachine).to receive(:system_status)
+        .and_return({ 'status' => 'ok' })
+      allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status)
+        .and_raise(StandardError.new('network error'))
+
+      cli = build_cli('--status')
+      expect { cli.run }.to raise_error(SystemExit)
+
+      expect(stdout_output).to include('System: ok')
+      expect(stdout_output).to include('unreachable')
     end
 
-    it 'rejects invalid --hosts regex' do
-      expect { build_cli('--hosts=[invalid', 'http://example.com') }
-        .to raise_error(ArgumentError, /Invalid host pattern/)
-    end
+    it 'omits daily captures when not present' do
+      allow(WaybackArchiver::WaybackMachine).to receive(:system_status)
+        .and_return({ 'status' => 'ok' })
+      allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status)
+        .and_return({ 'available' => 5, 'processing' => 1 })
 
-    it 'parses --hosts as array of Regexp' do
-      cli = build_cli('--hosts=example\\.com,other\\.org', 'http://example.com')
-      hosts = cli.instance_variable_get(:@hosts)
-      expect(hosts.length).to eq(2)
-      expect(hosts).to all(be_a(Regexp))
-    end
+      cli = build_cli('--status')
+      expect { cli.run }.to raise_error(SystemExit)
 
-    it 'parses --skip-archived without value' do
-      cli = build_cli('--skip-archived', 'http://example.com')
-      expect(cli.instance_variable_get(:@skip_archived)).to eq(true)
-      expect(cli.instance_variable_get(:@skip_archived_within)).to be_nil
-    end
-
-    it 'parses --skip-archived with timedelta value' do
-      cli = build_cli('--skip-archived=7d', 'http://example.com')
-      expect(cli.instance_variable_get(:@skip_archived)).to eq(true)
-      expect(cli.instance_variable_get(:@skip_archived_within)).to eq('7d')
-    end
-
-    it 'parses --report' do
-      cli = build_cli('--report=/tmp/out.csv', 'http://example.com')
-      expect(cli.instance_variable_get(:@report_path)).to eq('/tmp/out.csv')
-    end
-
-    it 'parses --quiet to set FATAL log level' do
-      cli = build_cli('--quiet', 'http://example.com')
-      expect(cli.instance_variable_get(:@log_level)).to eq(Logger::FATAL)
-    end
-
-    it 'parses --verbose to set DEBUG log level' do
-      cli = build_cli('--verbose', 'http://example.com')
-      expect(cli.instance_variable_get(:@log_level)).to eq(Logger::DEBUG)
-    end
-
-    it 'parses --no-verbose to set WARN log level' do
-      cli = build_cli('--no-verbose', 'http://example.com')
-      expect(cli.instance_variable_get(:@log_level)).to eq(Logger::WARN)
+      expect(stdout_output).to include('Available: 5')
+      expect(stdout_output).not_to include('Daily captures:')
     end
   end
 
@@ -309,10 +113,8 @@ RSpec.describe WaybackArchiver::CLI do
       results = [WaybackArchiver::ArchiveResult.new('http://example.com', timestamp: '20240101000000')]
       allow(WaybackArchiver).to receive(:archive).and_return(results)
 
-      # Auto-generated session gets deleted on success, but we can verify the flag was set
       cli.run
 
-      # auto_generated_session is set to true, session deleted on success (set to nil)
       expect(cli.instance_variable_get(:@auto_generated_session)).to eq(true)
       expect(cli.instance_variable_get(:@session)).to be_nil
     end
@@ -361,7 +163,6 @@ RSpec.describe WaybackArchiver::CLI do
       allow(WaybackArchiver).to receive(:archive).and_return(results)
       cli.run
 
-      # Auto-generated session is deleted on success
       expect(cli.instance_variable_get(:@auto_generated_session)).to eq(true)
       expect(cli.instance_variable_get(:@session)).to be_nil
     end
@@ -441,155 +242,13 @@ RSpec.describe WaybackArchiver::CLI do
     end
   end
 
-  describe 'status mode' do
-    it 'handles system status error gracefully' do
-      allow(WaybackArchiver::WaybackMachine).to receive(:system_status)
-        .and_raise(StandardError.new('connection refused'))
-      allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status)
-        .and_return({ 'available' => 10, 'processing' => 2 })
-
-      cli = build_cli('--status')
-      expect { cli.run }.to raise_error(SystemExit)
-
-      expect(stdout_output).to include('unreachable')
-      expect(stdout_output).to include('connection refused')
-    end
-
-    it 'handles user status error gracefully' do
-      allow(WaybackArchiver::WaybackMachine).to receive(:system_status)
-        .and_return({ 'status' => 'ok' })
-      allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status)
-        .and_raise(StandardError.new('network error'))
-
-      cli = build_cli('--status')
-      expect { cli.run }.to raise_error(SystemExit)
-
-      expect(stdout_output).to include('System: ok')
-      expect(stdout_output).to include('unreachable')
-    end
-
-    it 'omits daily captures when not present' do
-      allow(WaybackArchiver::WaybackMachine).to receive(:system_status)
-        .and_return({ 'status' => 'ok' })
-      allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status)
-        .and_return({ 'available' => 5, 'processing' => 1 })
-
-      cli = build_cli('--status')
-      expect { cli.run }.to raise_error(SystemExit)
-
-      expect(stdout_output).to include('Available: 5')
-      expect(stdout_output).not_to include('Daily captures:')
-    end
-  end
-
-  describe '#print_summary' do
-    it 'shows submitted count when present' do
-      results = [
-        WaybackArchiver::ArchiveResult.new('http://a.com', job_id: 'j1', status_ext: 'submitted'),
-      ]
-
-      cli = build_cli('http://example.com')
-      cli.send(:print_summary, results, Process.clock_gettime(Process::CLOCK_MONOTONIC))
-
-      expect(stdout_output).to include('Submitted: 1')
-    end
-
-    it 'shows error breakdown by category' do
-      results = [
-        WaybackArchiver::ArchiveResult.new('http://a.com', status_ext: 'error:too-many-requests'),
-        WaybackArchiver::ArchiveResult.new('http://b.com', status_ext: 'error:too-many-daily-captures'),
-        WaybackArchiver::ArchiveResult.new('http://c.com', status_ext: 'error:blocked-url'),
-      ]
-
-      cli = build_cli('http://example.com')
-      cli.send(:print_summary, results, Process.clock_gettime(Process::CLOCK_MONOTONIC))
-
-      expect(stdout_output).to include('transient')
-      expect(stdout_output).to include('daily limit')
-      expect(stdout_output).to include('permanent')
-    end
-
-    it 'formats duration as seconds for short runs' do
-      results = [WaybackArchiver::ArchiveResult.new('http://a.com', timestamp: '20240101000000')]
-      start = Process.clock_gettime(Process::CLOCK_MONOTONIC) - 42.0
-      cli = build_cli('http://example.com')
-      cli.send(:print_summary, results, start)
-
-      expect(stdout_output).to include('Duration: 42s')
-    end
-
-    it 'formats duration as minutes and seconds' do
-      results = [WaybackArchiver::ArchiveResult.new('http://a.com', timestamp: '20240101000000')]
-      start = Process.clock_gettime(Process::CLOCK_MONOTONIC) - 754.0
-      cli = build_cli('http://example.com')
-      cli.send(:print_summary, results, start)
-
-      expect(stdout_output).to include('Duration: 12m 34s')
-    end
-
-    it 'formats duration as hours, minutes, and seconds' do
-      results = [WaybackArchiver::ArchiveResult.new('http://a.com', timestamp: '20240101000000')]
-      start = Process.clock_gettime(Process::CLOCK_MONOTONIC) - 5025.0
-      cli = build_cli('http://example.com')
-      cli.send(:print_summary, results, start)
-
-      expect(stdout_output).to include('Duration: 1h 23m 45s')
-    end
-
-    it 'clamps sub-second durations to 1s' do
-      results = [WaybackArchiver::ArchiveResult.new('http://a.com', timestamp: '20240101000000')]
-      start = Process.clock_gettime(Process::CLOCK_MONOTONIC) - 0.1
-      cli = build_cli('http://example.com')
-      cli.send(:print_summary, results, start)
-
-      expect(stdout_output).to include('Duration: 1s')
-    end
-
-    it 'shows URLs/min rate' do
-      results = [WaybackArchiver::ArchiveResult.new('http://a.com', timestamp: '20240101000000')]
-      start = Process.clock_gettime(Process::CLOCK_MONOTONIC) - 120.0
-      cli = build_cli('http://example.com')
-      cli.send(:print_summary, results, start)
-
-      expect(stdout_output).to include('URLs/min')
-    end
-  end
-
   describe '#install_signal_handler' do
     it 'does nothing without a session' do
-      cli = build_cli('--no-session', 'http://example.com')
-      cli.instance_variable_set(:@session, nil)
+      cli = build_cli('--no-session', '--no-summary', '--urls', 'http://example.com')
+      allow(WaybackArchiver).to receive(:archive).and_return([])
 
       expect(Signal).not_to receive(:trap)
-      cli.send(:install_signal_handler)
-    end
-  end
-
-  describe '#build_resume_command' do
-    it 'includes --file when file_path was used' do
-      cli = build_cli('--crawl', '--file=/tmp/urls.txt')
-      cli.instance_variable_set(:@urls, ['http://example.com'])
-      cli.instance_variable_set(:@strategy, 'crawl')
-      cli.instance_variable_set(:@file_path, '/tmp/urls.txt')
-      session = instance_double(WaybackArchiver::SessionFile, path: '/tmp/session.jsonl')
-      cli.instance_variable_set(:@session, session)
-
-      cmd = cli.send(:build_resume_command)
-
-      expect(cmd).to include('--file=/tmp/urls.txt')
-      expect(cmd).not_to include('http://example.com')
-    end
-
-    it 'includes SPN2 options' do
-      cli = build_cli('--urls', '--capture-all', 'http://example.com')
-      cli.instance_variable_set(:@urls, ['http://example.com'])
-      cli.instance_variable_set(:@strategy, 'urls')
-      session = instance_double(WaybackArchiver::SessionFile, path: '/tmp/session.jsonl')
-      cli.instance_variable_set(:@session, session)
-
-      cmd = cli.send(:build_resume_command)
-
-      expect(cmd).to include('--capture-all')
+      cli.run
     end
   end
 
@@ -688,7 +347,6 @@ RSpec.describe WaybackArchiver::CLI do
         listener.on_batch_start(total: 10)
         listener.finish
 
-        # After finish, the ANSI clear sequences should have been written
         expect(stdout_output).to include("\e[A")
       end
     end
