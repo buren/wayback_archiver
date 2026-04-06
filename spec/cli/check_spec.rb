@@ -20,6 +20,8 @@ RSpec.describe 'CLI --check flag' do
   describe '--check' do
     it 'does not mention session file' do
       url_file = write_url_file("https://example.com\n")
+      allow(WaybackArchiver).to receive(:check).and_return([])
+
       stdout, _stderr, _status = run_cli('--check', '--file', url_file, '--urls')
 
       expect(stdout).not_to include('Session file:')

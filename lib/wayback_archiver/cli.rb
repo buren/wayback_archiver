@@ -128,7 +128,7 @@ module WaybackArchiver
 
     def setup_logger
       log_target = @options.log
-      if log_target == STDOUT
+      if log_target == @stdout
         @log_output = FooterAwareOutput.new(log_target)
         log_target = @log_output
       end

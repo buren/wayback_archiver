@@ -40,7 +40,7 @@ module WaybackArchiver
         Options.new(
           strategy: nil,
           file_path: nil,
-          log: STDOUT,
+          log: @stdout,
           log_level: Logger::INFO,
           concurrency: WaybackArchiver.config.concurrency,
           limit: WaybackArchiver.config.max_limit,
