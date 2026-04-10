@@ -195,5 +195,48 @@ RSpec.describe WaybackArchiver::CLI::OptionParser do
       expect { parse('--file', '/nonexistent/urls.txt') }
         .to raise_error(ArgumentError, /File not found/)
     end
+
+    it 'raises on unreadable file' do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, 'noperm.txt')
+        File.write(path, "http://a.com\n")
+        File.chmod(0o000, path)
+        expect { parse('--file', path) }
+          .to raise_error(ArgumentError, /File not readable/)
+      ensure
+        File.chmod(0o644, path) if File.exist?(path)
+      end
+    end
+  end
+
+  describe 'authentication options' do
+    it 'parses --access-key' do
+      parse('--access-key=my-access', 'http://example.com')
+      expect(WaybackArchiver.config.access_key).to eq('my-access')
+    end
+
+    it 'parses --secret-key' do
+      parse('--secret-key=my-secret', 'http://example.com')
+      expect(WaybackArchiver.config.secret_key).to eq('my-secret')
+    end
+  end
+
+  describe 'filter options' do
+    it 'parses --include-ext' do
+      opts = parse('--include-ext=pdf,doc', 'http://example.com')
+      expect(opts.spn2_options[:include_ext]).to eq(%w[pdf doc])
+    end
+
+    it 'parses --exclude-ext' do
+      opts = parse('--exclude-ext=zip,png', 'http://example.com')
+      expect(opts.spn2_options[:exclude_ext]).to eq(%w[zip png])
+    end
+  end
+
+  describe 'general options' do
+    it 'parses --log' do
+      opts = parse('--log=/tmp/test.log', 'http://example.com')
+      expect(opts.log).to eq('/tmp/test.log')
+    end
   end
 end

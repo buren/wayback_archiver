@@ -31,6 +31,35 @@ RSpec.describe WaybackArchiver::NullListener do
   end
 end
 
+RSpec.describe WaybackArchiver::ListenerProxy do
+  describe 'respond_to_missing?' do
+    it 'delegates to the wrapped listener' do
+      listener = Object.new
+      def listener.custom_method; end
+      proxy = described_class.new(listener)
+
+      expect(proxy.respond_to?(:custom_method)).to eq(true)
+      expect(proxy.respond_to?(:nonexistent_method)).to eq(false)
+    end
+  end
+
+  describe 'method_missing' do
+    it 'delegates unknown methods to the wrapped listener' do
+      listener = Object.new
+      def listener.custom_method = :delegated
+      proxy = described_class.new(listener)
+
+      expect(proxy.custom_method).to eq(:delegated)
+    end
+
+    it 'raises NoMethodError for methods the listener does not respond to' do
+      proxy = described_class.new(Object.new)
+
+      expect { proxy.totally_unknown_method }.to raise_error(NoMethodError)
+    end
+  end
+end
+
 RSpec.describe 'Listener events' do
   let(:listener) { WaybackArchiver.listener }
 

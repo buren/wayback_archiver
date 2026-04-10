@@ -136,13 +136,31 @@ RSpec.describe WaybackArchiver::CLI::Summary do
       expect(cmd).not_to include('http://example.com')
     end
 
-    it 'includes SPN2 options' do
+    it 'includes boolean SPN2 options' do
       opts = build_options(strategy: 'urls', spn2_options: { capture_all: true })
       session = instance_double(WaybackArchiver::SessionFile, path: '/tmp/session.jsonl')
 
       cmd = summary.build_resume_command(opts, session)
 
       expect(cmd).to include('--capture-all')
+    end
+
+    it 'includes array SPN2 options' do
+      opts = build_options(strategy: 'urls', spn2_options: { include_ext: %w[pdf doc] })
+      session = instance_double(WaybackArchiver::SessionFile, path: '/tmp/session.jsonl')
+
+      cmd = summary.build_resume_command(opts, session)
+
+      expect(cmd).to include('--include-ext=pdf,doc')
+    end
+
+    it 'includes scalar SPN2 options' do
+      opts = build_options(strategy: 'urls', spn2_options: { js_behavior_timeout: 10 })
+      session = instance_double(WaybackArchiver::SessionFile, path: '/tmp/session.jsonl')
+
+      cmd = summary.build_resume_command(opts, session)
+
+      expect(cmd).to include('--js-behavior-timeout=10')
     end
   end
 
