@@ -247,22 +247,16 @@ The default `:auto` strategy tries multiple discovery methods in order, using th
 
 ```mermaid
 flowchart LR
-    A[Fetch source URL] --> B{RSS/Atom feed?}
-    B -- Yes --> Z[Archive extracted URLs]
-    B -- No --> C{Sitemap found?}
-    C -- Yes --> Z
-    C -- No --> D{Feed auto-discovered?}
-    D -- Yes --> Z
-    D -- No --> E[Crawl the site]
-    E --> Z
+    A[Source URL] --> B{Sitemap found?}
+    B -- Yes --> Z[Archive discovered URLs]
+    B -- No --> C[Crawl the site]
+    C --> Z
 ```
 
-1. **Direct feed detection** -- fetches the source URL and checks if it is itself an RSS or Atom feed
-2. **Sitemap discovery** -- looks for sitemaps via `robots.txt` and common sitemap paths
-3. **Feed autodiscovery** -- looks for `<link>` tags with `type="application/rss+xml"` or `type="application/atom+xml"` in the page HTML, then falls back to probing common feed paths (`/feed`, `/feed.xml`, `/rss.xml`, `/atom.xml`, `/index.xml`)
-4. **Crawl** -- spiders the site following same-domain links
+1. **Sitemap discovery** -- looks for sitemaps via `robots.txt` and common sitemap paths
+2. **Crawl** -- spiders the site following same-domain links
 
-This means pointing WaybackArchiver at a blog with an RSS feed will automatically find and archive all posts without needing to specify a strategy.
+RSS/Atom feeds are intentionally excluded from auto discovery — feeds typically contain only recent posts, not a comprehensive list of site URLs. Use `strategy: :rss` explicitly when you want to archive feed URLs.
 
 ## Migrating from v1.x
 
@@ -281,7 +275,7 @@ v2.0 uses the SPN2 API, replacing the old fire-and-forget SPN1 approach. Capture
   ```
 - **Rich result objects** with SPN2 fields (`job_id`, `timestamp`, `wayback_url`, `duration_sec`, `resources`, `outlinks`, `screenshot_url`, `status_ext`)
 - **Default concurrency** changed from 1 to 4
-- **`:auto` strategy enhanced** — now also checks for RSS/Atom feeds before falling back to crawling
+- **`:auto` strategy enhanced** — now checks for sitemaps before falling back to crawling (use `strategy: :rss` for feed-based archiving)
 - **New CLI features** — `--check`, `--skip-archived`, `--file`, `--session`/`--resume`, `--report`, `--status`, `--include-ext`/`--exclude-ext`
 - **Ruby >= 3.1** required (was >= 2.0)
 - **CI moved** from Travis CI to GitHub Actions

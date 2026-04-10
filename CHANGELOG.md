@@ -28,8 +28,7 @@
 - **CDX API integration** — `--check` queries the Wayback Machine CDX API to see if URLs are already archived; `--skip-archived[=TIMEDELTA]` skips URLs already in the archive (optionally within a time window)
 - **Resumable sessions** — `--session=PATH` writes a progressive JSONL state file during archiving; `--resume=PATH` picks up where a previous run left off, skipping already-completed URLs
 - **File input** — `--file=PATH` (or `-f`) reads URLs from a file (one per line, `#` comments supported, `-` for stdin)
-- **RSS/Atom feed strategy** — new `strategy: :rss` for archiving URLs from RSS and Atom feeds
-- **Feed autodiscovery in `:auto`** — detects RSS/Atom feeds via HTML `<link>` tags and common feed paths before falling back to crawling (see [Auto discovery](README.md#auto-discovery))
+- **RSS/Atom feed strategy** — `strategy: :rss` for archiving URLs from RSS and Atom feeds (not included in `:auto` since feeds typically contain only recent posts)
 - **Report export** — `--report=results.csv` or `--report=results.json` from the CLI
 - **Event listener system** — subscribe to lifecycle events (`on_resolved`, `on_submitted`, `on_completed`, `on_progress`, `on_batch_start`, `on_waiting_for_slots`) for custom progress reporting. Subclass `NullListener`, pass a hash of procs, or use any object — unimplemented events are silently skipped.
 - **Configuration class** — all settings extracted into `WaybackArchiver::Configuration`, accessed via `WaybackArchiver.config`. The `configure` block and convenience getters (`logger`, `listener`) are unchanged.

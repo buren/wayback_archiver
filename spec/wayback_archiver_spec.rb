@@ -117,44 +117,9 @@ RSpec.describe WaybackArchiver do
 
   describe '::auto' do
     let(:source) { 'http://example.com' }
-    let(:html_body) { '<html><head><title>Example</title></head></html>' }
-    let(:rss_body) do
-      <<~XML
-        <?xml version="1.0"?>
-        <rss version="2.0"><channel>
-          <item><link>http://example.com/post/1</link></item>
-        </channel></rss>
-      XML
-    end
 
-    before do
-      stub_request(:get, source)
-        .to_return(status: 200, body: html_body)
-    end
-
-    it 'uses feed URLs when source URL is itself a feed' do
-      stub_request(:get, source)
-        .to_return(status: 200, body: rss_body)
-      allow(described_class::Archive).to receive(:post).and_return([])
-
-      described_class.auto(source)
-
-      expect(described_class::Archive).to have_received(:post).once
-    end
-
-    it 'does not call Sitemapper when source is a feed' do
-      stub_request(:get, source)
-        .to_return(status: 200, body: rss_body)
-      allow(described_class::Archive).to receive(:post).and_return([])
-      allow(described_class::Sitemapper).to receive(:autodiscover)
-
-      described_class.auto(source)
-
-      expect(described_class::Sitemapper).not_to have_received(:autodiscover)
-    end
-
-    it 'falls through to Sitemapper when source is not a feed' do
-      allow(described_class::Sitemapper).to receive(:autodiscover).and_return(['url'])
+    it 'uses sitemap URLs when sitemap found' do
+      allow(described_class::Sitemapper).to receive(:autodiscover).and_return(%w[url1 url2])
       allow(described_class::Archive).to receive(:post).and_return([])
 
       described_class.auto(source)
@@ -163,31 +128,8 @@ RSpec.describe WaybackArchiver do
       expect(described_class::Archive).to have_received(:post).once
     end
 
-    it 'falls through to FeedParser.autodiscover when sitemapper finds nothing' do
+    it 'falls through to crawl when no sitemap found' do
       allow(described_class::Sitemapper).to receive(:autodiscover).and_return([])
-      allow(described_class::FeedParser).to receive(:autodiscover).and_return(['http://example.com/post/1'])
-      allow(described_class::Archive).to receive(:post).and_return([])
-
-      described_class.auto(source)
-
-      expect(described_class::FeedParser).to have_received(:autodiscover).once
-      expect(described_class::Archive).to have_received(:post).once
-    end
-
-    it 'passes source HTML body to FeedParser.autodiscover' do
-      allow(described_class::Sitemapper).to receive(:autodiscover).and_return([])
-      allow(described_class::FeedParser).to receive(:autodiscover).and_return([])
-      allow(described_class::Archive).to receive(:crawl).and_return([])
-
-      described_class.auto(source)
-
-      expect(described_class::FeedParser).to have_received(:autodiscover)
-        .with(source, html: html_body)
-    end
-
-    it 'falls through to crawl when nothing found' do
-      allow(described_class::Sitemapper).to receive(:autodiscover).and_return([])
-      allow(described_class::FeedParser).to receive(:autodiscover).and_return([])
       allow(described_class::Archive).to receive(:crawl).and_return([])
 
       described_class.auto(source)
@@ -198,7 +140,6 @@ RSpec.describe WaybackArchiver do
     it 'passes hosts to crawl when falling through' do
       hosts = [/careers\.example\.com/, /www\.example\.com/]
       allow(described_class::Sitemapper).to receive(:autodiscover).and_return([])
-      allow(described_class::FeedParser).to receive(:autodiscover).and_return([])
       allow(described_class::Archive).to receive(:crawl).and_return([])
 
       described_class.auto(source, hosts: hosts)
@@ -209,15 +150,14 @@ RSpec.describe WaybackArchiver do
       )
     end
 
-    it 'fires on_resolved with :feed when source is a feed' do
-      stub_request(:get, source)
-        .to_return(status: 200, body: rss_body)
-      allow(described_class::Archive).to receive(:post).and_return([])
+    it 'does not use feed detection' do
+      allow(described_class::Sitemapper).to receive(:autodiscover).and_return([])
+      allow(described_class::FeedParser).to receive(:autodiscover)
+      allow(described_class::Archive).to receive(:crawl).and_return([])
 
       described_class.auto(source)
 
-      expect(WaybackArchiver.listener.resolved_events.first[:strategy]).to eq(:feed)
-      expect(WaybackArchiver.listener.resolved_events.first[:url_count]).to eq(1)
+      expect(described_class::FeedParser).not_to have_received(:autodiscover)
     end
 
     it 'fires on_resolved with :sitemap when sitemap found' do
@@ -230,39 +170,14 @@ RSpec.describe WaybackArchiver do
       expect(WaybackArchiver.listener.resolved_events.first[:url_count]).to eq(2)
     end
 
-    it 'fires on_resolved with :feed when feed autodiscovery succeeds' do
-      allow(described_class::Sitemapper).to receive(:autodiscover).and_return([])
-      allow(described_class::FeedParser).to receive(:autodiscover).and_return(['http://example.com/post/1'])
-      allow(described_class::Archive).to receive(:post).and_return([])
-
-      described_class.auto(source)
-
-      expect(WaybackArchiver.listener.resolved_events.first[:strategy]).to eq(:feed)
-      expect(WaybackArchiver.listener.resolved_events.first[:url_count]).to eq(1)
-    end
-
     it 'fires on_resolved with :crawl when falling through to crawl' do
       allow(described_class::Sitemapper).to receive(:autodiscover).and_return([])
-      allow(described_class::FeedParser).to receive(:autodiscover).and_return([])
       allow(described_class::Archive).to receive(:crawl).and_return([])
 
       described_class.auto(source)
 
       expect(WaybackArchiver.listener.resolved_events.first[:strategy]).to eq(:crawl)
       expect(WaybackArchiver.listener.resolved_events.first[:url_count]).to be_nil
-    end
-
-    it 'handles Request::Error on source fetch gracefully' do
-      allow(described_class::Request).to receive(:get)
-        .with(source, anything)
-        .and_raise(described_class::Request::ServerError, 'connection failed')
-      allow(described_class::Sitemapper).to receive(:autodiscover).and_return([])
-      allow(described_class::FeedParser).to receive(:autodiscover).and_return([])
-      allow(described_class::Archive).to receive(:crawl).and_return([])
-
-      expect { described_class.auto(source) }.not_to raise_error
-
-      expect(described_class::Sitemapper).to have_received(:autodiscover).once
     end
   end
 
@@ -506,9 +421,6 @@ RSpec.describe WaybackArchiver do
     end
 
     it 'uses auto discovery cascade for :auto strategy' do
-      allow(described_class::Request).to receive(:get).and_return(
-        WaybackArchiver::Response.new('200', 'OK', 'not a feed', 'http://example.com')
-      )
       allow(described_class::Sitemapper).to receive(:autodiscover).and_return(%w[http://a.com http://b.com])
 
       result = described_class.discover_urls('http://example.com', strategy: :auto)
@@ -524,56 +436,22 @@ RSpec.describe WaybackArchiver do
 
     context 'auto strategy' do
       let(:source) { 'http://example.com' }
-      let(:rss_body) do
-        <<~XML
-          <?xml version="1.0"?>
-          <rss version="2.0"><channel>
-            <item><link>http://example.com/post/1</link></item>
-          </channel></rss>
-        XML
-      end
 
-      it 'returns feed URLs when source is itself a feed' do
-        stub_request(:get, source)
-          .to_return(status: 200, body: rss_body)
+      it 'returns sitemap URLs when sitemap found' do
+        allow(described_class::Sitemapper).to receive(:autodiscover).and_return(%w[http://example.com/page1 http://example.com/page2])
 
         result = described_class.discover_urls(source, strategy: :auto)
 
-        expect(result).to eq(%w[http://example.com/post/1])
+        expect(result).to eq(%w[http://example.com/page1 http://example.com/page2])
       end
 
-      it 'returns feed autodiscovery URLs when sitemap finds nothing' do
-        stub_request(:get, source)
-          .to_return(status: 200, body: '<html><head><link rel="alternate" type="application/rss+xml" href="/feed.xml"></head></html>')
+      it 'falls through to crawl when no sitemap found' do
         allow(described_class::Sitemapper).to receive(:autodiscover).and_return([])
-        allow(described_class::FeedParser).to receive(:autodiscover).and_return(%w[http://example.com/post/1])
-
-        result = described_class.discover_urls(source, strategy: :auto)
-
-        expect(result).to eq(%w[http://example.com/post/1])
-      end
-
-      it 'falls through to crawl when nothing else matches' do
-        stub_request(:get, source)
-          .to_return(status: 200, body: '<html></html>')
-        allow(described_class::Sitemapper).to receive(:autodiscover).and_return([])
-        allow(described_class::FeedParser).to receive(:autodiscover).and_return([])
         allow(described_class::URLCollector).to receive(:crawl).and_return(%w[http://example.com/page])
 
         result = described_class.discover_urls(source, strategy: :auto)
 
         expect(result).to eq(%w[http://example.com/page])
-      end
-
-      it 'handles Request::Error on source fetch and continues' do
-        allow(described_class::Request).to receive(:get)
-          .with(source, anything)
-          .and_raise(described_class::Request::ServerError, 'timeout')
-        allow(described_class::Sitemapper).to receive(:autodiscover).and_return(%w[http://example.com/from-sitemap])
-
-        result = described_class.discover_urls(source, strategy: :auto)
-
-        expect(result).to eq(%w[http://example.com/from-sitemap])
       end
     end
   end

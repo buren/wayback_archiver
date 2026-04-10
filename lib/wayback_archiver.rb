@@ -225,28 +225,14 @@ module WaybackArchiver
   end
   private_class_method :discover_urls_auto
 
-  # Resolve the auto strategy by trying feed, sitemap, feed autodiscovery, then crawl.
+  # Resolve the auto strategy by trying sitemap, then crawl.
+  # Feed detection is intentionally excluded — RSS/Atom feeds typically
+  # contain only recent posts, not a comprehensive URL list. Use
+  # strategy: :rss explicitly when feed URLs are desired.
   # @return [Array(Symbol, Array<String>)] [strategy, urls]
   def self.resolve_auto_strategy(source)
-    WaybackArchiver.logger.info "Fetching #{source}"
-    begin
-      response = Request.get(source, raise_on_http_error: false)
-      source_body = response.success? ? response.body : nil
-    rescue Request::Error => e
-      WaybackArchiver.logger.error "Error fetching #{source}: #{e.message}"
-      source_body = nil
-    end
-
-    if source_body
-      feed_urls = FeedParser.urls(xml: source_body)
-      return [:feed, feed_urls] if feed_urls.any?
-    end
-
     sitemap_urls = Sitemapper.autodiscover(source)
     return [:sitemap, sitemap_urls] if sitemap_urls.any?
-
-    feed_urls = FeedParser.autodiscover(source, html: source_body)
-    return [:feed, feed_urls] if feed_urls.any?
 
     [:crawl, []]
   end

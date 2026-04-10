@@ -12,7 +12,7 @@ bundle exec rspec spec/wayback_archiver/archive_spec.rb  # run one file
 
 Ruby gem wrapping the Internet Archive's SPN2 API. CLI entry point (`bin/wayback_archiver`) delegates to `CLI.run` which coordinates option parsing, session management, archiving, and summary output.
 
-**Strategy dispatch**: `WaybackArchiver.archive(url, strategy:)` routes to crawl/sitemap/rss/urls/auto. Auto cascades: feed → sitemap → feed autodiscovery → crawl.
+**Strategy dispatch**: `WaybackArchiver.archive(url, strategy:)` routes to crawl/sitemap/rss/urls/auto. Auto cascades: sitemap → crawl.
 
 **Configuration**: `WaybackArchiver.config` returns a `Configuration` instance holding all settings (concurrency, credentials, etc.). `WaybackArchiver.logger` and `.listener` are convenience delegates. All other config goes through `config`.
 
