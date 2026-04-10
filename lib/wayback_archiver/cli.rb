@@ -244,29 +244,20 @@ module WaybackArchiver
         @archive_results << result unless result.submitted?
       end
 
+      archive_opts = {
+        hosts: @options.hosts,
+        strategy: @options.strategy,
+        concurrency: @options.concurrency,
+        limit: @options.limit,
+        skip_urls: @skip_urls,
+        **@options.spn2_options
+      }
+
       results = if %w[urls url].include?(@options.strategy)
-                  WaybackArchiver.archive(
-                    @options.urls,
-                    hosts: @options.hosts,
-                    strategy: @options.strategy,
-                    concurrency: @options.concurrency,
-                    limit: @options.limit,
-                    skip_urls: @skip_urls,
-                    **@options.spn2_options,
-                    &archive_block
-                  )
+                  WaybackArchiver.archive(@options.urls, **archive_opts, &archive_block)
                 else
                   @options.urls.flat_map do |url|
-                    WaybackArchiver.archive(
-                      url,
-                      hosts: @options.hosts,
-                      strategy: @options.strategy,
-                      concurrency: @options.concurrency,
-                      limit: @options.limit,
-                      skip_urls: @skip_urls,
-                      **@options.spn2_options,
-                      &archive_block
-                    )
+                    WaybackArchiver.archive(url, **archive_opts, &archive_block)
                   end
                 end
       all_results.concat(results)
