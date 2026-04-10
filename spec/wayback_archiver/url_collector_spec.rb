@@ -121,5 +121,17 @@ RSpec.describe WaybackArchiver::URLCollector do
       expect(found_urls).to include('https://www.example.com')
       expect(found_urls).to include('https://www.example.com/about')
     end
+
+    it 'passes exts and ignore_exts through to Spidr' do
+      stub_request(:get, 'http://example.com')
+        .to_return(status: 200, body: '', headers: {})
+
+      expect(Spidr).to receive(:site).with(
+        'http://example.com',
+        hash_including(exts: %w[html], ignore_exts: %w[pdf])
+      ).and_yield(double(every_page: nil))
+
+      described_class.crawl('http://example.com', exts: %w[html], ignore_exts: %w[pdf])
+    end
   end
 end

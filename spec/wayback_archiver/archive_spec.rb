@@ -635,59 +635,124 @@ RSpec.describe WaybackArchiver::Archive do
   end
 
   describe '::crawl' do
-    it 'calls URLCollector::crawl and ::post_url' do
-      url = 'https://example.com'
-
-      allow(WaybackArchiver::URLCollector).to receive(:crawl)
-        .and_yield(url)
-        .and_return([url])
-
-      allow(described_class).to receive(:post_url).and_return(WaybackArchiver::ArchiveResult.new(url))
-
-      expect(described_class.crawl(url)[0].uri).to eq(url)
+    before do
+      allow(described_class).to receive(:sleep)
+      allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status).and_return({ 'available' => 12, 'processing' => 0 })
     end
 
-    it 'skips URLs in skip_urls' do
-      allow(WaybackArchiver::URLCollector).to receive(:crawl)
-        .and_yield('http://a.com')
-        .and_yield('http://b.com')
-        .and_return(%w[http://a.com http://b.com])
+    it 'submits discovered URLs to SPN2' do
+      allow(WaybackArchiver::URLCollector).to receive(:crawl).and_yield('https://example.com').and_return(['https://example.com'])
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit) do |url|
+        { 'url' => url, 'job_id' => 'job-1' }
+      end
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses).and_return(
+        'job-1' => { 'status' => 'success', 'job_id' => 'job-1', 'timestamp' => '20260326120000', 'original_url' => 'https://example.com' }
+      )
 
-      allow(described_class).to receive(:post_url).and_return(WaybackArchiver::ArchiveResult.new('http://b.com'))
+      results = described_class.crawl('https://example.com')
+
+      expect(results.length).to eq(1)
+      expect(results[0].uri).to eq('https://example.com')
+      expect(WaybackArchiver::WaybackMachine).to have_received(:submit).with('https://example.com')
+    end
+
+    it 'filters out skip_urls before submitting' do
+      allow(WaybackArchiver::URLCollector).to receive(:crawl)
+        .and_yield('http://a.com').and_yield('http://b.com')
+        .and_return(%w[http://a.com http://b.com])
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit) do |url|
+        { 'url' => url, 'job_id' => "job-#{url.hash.abs}" }
+      end
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses) do |ids|
+        ids.each_with_object({}) do |jid, h|
+          h[jid] = { 'status' => 'success', 'job_id' => jid, 'timestamp' => '20260326120000', 'original_url' => 'http://b.com' }
+        end
+      end
 
       skip = Set.new(['http://a.com'])
       results = described_class.crawl('http://example.com', skip_urls: skip)
 
-      expect(described_class).to have_received(:post_url).once
-      expect(described_class).to have_received(:post_url).with('http://b.com')
+      expect(WaybackArchiver::WaybackMachine).to have_received(:submit).once
+      expect(WaybackArchiver::WaybackMachine).to have_received(:submit).with('http://b.com')
     end
 
-    it 'filters by include_ext' do
+    it 'applies extension filtering inline' do
       allow(WaybackArchiver::URLCollector).to receive(:crawl)
-        .and_yield('http://a.com/doc.pdf')
-        .and_yield('http://a.com/page')
-        .and_return(%w[http://a.com/doc.pdf http://a.com/page])
+        .and_yield('http://example.com/doc.pdf').and_yield('http://example.com/page.html')
+        .and_return(%w[http://example.com/doc.pdf http://example.com/page.html])
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit) do |url|
+        { 'url' => url, 'job_id' => "job-#{url.hash.abs}" }
+      end
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses) do |ids|
+        ids.each_with_object({}) do |jid, h|
+          h[jid] = { 'status' => 'success', 'job_id' => jid, 'timestamp' => '20260326120000', 'original_url' => 'http://example.com/doc.pdf' }
+        end
+      end
 
-      allow(described_class).to receive(:post_url).and_return(WaybackArchiver::ArchiveResult.new(nil))
+      results = described_class.crawl('http://example.com', include_ext: %w[pdf])
 
-      described_class.crawl('http://a.com', include_ext: %w[pdf])
-
-      expect(described_class).to have_received(:post_url).once
-      expect(described_class).to have_received(:post_url).with('http://a.com/doc.pdf')
+      expect(WaybackArchiver::WaybackMachine).to have_received(:submit).once
+      expect(WaybackArchiver::WaybackMachine).to have_received(:submit).with('http://example.com/doc.pdf')
     end
 
-    it 'filters by exclude_ext' do
+    it 'fires on_url_discovered and on_crawl_complete events' do
+      discovered_events = []
+      crawl_complete_event = nil
+
+      listener = {
+        on_url_discovered: ->(url:, count:) { discovered_events << { url: url, count: count } },
+        on_crawl_complete: ->(url_count:) { crawl_complete_event = url_count },
+        on_batch_start: ->(**) {},
+        on_progress: ->(**) {}
+      }
+      WaybackArchiver.config.listener = WaybackArchiver::ListenerProxy.new(listener)
+
       allow(WaybackArchiver::URLCollector).to receive(:crawl)
-        .and_yield('http://a.com/doc.pdf')
-        .and_yield('http://a.com/page')
-        .and_return(%w[http://a.com/doc.pdf http://a.com/page])
+        .and_yield('http://a.com').and_yield('http://b.com')
+        .and_return(%w[http://a.com http://b.com])
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit) do |url|
+        { 'url' => url, 'job_id' => "job-#{url.hash.abs}" }
+      end
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses) do |ids|
+        ids.each_with_object({}) do |jid, h|
+          h[jid] = { 'status' => 'success', 'job_id' => jid, 'timestamp' => '20260326120000', 'original_url' => 'http://example.com' }
+        end
+      end
 
-      allow(described_class).to receive(:post_url).and_return(WaybackArchiver::ArchiveResult.new(nil))
+      described_class.crawl('http://example.com')
 
-      described_class.crawl('http://a.com', exclude_ext: %w[pdf])
+      expect(discovered_events.length).to eq(2)
+      expect(discovered_events[0]).to eq({ url: 'http://a.com', count: 1 })
+      expect(discovered_events[1]).to eq({ url: 'http://b.com', count: 2 })
+      expect(crawl_complete_event).to eq(2)
+    end
 
-      expect(described_class).to have_received(:post_url).once
-      expect(described_class).to have_received(:post_url).with('http://a.com/page')
+    it 'surfaces crawler thread errors after draining the queue' do
+      allow(WaybackArchiver::URLCollector).to receive(:crawl) do |*, &blk|
+        blk.call('http://a.com')
+        raise 'crawler exploded'
+      end
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit) do |url|
+        { 'url' => url, 'job_id' => 'job-1' }
+      end
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses).and_return(
+        'job-1' => { 'status' => 'success', 'job_id' => 'job-1', 'timestamp' => '20260326120000', 'original_url' => 'http://a.com' }
+      )
+
+      expect { described_class.crawl('http://example.com') }.to raise_error('crawler exploded')
+    end
+
+    it 'passes extension filters through to URLCollector.crawl' do
+      allow(WaybackArchiver::URLCollector).to receive(:crawl).and_return([])
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit)
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses).and_return({})
+
+      described_class.crawl('http://example.com', include_ext: %w[html], exclude_ext: %w[pdf])
+
+      expect(WaybackArchiver::URLCollector).to have_received(:crawl).with(
+        'http://example.com',
+        hash_including(exts: %w[html], ignore_exts: %w[pdf])
+      )
     end
   end
 

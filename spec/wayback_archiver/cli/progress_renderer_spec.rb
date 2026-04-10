@@ -239,6 +239,54 @@ RSpec.describe WaybackArchiver::CLI::ProgressRenderer do
     end
   end
 
+  describe 'indeterminate mode (streaming crawl)' do
+    it 'shows discovered count instead of percentage when total is unknown' do
+      renderer.start
+      renderer.record_discovered
+      renderer.record_discovered
+      renderer.record_discovered
+      renderer.repaint
+
+      expect(clean_output).to include('3 discovered')
+      expect(clean_output).not_to include('/')
+      expect(clean_output).not_to include('%')
+    end
+
+    it 'does not render a progress bar when total is unknown' do
+      renderer.start
+      renderer.record_discovered
+      renderer.repaint
+
+      expect(clean_output).not_to include('█')
+      expect(clean_output).not_to include('░')
+    end
+
+    it 'switches to determinate mode when set_total is called' do
+      renderer.start
+      5.times { renderer.record_discovered }
+      renderer.record_completion(errored: false)
+      renderer.set_total(5)
+      renderer.repaint
+
+      expect(clean_output).to include('1/5')
+      expect(clean_output).to include('(20%)')
+    end
+
+    it 'shows archived, pending, and failed counts in indeterminate mode' do
+      renderer.start
+      10.times { renderer.record_discovered }
+      renderer.record_completion(errored: false)
+      renderer.record_completion(errored: true)
+      renderer.update_progress(pending: 3)
+      renderer.repaint
+
+      expect(clean_output).to include('2 archived')
+      expect(clean_output).to include('3 pending')
+      expect(clean_output).to include('1 failed')
+      expect(clean_output).to include('10 discovered')
+    end
+  end
+
   describe 'thread safety' do
     it 'handles concurrent record_completion calls' do
       renderer.set_total(100)

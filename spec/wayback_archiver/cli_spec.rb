@@ -388,6 +388,29 @@ RSpec.describe WaybackArchiver::CLI do
 
         expect(stdout_output).to include("\e[A")
       end
+
+      it 'starts in indeterminate mode when total is nil' do
+        listener.on_batch_start(total: nil)
+
+        expect(clean_output).not_to include('/')
+        expect(clean_output).not_to include('%')
+      end
+
+      it 'updates discovered count on on_url_discovered' do
+        listener.on_batch_start(total: nil)
+        listener.on_url_discovered(url: 'http://example.com', count: 1)
+        listener.on_url_discovered(url: 'http://example.com/page2', count: 2)
+
+        expect(clean_output).to include('2 discovered')
+      end
+
+      it 'switches to determinate mode on on_crawl_complete' do
+        listener.on_batch_start(total: nil)
+        3.times { |i| listener.on_url_discovered(url: "http://example.com/#{i}", count: i + 1) }
+        listener.on_crawl_complete(url_count: 3)
+
+        expect(clean_output).to include('0/3')
+      end
     end
   end
 end

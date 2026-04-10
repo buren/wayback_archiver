@@ -33,9 +33,11 @@ module WaybackArchiver
         @terminal_width_override = terminal_width
         @mutex = Mutex.new
         @total = 0
+        @total_known = false
         @completed = 0
         @failed = 0
         @pending = 0
+        @discovered = 0
         @state = STATE_SUBMITTING
         @start_time = nil
         @last_ema_time = nil
@@ -47,7 +49,18 @@ module WaybackArchiver
       end
 
       def set_total(total)
-        @mutex.synchronize { @total = total }
+        @mutex.synchronize do
+          @total = total
+          @total_known = true
+        end
+      end
+
+      # Increment the discovered URL counter (streaming crawl mode).
+      # @return [Integer] the new discovered count
+      def record_discovered
+        @mutex.synchronize do
+          @discovered += 1
+        end
       end
 
       def start
@@ -165,6 +178,9 @@ module WaybackArchiver
 
       def build_progress_line
         stats = build_stats_string
+        # Indeterminate mode: no progress bar (total unknown)
+        return stats if indeterminate?
+
         width = terminal_width
         # Line format: "[BAR]  STATS" — overhead is "[" (1) + "]  " (3) = 4
         bar_width = [width - 4 - stats.length, MAX_BAR_WIDTH].min
@@ -177,6 +193,10 @@ module WaybackArchiver
       end
 
       def build_stats_string
+        if indeterminate?
+          return build_indeterminate_stats_string
+        end
+
         pct = @total > 0 ? (@completed * 100 / @total) : 0
         parts = ["#{@completed}/#{@total} (#{pct}%)"]
         parts << "#{@pending} pending"
@@ -191,6 +211,20 @@ module WaybackArchiver
         end
 
         parts.join(" \u00b7 ") # \u00b7 = · (middle dot)
+      end
+
+      # Stats string when total is unknown (streaming crawl in progress).
+      def build_indeterminate_stats_string
+        parts = ["#{@completed} archived"]
+        parts << "#{@pending} pending"
+        parts << "#{@failed} failed"
+        parts << "#{@discovered} discovered"
+        parts.join(" \u00b7 ")
+      end
+
+      # Total unknown — crawl is still discovering URLs.
+      def indeterminate?
+        !@total_known
       end
 
       def effective_seconds_per_url

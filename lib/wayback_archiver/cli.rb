@@ -26,8 +26,22 @@ module WaybackArchiver
       @stdout.puts
       return unless @renderer
 
-      @renderer.set_total(total)
+      @renderer.set_total(total) if total
       @renderer.start
+      @renderer.repaint
+    end
+
+    def on_url_discovered(url:, count:)
+      return unless @renderer
+
+      @renderer.record_discovered
+      @renderer.repaint
+    end
+
+    def on_crawl_complete(url_count:)
+      return unless @renderer
+
+      @renderer.set_total(url_count)
       @renderer.repaint
     end
 

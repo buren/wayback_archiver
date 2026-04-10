@@ -25,9 +25,27 @@ module WaybackArchiver
 
     # Called when a new batch of URLs is about to be submitted.
     #
-    # @param total [Integer] total number of URLs in the batch
+    # @param total [Integer, nil] total number of URLs in the batch,
+    #   or +nil+ when the total is not yet known (streaming crawl mode)
     # @return [void]
     def on_batch_start(total:); end
+
+    # Called each time a URL is discovered during a streaming crawl.
+    # Only fired for the crawl strategy; other strategies discover all
+    # URLs upfront before archiving begins.
+    #
+    # @param url [String] the discovered URL
+    # @param count [Integer] total number of URLs discovered so far
+    # @return [void]
+    def on_url_discovered(url:, count:); end
+
+    # Called when the crawler has finished discovering URLs.
+    # After this event, the total URL count is known and progress
+    # can switch from indeterminate to determinate mode.
+    #
+    # @param url_count [Integer] final number of URLs discovered
+    # @return [void]
+    def on_crawl_complete(url_count:); end
 
     # Called when a single URL has been submitted to the SPN2 API.
     #

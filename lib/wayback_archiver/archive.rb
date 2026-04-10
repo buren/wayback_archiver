@@ -34,7 +34,11 @@ module WaybackArchiver
       batch_post(urls_queue, concurrency: concurrency, **options, &block)
     end
 
+    CRAWL_QUEUE_SIZE = 10_000 # SizedQueue capacity — backpressure when crawler outpaces SPN2
+
     # Send URLs to Wayback Machine by crawling the site.
+    # Streams URLs to SPN2 as they are discovered — the crawler runs in a
+    # background thread pushing into a SizedQueue that batch_post consumes.
     # @return [Array<ArchiveResult>] with URLs sent to the Wayback Machine.
     # @param [String] source for URL to crawl.
     # @param concurrency [Integer] the default is 1
@@ -42,27 +46,26 @@ module WaybackArchiver
     # @yield [archive_result] If a block is given, each result will be yielded
     # @yieldparam [ArchiveResult] archive_result
     def self.crawl(source, hosts: [], concurrency: WaybackArchiver.config.concurrency, limit: WaybackArchiver.config.max_limit, skip_urls: nil, include_ext: nil, exclude_ext: nil, **options, &block)
-      WaybackArchiver.logger.debug "Request are sent with up to #{concurrency} parallel threads"
+      queue = SizedQueue.new(CRAWL_QUEUE_SIZE)
+      url_filter = URLFilter.new(include_ext: include_ext, exclude_ext: exclude_ext)
+      discovered = Concurrent::AtomicFixnum.new(0)
 
-      results = Concurrent::Array.new
-      pool = ThreadPool.build(concurrency)
-      filter = URLFilter.new(include_ext: include_ext, exclude_ext: exclude_ext)
-
-      found_urls = URLCollector.crawl(source, hosts: hosts, limit: limit) do |url|
-        next if skip_urls&.include?(url)
-        next unless filter.match?(url)
-
-        pool.post do
-          result = post_url(url, **options)
-          record_result(result, results, &block)
+      crawler_thread = Thread.new do
+        Thread.current.report_on_exception = false # we re-raise via thread.value
+        URLCollector.crawl(source, hosts: hosts, limit: limit, exts: include_ext, ignore_exts: exclude_ext) do |url|
+          next if skip_urls&.include?(url)
+          next unless url_filter.match?(url)
+          count = discovered.increment
+          queue.push(url) # blocks when queue is full (backpressure)
+          WaybackArchiver.listener.on_url_discovered(url: url, count: count)
         end
+      rescue ClosedQueueError
+        # batch_post closed the queue to signal early termination (e.g. IP blocked)
+      ensure
+        WaybackArchiver.listener.on_crawl_complete(url_count: discovered.value)
       end
-      WaybackArchiver.logger.info "Crawling of #{source} finished, found #{found_urls.length} URL(s)"
-      pool.shutdown
-      pool.wait_for_termination
 
-      WaybackArchiver.logger.info "#{results.count(&:success?)} of #{results.length} URL(s) posted to Wayback Machine"
-      results
+      batch_post(queue, concurrency: concurrency, source_thread: crawler_thread, **options, &block)
     end
 
     # Send URL to Wayback Machine.
@@ -76,26 +79,48 @@ module WaybackArchiver
     MAX_RETRIES = 3 # per-URL retry cap for transient errors (session limits, connection errors)
 
     # Batch mode: submit URLs in chunks with intermediate polling.
-    def self.batch_post(urls, concurrency:, **options, &block)
+    #
+    # @param queue [Array, SizedQueue] URL source. For non-crawl strategies this
+    #   is a plain Array; for streaming crawl it's a SizedQueue fed by a background
+    #   crawler thread.
+    # @param source_thread [Thread, nil] when present, the crawler thread feeding
+    #   the queue. Used to determine when all URLs have been discovered (the queue
+    #   being empty is not sufficient while the crawler is still running).
+    def self.batch_post(queue, concurrency:, source_thread: nil, **options, &block)
       results = Concurrent::Array.new
       pending = Concurrent::Hash.new
       counts = Concurrent::Hash.new(0) # :success, :error — incremental counters
-      total = urls.length
+      # Total is unknown during streaming crawl — the listener will update it
+      # when on_crawl_complete fires.
+      total = source_thread ? nil : queue.length
       WaybackArchiver.listener.on_batch_start(total: total)
-      queue = urls.dup
+      # For non-streaming mode, copy the array so callers keep their original.
+      # SizedQueue is already a separate object shared with the crawler thread.
+      queue = queue.dup if queue.is_a?(Array)
       submitted = 0
       retries = Hash.new(0)
 
       loop do
-        until queue.empty?
+        until queue_exhausted?(queue, source_thread)
           chunk_size = available_slots(pending, results, counts, queue: queue, retries: retries, **options, &block)
           if chunk_size == :abort
+            # Close the queue to stop the crawler thread via ClosedQueueError
+            queue.close if source_thread && queue.respond_to?(:close)
             abort_remaining(queue, results, counts, &block)
             break
           end
 
-          chunk = queue.shift([chunk_size, queue.size].min)
-          next if chunk.empty?
+          chunk = drain_queue(queue, chunk_size)
+
+          # In streaming mode the queue may be temporarily empty while the
+          # crawler is still discovering URLs. Do useful work (poll pending
+          # jobs) while waiting for more URLs to arrive.
+          if chunk.empty?
+            poll_pending(pending, results, counts, queue: queue, retries: retries, **options, &block) unless pending.empty?
+            log_progress(counts, pending)
+            sleep(0.2)
+            next
+          end
 
           pool = ThreadPool.build(concurrency)
           retry_urls = Concurrent::Array.new
@@ -103,7 +128,7 @@ module WaybackArchiver
             submitted += 1
             n = submitted
             pool.post do
-              WaybackArchiver.logger.debug("Submitting #{url} (#{n}/#{total})")
+              WaybackArchiver.logger.debug("Submitting #{url} (#{n}/#{total || '?'})")
               handle_submit_response(WaybackMachine.submit(url, **options), url, pending, results, retry_urls, **options, &block)
             rescue Request::Error => e
               WaybackArchiver.logger.warn("Connection error for #{url}: #{e.message}")
@@ -114,24 +139,7 @@ module WaybackArchiver
           pool.wait_for_termination
 
           # Re-queue URLs that hit transient errors (session limits, connection errors)
-          unless retry_urls.empty?
-            requeued = []
-            retry_urls.each do |url|
-              retries[url] += 1
-              if retries[url] > MAX_RETRIES
-                WaybackArchiver.logger.error("Retry limit exceeded (#{MAX_RETRIES}) for #{url}")
-                result = ArchiveResult.new(url, error: Request::ServerError.new('retry limit exceeded'))
-                counts[:error] += 1
-                record_result(result, results, &block)
-              else
-                requeued << url
-              end
-            end
-            unless requeued.empty?
-              WaybackArchiver.logger.warn("Re-queuing #{requeued.size} URL(s) due to transient error")
-              queue.unshift(*requeued)
-            end
-          end
+          handle_retries(retry_urls, retries, queue, results, counts, &block)
 
           # Intermediate poll to check progress and free sessions
           poll_pending(pending, results, counts, queue: queue, retries: retries, **options, &block) unless pending.empty?
@@ -141,9 +149,12 @@ module WaybackArchiver
         # Final poll phase: loop until all pending resolve or timeout
         break if pending.empty?
         poll_until_done(pending, results, counts, queue: queue, retries: retries, **options, &block)
-        break if queue.empty? # no transient errors re-queued
+        break if queue_exhausted?(queue, source_thread) # no transient errors re-queued
         WaybackArchiver.logger.info("Re-submitting #{queue.size} URL(s) after transient poll errors")
       end
+
+      # Re-raise any exception from the crawler thread
+      source_thread&.value if source_thread && !source_thread.alive?
 
       # Any URLs still pending after final poll were submitted but unconfirmed
       pending.each do |job_id, url|
@@ -155,6 +166,58 @@ module WaybackArchiver
       results
     end
     private_class_method :batch_post
+
+    # Check if the queue has been fully consumed.
+    # For streaming mode (source_thread present), the queue is only exhausted
+    # when it's empty AND the crawler thread has finished.
+    def self.queue_exhausted?(queue, source_thread)
+      return queue.empty? unless source_thread
+      queue.empty? && !source_thread.alive?
+    end
+    private_class_method :queue_exhausted?
+
+    # Non-blocking drain that works with both Array and SizedQueue.
+    # Returns up to +max+ items without blocking if the queue is empty.
+    def self.drain_queue(queue, max)
+      if queue.is_a?(Array)
+        queue.shift(max) || []
+      else
+        items = []
+        max.times do
+          items << queue.pop(true) # non-blocking; raises ThreadError when empty
+        rescue ThreadError
+          break
+        end
+        items
+      end
+    end
+    private_class_method :drain_queue
+
+    def self.handle_retries(retry_urls, retries, queue, results, counts, &block)
+      return if retry_urls.empty?
+
+      requeued = []
+      retry_urls.each do |url|
+        retries[url] += 1
+        if retries[url] > MAX_RETRIES
+          WaybackArchiver.logger.error("Retry limit exceeded (#{MAX_RETRIES}) for #{url}")
+          result = ArchiveResult.new(url, error: Request::ServerError.new('retry limit exceeded'))
+          counts[:error] += 1
+          record_result(result, results, &block)
+        else
+          requeued << url
+        end
+      end
+      unless requeued.empty?
+        WaybackArchiver.logger.warn("Re-queuing #{requeued.size} URL(s) due to transient error")
+        if queue.is_a?(Array)
+          queue.unshift(*requeued)
+        else
+          requeued.each { |url| queue.push(url) }
+        end
+      end
+    end
+    private_class_method :handle_retries
 
     def self.handle_submit_response(response, url, pending, results, retry_urls, **options, &block)
       if response.is_a?(ArchiveResult)
