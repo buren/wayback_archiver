@@ -98,6 +98,7 @@ module WaybackArchiver
 
           parser.separator ''
           parser.separator 'Authentication (get keys at https://archive.org/account/s3.php):'
+          parser.separator '  Preferred: set WAYBACK_ACCESS_KEY and WAYBACK_SECRET_KEY env vars'
 
           parser.on('--access-key=KEY', String, 'Internet Archive S3 access key') do |value|
             WaybackArchiver.config.access_key = value
