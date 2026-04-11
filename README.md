@@ -233,7 +233,9 @@ Any object works — only implement the methods you need. Unimplemented events a
 | Event | When | Keywords |
 |-------|------|----------|
 | `on_resolved` | Strategy determined, URL count known | `strategy:, url_count:, source:` |
-| `on_batch_start` | Batch archiving begins | `total:` |
+| `on_batch_start` | Batch archiving begins | `total:` (`nil` during streaming crawl) |
+| `on_url_discovered` | URL found during crawl (crawl strategy only) | `url:, count:` |
+| `on_crawl_complete` | Crawler finished discovering URLs | `url_count:` |
 | `on_submitted` | URL submitted to SPN2 | `url:, job_id:` |
 | `on_completed` | URL finished (success, cached, error) | `result:` |
 | `on_progress` | After each poll cycle | `captured:, failed:, pending:` |

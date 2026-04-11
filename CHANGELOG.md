@@ -24,13 +24,14 @@
 - **Retry with backoff** — transient SPN2 errors (rate limits, service unavailable) are retried automatically with exponential backoff
 - **Expanded error classification** — 38 SPN2 error codes mapped to `:transient`, `:daily_limit`, and `:permanent` categories for smarter retry decisions
 - **Proactive rate limiter** — token bucket rate limiting to stay within SPN2 limits proactively
+- **Streaming crawl** — crawl strategy streams discovered URLs to SPN2 as they are found, instead of waiting for the crawl to finish. New listener events `on_url_discovered` and `on_crawl_complete` track progress.
 - **Batch status polling** — efficient bulk archiving via `POST /save/status` with multiple job IDs
 - **CDX API integration** — `--check` queries the Wayback Machine CDX API to see if URLs are already archived; `--skip-archived[=TIMEDELTA]` skips URLs already in the archive (optionally within a time window)
 - **Resumable sessions** — `--session=PATH` writes a progressive JSONL state file during archiving; `--resume=PATH` picks up where a previous run left off, skipping already-completed URLs
 - **File input** — `--file=PATH` (or `-f`) reads URLs from a file (one per line, `#` comments supported, `-` for stdin)
 - **RSS/Atom feed strategy** — `strategy: :rss` for archiving URLs from RSS and Atom feeds (not included in `:auto` since feeds typically contain only recent posts)
 - **Report export** — `--report=results.csv` or `--report=results.json` from the CLI
-- **Event listener system** — subscribe to lifecycle events (`on_resolved`, `on_submitted`, `on_completed`, `on_progress`, `on_batch_start`, `on_waiting_for_slots`) for custom progress reporting. Subclass `NullListener`, pass a hash of procs, or use any object — unimplemented events are silently skipped.
+- **Event listener system** — subscribe to lifecycle events (`on_resolved`, `on_batch_start`, `on_url_discovered`, `on_crawl_complete`, `on_submitted`, `on_completed`, `on_progress`, `on_waiting_for_slots`) for custom progress reporting. Subclass `NullListener`, pass a hash of procs, or use any object — unimplemented events are silently skipped.
 - **Configuration class** — all settings extracted into `WaybackArchiver::Configuration`, accessed via `WaybackArchiver.config`. The `configure` block and convenience getters (`logger`, `listener`) are unchanged.
 - **SPN2 system/user status** — `--status` flag queries `POST /save/status/system` and `POST /save/status/user` and exits
 - **URL extension filtering** — `--include-ext=pdf,doc` archives only matching URLs; `--exclude-ext=zip,png` skips matching URLs. Available via Ruby API as `include_ext:` / `exclude_ext:` parameters.

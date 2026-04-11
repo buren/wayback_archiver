@@ -99,24 +99,28 @@ module WaybackArchiver
       queue = queue.dup if queue.is_a?(Array)
       submitted = 0
       retries = Hash.new(0)
+      # Separate buffer for URLs to retry. Never push retries into the SizedQueue
+      # — that would deadlock when both the main thread and crawler thread block
+      # on a full queue with nobody consuming.
+      retry_buffer = []
 
       loop do
-        until queue_exhausted?(queue, source_thread)
-          chunk_size = available_slots(pending, results, counts, queue: queue, retries: retries, **options, &block)
+        until queue_exhausted?(queue, source_thread, retry_buffer)
+          chunk_size = available_slots(pending, results, counts, retry_buffer: retry_buffer, retries: retries, **options, &block)
           if chunk_size == :abort
             # Close the queue to stop the crawler thread via ClosedQueueError
             queue.close if source_thread && queue.respond_to?(:close)
-            abort_remaining(queue, results, counts, &block)
+            abort_remaining(queue, retry_buffer, results, counts, &block)
             break
           end
 
-          chunk = drain_queue(queue, chunk_size)
+          chunk = drain_queue(queue, chunk_size, retry_buffer)
 
           # In streaming mode the queue may be temporarily empty while the
           # crawler is still discovering URLs. Do useful work (poll pending
           # jobs) while waiting for more URLs to arrive.
           if chunk.empty?
-            poll_pending(pending, results, counts, queue: queue, retries: retries, **options, &block) unless pending.empty?
+            poll_pending(pending, results, counts, retry_buffer: retry_buffer, retries: retries, **options, &block) unless pending.empty?
             log_progress(counts, pending)
             sleep(0.2)
             next
@@ -139,18 +143,18 @@ module WaybackArchiver
           pool.wait_for_termination
 
           # Re-queue URLs that hit transient errors (session limits, connection errors)
-          handle_retries(retry_urls, retries, queue, results, counts, &block)
+          handle_retries(retry_urls, retries, retry_buffer, results, counts, &block)
 
           # Intermediate poll to check progress and free sessions
-          poll_pending(pending, results, counts, queue: queue, retries: retries, **options, &block) unless pending.empty?
+          poll_pending(pending, results, counts, retry_buffer: retry_buffer, retries: retries, **options, &block) unless pending.empty?
           log_progress(counts, pending)
         end
 
         # Final poll phase: loop until all pending resolve or timeout
         break if pending.empty?
-        poll_until_done(pending, results, counts, queue: queue, retries: retries, **options, &block)
-        break if queue_exhausted?(queue, source_thread) # no transient errors re-queued
-        WaybackArchiver.logger.info("Re-submitting #{queue.size} URL(s) after transient poll errors")
+        poll_until_done(pending, results, counts, retry_buffer: retry_buffer, retries: retries, **options, &block)
+        break if queue_exhausted?(queue, source_thread, retry_buffer) # no transient errors re-queued
+        WaybackArchiver.logger.info("Re-submitting #{retry_buffer.size + queue.size} URL(s) after transient poll errors")
       end
 
       # Re-raise any exception from the crawler thread
@@ -170,30 +174,35 @@ module WaybackArchiver
     # Check if the queue has been fully consumed.
     # For streaming mode (source_thread present), the queue is only exhausted
     # when it's empty AND the crawler thread has finished.
-    def self.queue_exhausted?(queue, source_thread)
+    def self.queue_exhausted?(queue, source_thread, retry_buffer = [])
+      return false unless retry_buffer.empty?
       return queue.empty? unless source_thread
       queue.empty? && !source_thread.alive?
     end
     private_class_method :queue_exhausted?
 
     # Non-blocking drain that works with both Array and SizedQueue.
+    # Pulls from retry_buffer first, then fills up from the main queue.
     # Returns up to +max+ items without blocking if the queue is empty.
-    def self.drain_queue(queue, max)
+    def self.drain_queue(queue, max, retry_buffer = [])
+      items = retry_buffer.shift(max)
+      remaining = max - items.size
+      return items if remaining <= 0
+
       if queue.is_a?(Array)
-        queue.shift(max) || []
+        items.concat(queue.shift(remaining) || [])
       else
-        items = []
-        max.times do
+        remaining.times do
           items << queue.pop(true) # non-blocking; raises ThreadError when empty
         rescue ThreadError
           break
         end
-        items
       end
+      items
     end
     private_class_method :drain_queue
 
-    def self.handle_retries(retry_urls, retries, queue, results, counts, &block)
+    def self.handle_retries(retry_urls, retries, retry_buffer, results, counts, &block)
       return if retry_urls.empty?
 
       requeued = []
@@ -210,11 +219,7 @@ module WaybackArchiver
       end
       unless requeued.empty?
         WaybackArchiver.logger.warn("Re-queuing #{requeued.size} URL(s) due to transient error")
-        if queue.is_a?(Array)
-          queue.unshift(*requeued)
-        else
-          requeued.each { |url| queue.push(url) }
-        end
+        retry_buffer.concat(requeued)
       end
     end
     private_class_method :handle_retries
@@ -250,9 +255,9 @@ module WaybackArchiver
     private_class_method :handle_submit_response
 
     # Single poll pass: collect completed results from pending jobs.
-    # When queue and retries are provided, transient errors are re-queued
+    # When retry_buffer and retries are provided, transient errors are re-queued
     # for a fresh submit attempt instead of being recorded as failures.
-    def self.poll_pending(pending, results, counts, queue: nil, retries: nil, **options, &block)
+    def self.poll_pending(pending, results, counts, retry_buffer: nil, retries: nil, **options, &block)
       statuses = begin
         WaybackMachine.poll_statuses(pending.keys)
       rescue Request::Error => e
@@ -282,11 +287,11 @@ module WaybackArchiver
         # Re-queue transient errors before building the full result (which may
         # trigger screenshot downloads and other side effects)
         status_ext = status['status_ext']
-        if status['status'] == 'error' && queue && retries && ErrorCodes.retryable?(status_ext)
+        if status['status'] == 'error' && retry_buffer && retries && ErrorCodes.retryable?(status_ext)
           retries[url] += 1
           if retries[url] <= MAX_RETRIES
             WaybackArchiver.logger.warn("Transient poll error for #{url}: #{status_ext}, re-queuing (#{retries[url]}/#{MAX_RETRIES})")
-            queue.push(url)
+            retry_buffer.push(url)
             next
           end
           WaybackArchiver.logger.error("Retry limit exceeded (#{MAX_RETRIES}) for #{url}: #{status_ext}")
@@ -306,7 +311,7 @@ module WaybackArchiver
     private_class_method :poll_pending
 
     # Poll in a loop until all pending jobs complete or timeout.
-    def self.poll_until_done(pending, results, counts, queue: nil, retries: nil, **options, &block)
+    def self.poll_until_done(pending, results, counts, retry_buffer: nil, retries: nil, **options, &block)
       start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
       until pending.empty?
@@ -317,7 +322,7 @@ module WaybackArchiver
         end
 
         sleep(WaybackMachine::POLL_INTERVAL)
-        poll_pending(pending, results, counts, queue: queue, retries: retries, **options, &block)
+        poll_pending(pending, results, counts, retry_buffer: retry_buffer, retries: retries, **options, &block)
         log_progress(counts, pending) unless pending.empty?
       end
     end
@@ -329,7 +334,7 @@ module WaybackArchiver
     # Determine how many URLs to submit in the next chunk.
     # Loops until slots are available, with timeout fallback.
     # @return [Integer, :abort] number of slots available, or :abort to stop
-    def self.available_slots(pending, results, counts, queue: nil, retries: nil, **options, &block)
+    def self.available_slots(pending, results, counts, retry_buffer: nil, retries: nil, **options, &block)
       start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       waiting_logged = false
 
@@ -360,15 +365,17 @@ module WaybackArchiver
           waiting_logged = true
         end
 
-        poll_pending(pending, results, counts, queue: queue, retries: retries, **options, &block) unless pending.empty?
+        poll_pending(pending, results, counts, retry_buffer: retry_buffer, retries: retries, **options, &block) unless pending.empty?
         log_progress(counts, pending)
         sleep(SLOT_WAIT_INTERVAL)
       end
     end
     private_class_method :available_slots
 
-    def self.abort_remaining(queue, results, counts, &block)
-      queue.each do |url|
+    def self.abort_remaining(queue, retry_buffer, results, counts, &block)
+      all_urls = retry_buffer + (queue.is_a?(Array) ? queue : [])
+      retry_buffer.clear
+      all_urls.each do |url|
         result = ArchiveResult.new(url, error: Request::ClientError.new('Connection refused by web.archive.org'))
         counts[:error] += 1
         record_result(result, results, &block)

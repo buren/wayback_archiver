@@ -742,6 +742,30 @@ RSpec.describe WaybackArchiver::Archive do
       expect { described_class.crawl('http://example.com') }.to raise_error('crawler exploded')
     end
 
+    it 're-queues transient errors without deadlocking the SizedQueue' do
+      call_count = 0
+      allow(WaybackArchiver::URLCollector).to receive(:crawl)
+        .and_yield('http://a.com')
+        .and_return(%w[http://a.com])
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit).with('http://a.com') do
+        call_count += 1
+        if call_count <= 1
+          raise WaybackArchiver::Request::ClientError, 'Connection refused'
+        else
+          { 'url' => 'http://a.com', 'job_id' => 'job-1' }
+        end
+      end
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses).and_return(
+        'job-1' => { 'status' => 'success', 'job_id' => 'job-1', 'timestamp' => '20260326120000', 'original_url' => 'http://a.com' }
+      )
+
+      results = described_class.crawl('http://example.com')
+
+      expect(results.length).to eq(1)
+      expect(results.first.success?).to eq(true)
+      expect(call_count).to eq(2)
+    end
+
     it 'passes extension filters through to URLCollector.crawl' do
       allow(WaybackArchiver::URLCollector).to receive(:crawl).and_return([])
       allow(WaybackArchiver::WaybackMachine).to receive(:submit)
