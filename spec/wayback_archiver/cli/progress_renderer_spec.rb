@@ -272,6 +272,15 @@ RSpec.describe WaybackArchiver::CLI::ProgressRenderer do
       expect(clean_output).to include('(20%)')
     end
 
+    it 'shows URLs/min rate after completions' do
+      renderer.start
+      5.times { renderer.record_discovered }
+      3.times { renderer.record_completion(errored: false) }
+      renderer.repaint
+
+      expect(clean_output).to match(/~\d+ URLs\/min/)
+    end
+
     it 'shows archived, pending, and failed counts in indeterminate mode' do
       renderer.start
       10.times { renderer.record_discovered }

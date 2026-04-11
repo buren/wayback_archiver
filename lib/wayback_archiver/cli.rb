@@ -78,7 +78,7 @@ module WaybackArchiver
     def format_result_line(n, result)
       label = result.status_label.ljust(6)
       detail = result.status_detail
-      line = "[#{n}]  #{label}  #{result.uri}"
+      line = "[#{n}]#{' ' * (4 - n.to_s.length)}  #{label}  #{result.uri}"
       line << "  #{detail}" if detail
       line
     end

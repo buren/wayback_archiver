@@ -219,6 +219,11 @@ module WaybackArchiver
         parts << "#{@pending} pending"
         parts << "#{@failed} failed"
         parts << "#{@discovered} discovered"
+        if @completed > 0 && @start_time
+          elapsed = monotonic_now - @start_time
+          rate = (@completed * 60.0 / [elapsed, 1].max).round
+          parts << "~#{rate} URLs/min"
+        end
         parts.join(" \u00b7 ")
       end
 
