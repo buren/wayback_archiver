@@ -18,7 +18,7 @@ module WaybackArchiver
     end
 
     def on_resolved(strategy:, url_count:, source:)
-      count = url_count ? "#{url_count} URLs" : "discovering..."
+      count = url_count ? "#{url_count} URLs" : "discovering URLs..."
       @stdout.puts "Strategy #{strategy} chosen: #{count}"
     end
 

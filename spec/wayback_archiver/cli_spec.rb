@@ -304,7 +304,7 @@ RSpec.describe WaybackArchiver::CLI do
 
         it 'prints discovering when url_count is nil' do
           listener.on_resolved(strategy: :crawl, url_count: nil, source: 'http://example.com')
-          expect(stdout_output).to include('discovering...')
+          expect(stdout_output).to include('discovering URLs...')
         end
       end
 
