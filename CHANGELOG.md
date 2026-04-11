@@ -25,6 +25,7 @@
 - **Expanded error classification** — 38 SPN2 error codes mapped to `:transient`, `:daily_limit`, and `:permanent` categories for smarter retry decisions
 - **Proactive rate limiter** — token bucket rate limiting to stay within SPN2 limits proactively
 - **Streaming crawl** — crawl strategy streams discovered URLs to SPN2 as they are found, instead of waiting for the crawl to finish. New listener events `on_url_discovered` and `on_crawl_complete` track progress.
+- **Smart crawl filtering** — crawler only yields archivable content types (HTML, PDF, XML, RSS, JSON, plain text, Word docs), automatically skipping images, CSS, JS, and fonts. SPN2 captures embedded assets as part of page snapshots.
 - **Batch status polling** — efficient bulk archiving via `POST /save/status` with multiple job IDs
 - **CDX API integration** — `--check` queries the Wayback Machine CDX API to see if URLs are already archived; `--skip-archived[=TIMEDELTA]` skips URLs already in the archive (optionally within a time window)
 - **Resumable sessions** — `--session=PATH` writes a progressive JSONL state file during archiving; `--resume=PATH` picks up where a previous run left off, skipping already-completed URLs

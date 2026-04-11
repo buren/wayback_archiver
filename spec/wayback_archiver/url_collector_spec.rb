@@ -122,6 +122,50 @@ RSpec.describe WaybackArchiver::URLCollector do
       expect(found_urls).to include('https://www.example.com/about')
     end
 
+    it 'skips non-archivable assets like images, CSS, and JS' do
+      html_page = <<-HTML
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Testing</title>
+          <link rel="stylesheet" href="http://example.com/style.css">
+          <script src="http://example.com/app.js"></script>
+        </head>
+        <body>
+          <a href="http://example.com/about">About</a>
+          <a href="http://example.com/doc.pdf">PDF</a>
+          <img src="http://example.com/logo.png">
+        </body>
+      </html>
+      HTML
+
+      response_headers = { 'Content-Type' => 'text/html; charset=utf-8' }
+
+      stub_request(:get, 'http://example.com/robots.txt')
+        .to_return(status: 200, body: '', headers: {})
+      stub_request(:get, 'http://example.com/')
+        .to_return(status: 200, body: html_page, headers: response_headers)
+      stub_request(:get, 'http://example.com/about')
+        .to_return(status: 200, body: '', headers: response_headers)
+      stub_request(:get, 'http://example.com/doc.pdf')
+        .to_return(status: 200, body: '%PDF-1.4', headers: { 'Content-Type' => 'application/pdf' })
+      stub_request(:get, 'http://example.com/style.css')
+        .to_return(status: 200, body: 'body{}', headers: { 'Content-Type' => 'text/css' })
+      stub_request(:get, 'http://example.com/app.js')
+        .to_return(status: 200, body: 'var x=1', headers: { 'Content-Type' => 'application/javascript' })
+      stub_request(:get, 'http://example.com/logo.png')
+        .to_return(status: 200, body: "\x89PNG", headers: { 'Content-Type' => 'image/png' })
+
+      found_urls = described_class.crawl('http://example.com')
+
+      expect(found_urls).to include('http://example.com')
+      expect(found_urls).to include('http://example.com/about')
+      expect(found_urls).to include('http://example.com/doc.pdf')
+      expect(found_urls).not_to include('http://example.com/style.css')
+      expect(found_urls).not_to include('http://example.com/app.js')
+      expect(found_urls).not_to include('http://example.com/logo.png')
+    end
+
     it 'passes exts and ignore_exts through to Spidr' do
       stub_request(:get, 'http://example.com')
         .to_return(status: 200, body: '', headers: {})

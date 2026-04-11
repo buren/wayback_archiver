@@ -22,6 +22,8 @@ Ruby gem wrapping the Internet Archive's SPN2 API. CLI entry point (`bin/wayback
 
 **Error handling**: `ErrorCodes` classifies 38 SPN2 `status_ext` codes into `:transient`, `:daily_limit`, `:permanent`. Transient errors trigger automatic retry with backoff (up to 3 attempts).
 
+**Crawling**: Uses the [Spidr](https://github.com/postmodern/spidr) gem for web crawling.
+
 **Concurrency**: `concurrent-ruby` thread pools. `ThreadPool.build(1)` returns `ImmediateExecutor` (synchronous); `build(n)` returns `FixedThreadPool`.
 
 **Rate limiter**: Sliding window, sleeps inside mutex. This is intentional — holds the lock while sleeping to enforce cross-thread rate limiting.

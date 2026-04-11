@@ -57,6 +57,8 @@ module WaybackArchiver
 
       Spidr.site(start_at_url, **options) do |spider|
         spider.every_page do |page|
+          next unless archivable_page?(page)
+
           page_url = page.url.to_s
           urls << page_url
           WaybackArchiver.logger.debug "Found: #{page_url}"
@@ -65,6 +67,20 @@ module WaybackArchiver
       end
       urls
     end
+
+    # Content types worth archiving. Spidr visits all linked resources
+    # (images, CSS, JS, fonts) to discover further links, but only these
+    # types are yielded as archive targets. Assets embedded in a page are
+    # captured automatically by SPN2 as part of the page snapshot.
+    #
+    # Uses Spidr::Page content-type methods:
+    # https://github.com/postmodern/spidr/blob/master/lib/spidr/page/content_types.rb
+    def self.archivable_page?(page)
+      page.html? || page.pdf? || page.plain_text? ||
+        page.rss? || page.atom? || page.xml? ||
+        page.json? || page.ms_word?
+    end
+    private_class_method :archivable_page?
 
     # Resolve a start URL through redirects so Spidr sees the final host.
     # e.g. http://abclabs.se -> https://www.abclabs.se
