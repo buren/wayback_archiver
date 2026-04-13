@@ -16,7 +16,7 @@ Ruby gem wrapping the Internet Archive's SPN2 API. CLI entry point (`bin/wayback
 
 **Configuration**: `WaybackArchiver.config` returns a `Configuration` instance holding all settings (concurrency, credentials, etc.). `WaybackArchiver.logger` and `.listener` are convenience delegates. All other config goes through `config`.
 
-**Options flow**: CLI → `options` hash → `WaybackArchiver.archive(**options)` → `Archive.post`/`Archive.crawl` → `Archive.batch_post` (chunked submit + poll loop). SPN2-specific options pass through via `**options` to `WaybackMachine`. Filtering options (`skip_urls`, `include_ext`, `exclude_ext`, `skip_duplicates`) are consumed by `Archive` before reaching `WaybackMachine`.
+**Options flow**: CLI → `options` hash → `WaybackArchiver.archive(**options)` → `Archive.post`/`Archive.crawl` → `Archive.batch_post` (chunked submit + poll loop). SPN2-specific options pass through via `**options` to `WaybackMachine`. Filtering options (`skip_urls`, `skip_patterns`, `include_ext`, `exclude_ext`, `skip_duplicates`) are consumed by `Archive` before reaching `WaybackMachine`.
 
 **Event system**: `WaybackArchiver.listener` dispatches lifecycle events (`on_resolved`, `on_batch_start`, `on_submitted`, `on_completed`, `on_progress`, `on_waiting_for_slots`, `on_duplicate_skipped`) to listeners. CLI uses `CLIListener` + `ProgressRenderer` for TTY progress bars.
 

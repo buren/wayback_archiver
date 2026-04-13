@@ -139,6 +139,9 @@ wayback_archiver example.com --skip-archived=7d
 wayback_archiver example.com --crawl --include-ext=html,pdf
 wayback_archiver example.com --crawl --exclude-ext=zip,png,jpg
 
+# Skip URLs matching regex patterns
+wayback_archiver example.com --crawl --skip-patterns='hs_amp=true,/tag/'
+
 # Disable duplicate content detection (on by default for crawl)
 wayback_archiver example.com --crawl --no-skip-duplicates
 

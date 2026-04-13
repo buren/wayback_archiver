@@ -6,6 +6,7 @@
 - **Crawl HTTP filtering** — non-success pages (404, 500, etc.) discovered during crawl are now filtered out before archiving instead of being submitted to SPN2 and failing predictably.
 - **Quieter retry logging** — intermediate retry attempts (connection errors, transient SPN2 errors, poll failures) now log at debug level instead of WARN. Only final failures (retry limit exceeded) log at ERROR.
 - **Increased retry limit** — per-URL retry cap for transient errors increased from 3 to 5, improving tolerance for intermittent SPN2 gateway timeouts and connection refused errors.
+- **Skip patterns** — `--skip-patterns=PATTERN` accepts comma-separated regex patterns to exclude matching URLs from archiving. Works for all strategies. Ruby API: `skip_patterns: [/pattern/]`.
 
 ## v2.0.0
 
