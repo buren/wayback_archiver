@@ -25,7 +25,7 @@ module WaybackArchiver
 
         delay = [base_delay * (2**(retries - 1)), max_delay].min
         jitter = rand(0.0..(delay * 0.1))
-        WaybackArchiver.logger.warn("Retryable error (#{e.message}), retry #{retries}/#{max_retries} in #{'%.1f' % (delay + jitter)}s")
+        WaybackArchiver.logger.debug("Retryable error (#{e.message}), retry #{retries}/#{max_retries} in #{'%.1f' % (delay + jitter)}s")
         sleep(delay + jitter)
         retry
       end

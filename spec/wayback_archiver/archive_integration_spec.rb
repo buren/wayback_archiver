@@ -166,10 +166,10 @@ RSpec.describe WaybackArchiver::Archive, 'integration' do
       expect(results.length).to eq(1)
       expect(results.first.errored?).to eq(true)
 
-      # 1 initial + MAX_RETRIES (3) = 4 attempts
+      # 1 initial + MAX_RETRIES (5) = 6 attempts
       expect(WebMock).to have_requested(:post, 'https://web.archive.org/save')
         .with(body: hash_including('url' => url))
-        .times(4)
+        .times(6)
     end
   end
 
@@ -233,10 +233,10 @@ RSpec.describe WaybackArchiver::Archive, 'integration' do
       expect(results.length).to eq(1)
       expect(results.first.errored?).to eq(true)
 
-      # 1 initial + MAX_RETRIES (3) = 4 submit attempts
+      # 1 initial + MAX_RETRIES (5) = 6 submit attempts
       expect(WebMock).to have_requested(:post, 'https://web.archive.org/save')
         .with(body: hash_including('url' => url))
-        .times(4)
+        .times(6)
     end
 
     it 'does not re-queue permanent poll errors' do
@@ -259,6 +259,42 @@ RSpec.describe WaybackArchiver::Archive, 'integration' do
       expect(WebMock).to have_requested(:post, 'https://web.archive.org/save')
         .with(body: hash_including('url' => url))
         .times(1)
+    end
+  end
+
+  describe 'retry logging' do
+    it 'logs transient poll errors at debug level and only errors on final failure' do
+      url = 'http://example.com/quiet-retry'
+
+      call_count = 0
+      stub_request(:post, 'https://web.archive.org/save')
+        .with(body: hash_including('url' => url))
+        .to_return do |_req|
+          call_count += 1
+          { status: 200, body: { 'url' => url, 'job_id' => "job-#{call_count}" }.to_json }
+        end
+
+      stub_request(:post, 'https://web.archive.org/save/status')
+        .to_return do |req|
+          body = URI.decode_www_form(req.body).to_h
+          job_ids = body['job_ids'].split(',')
+          statuses = job_ids.to_h { |jid| [jid, { 'status' => 'error', 'job_id' => jid, 'status_ext' => 'error:proxy-error' }] }
+          { status: 200, body: statuses.to_json }
+        end
+
+      described_class.post([url], concurrency: 1)
+
+      # Intermediate retries should NOT be warn level
+      warn_transient_lines = WaybackArchiver.logger.warn_log.select { |l| l.include?('Transient poll error') }
+      expect(warn_transient_lines).to be_empty
+
+      # They should be at debug level
+      debug_transient_lines = WaybackArchiver.logger.debug_log.select { |l| l.include?('Transient poll error') }
+      expect(debug_transient_lines).not_to be_empty
+
+      # Final failure stays at error level
+      error_lines = WaybackArchiver.logger.error_log.select { |l| l.include?('Retry limit exceeded') }
+      expect(error_lines.length).to eq(1)
     end
   end
 

@@ -97,6 +97,21 @@ RSpec.describe WaybackArchiver::Retry do
       expect(attempts).to eq(1)
     end
 
+    it 'logs retries at debug level instead of warn' do
+      attempts = 0
+      described_class.with_backoff(max_retries: 3) do
+        attempts += 1
+        raise WaybackArchiver::RetryableError, 'rate limited' if attempts < 2
+        'ok'
+      end
+
+      retry_debug_lines = WaybackArchiver.logger.debug_log.select { |l| l.include?('retry') }
+      expect(retry_debug_lines).not_to be_empty
+
+      retry_warn_lines = WaybackArchiver.logger.warn_log.select { |l| l.include?('retry') || l.include?('Retryable') }
+      expect(retry_warn_lines).to be_empty
+    end
+
     it 'caps delay at max_delay' do
       delays = []
       allow(described_class).to receive(:sleep) { |d| delays << d }

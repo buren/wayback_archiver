@@ -76,7 +76,7 @@ module WaybackArchiver
     end
 
     FALLBACK_CHUNK_SIZE = 2 # conservative fallback when check_user_status fails mid-run
-    MAX_RETRIES = 3 # per-URL retry cap for transient errors (session limits, connection errors)
+    MAX_RETRIES = 5 # per-URL retry cap for transient errors (session limits, connection errors)
 
     # Batch mode: submit URLs in chunks with intermediate polling.
     #
@@ -135,7 +135,7 @@ module WaybackArchiver
               WaybackArchiver.logger.debug("Submitting #{url} (#{n}/#{total || '?'})")
               handle_submit_response(WaybackMachine.submit(url, **options), url, pending, results, retry_urls, **options, &block)
             rescue Request::Error => e
-              WaybackArchiver.logger.warn("Connection error for #{url}: #{e.message}")
+              WaybackArchiver.logger.debug("Connection error for #{url}: #{e.message}, will retry")
               retry_urls << url
             end
           end
@@ -218,7 +218,7 @@ module WaybackArchiver
         end
       end
       unless requeued.empty?
-        WaybackArchiver.logger.warn("Re-queuing #{requeued.size} URL(s) due to transient error")
+        WaybackArchiver.logger.debug("Re-queuing #{requeued.size} URL(s) due to transient error")
         retry_buffer.concat(requeued)
       end
     end
@@ -261,7 +261,7 @@ module WaybackArchiver
       statuses = begin
         WaybackMachine.poll_statuses(pending.keys)
       rescue Request::Error => e
-        WaybackArchiver.logger.warn("Poll failed: #{e.message}")
+        WaybackArchiver.logger.debug("Poll failed: #{e.message}, will retry")
         return
       end
 
@@ -290,7 +290,7 @@ module WaybackArchiver
         if status['status'] == 'error' && retry_buffer && retries && ErrorCodes.retryable?(status_ext)
           retries[url] += 1
           if retries[url] <= MAX_RETRIES
-            WaybackArchiver.logger.warn("Transient poll error for #{url}: #{status_ext}, re-queuing (#{retries[url]}/#{MAX_RETRIES})")
+            WaybackArchiver.logger.debug("Transient poll error for #{url}: #{status_ext}, re-queuing (#{retries[url]}/#{MAX_RETRIES})")
             retry_buffer.push(url)
             next
           end
@@ -346,7 +346,7 @@ module WaybackArchiver
             WaybackArchiver.logger.error("Connection refused by web.archive.org — your IP may be temporarily blocked. Try again later.")
             return :abort
           end
-          WaybackArchiver.logger.warn("Status check failed: #{e.message}")
+          WaybackArchiver.logger.debug("Status check failed: #{e.message}, will retry")
           nil
         end
 

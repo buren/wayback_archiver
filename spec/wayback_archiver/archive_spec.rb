@@ -628,8 +628,29 @@ RSpec.describe WaybackArchiver::Archive do
 
         expect(results.length).to eq(1)
         expect(results.first.errored?).to eq(true)
-        # Should have tried submit 4 times (1 + 3 retries)
-        expect(WaybackArchiver::WaybackMachine).to have_received(:submit).exactly(4).times
+        # Should have tried submit 6 times (1 + 5 retries)
+        expect(WaybackArchiver::WaybackMachine).to have_received(:submit).exactly(6).times
+      end
+
+      it 'logs retries at debug level and only logs error on final failure' do
+        allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status).and_return({ 'available' => 12, 'processing' => 0 })
+        allow(WaybackArchiver::WaybackMachine).to receive(:submit)
+          .with('http://a.com').and_raise(WaybackArchiver::Request::ClientError, 'Connection refused')
+        allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses).and_return({})
+
+        described_class.post(%w[http://a.com])
+
+        # Intermediate retries should be debug, not warn
+        warn_connection_lines = WaybackArchiver.logger.warn_log.select { |l| l.include?('Connection error') || l.include?('Re-queuing') }
+        expect(warn_connection_lines).to be_empty
+
+        # Debug should mention retries will happen
+        debug_retry_lines = WaybackArchiver.logger.debug_log.select { |l| l.include?('will retry') }
+        expect(debug_retry_lines).not_to be_empty
+
+        # Final failure should be error level
+        error_lines = WaybackArchiver.logger.error_log.select { |l| l.include?('Retry limit exceeded') }
+        expect(error_lines.length).to eq(1)
       end
     end
   end
