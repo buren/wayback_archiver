@@ -12,7 +12,7 @@ module WaybackArchiver
     # @param concurrency [Integer] the default is 1
     # @yield [archive_result] If a block is given, each result will be yielded
     # @yieldparam [ArchiveResult] archive_result
-    def self.post(urls, concurrency: WaybackArchiver.config.concurrency, limit: WaybackArchiver.config.max_limit, skip_urls: nil, include_ext: nil, exclude_ext: nil, **options, &block)
+    def self.post(urls, concurrency: WaybackArchiver.config.concurrency, limit: WaybackArchiver.config.max_limit, skip_urls: nil, skip_patterns: nil, include_ext: nil, exclude_ext: nil, **options, &block)
       WaybackArchiver.logger.debug "Total URLs to be sent: #{urls.length}"
       WaybackArchiver.logger.debug "Request are sent with up to #{concurrency} parallel threads"
 
@@ -27,6 +27,13 @@ module WaybackArchiver
         urls_queue = urls_queue.reject { |url| skip_urls.include?(url) }
         skipped = before - urls_queue.length
         WaybackArchiver.logger.info "Skipped #{skipped} previously succeeded URL(s)" if skipped > 0
+      end
+
+      if skip_patterns && !skip_patterns.empty?
+        before = urls_queue.length
+        urls_queue = urls_queue.reject { |url| skip_patterns.any? { |pat| pat.match?(url) } }
+        skipped = before - urls_queue.length
+        WaybackArchiver.logger.info "Skipped #{skipped} URL(s) matching skip patterns" if skipped > 0
       end
 
       urls_queue = URLFilter.new(include_ext: include_ext, exclude_ext: exclude_ext).apply(urls_queue)
@@ -45,7 +52,7 @@ module WaybackArchiver
     # @param [Array<String, Regexp>] hosts to crawl
     # @yield [archive_result] If a block is given, each result will be yielded
     # @yieldparam [ArchiveResult] archive_result
-    def self.crawl(source, hosts: [], concurrency: WaybackArchiver.config.concurrency, limit: WaybackArchiver.config.max_limit, skip_urls: nil, include_ext: nil, exclude_ext: nil, skip_duplicates: true, **options, &block)
+    def self.crawl(source, hosts: [], concurrency: WaybackArchiver.config.concurrency, limit: WaybackArchiver.config.max_limit, skip_urls: nil, skip_patterns: nil, include_ext: nil, exclude_ext: nil, skip_duplicates: true, **options, &block)
       queue = SizedQueue.new(CRAWL_QUEUE_SIZE)
       url_filter = URLFilter.new(include_ext: include_ext, exclude_ext: exclude_ext)
       discovered = Concurrent::AtomicFixnum.new(0)
@@ -54,6 +61,7 @@ module WaybackArchiver
         Thread.current.report_on_exception = false # we re-raise via thread.value
         URLCollector.crawl(source, hosts: hosts, limit: limit, exts: include_ext, ignore_exts: exclude_ext, skip_duplicates: skip_duplicates) do |url|
           next if skip_urls&.include?(url)
+          next if skip_patterns&.any? { |pat| pat.match?(url) }
           next unless url_filter.match?(url)
           count = discovered.increment
           queue.push(url) # blocks when queue is full (backpressure)

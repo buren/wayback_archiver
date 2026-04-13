@@ -269,6 +269,7 @@ module WaybackArchiver
         concurrency: @options.concurrency,
         limit: @options.limit,
         skip_urls: @skip_urls,
+        skip_patterns: @options.skip_patterns,
         skip_duplicates: @options.skip_duplicates != false,
         **@options.spn2_options
       }

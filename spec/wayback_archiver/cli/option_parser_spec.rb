@@ -114,6 +114,17 @@ RSpec.describe WaybackArchiver::CLI::OptionParser do
       expect(opts.hosts).to all(be_a(Regexp))
     end
 
+    it 'parses --skip-patterns as array of Regexp' do
+      opts = parse('--skip-patterns=hs_amp=true,/tag/', 'http://example.com')
+      expect(opts.skip_patterns.length).to eq(2)
+      expect(opts.skip_patterns).to all(be_a(Regexp))
+    end
+
+    it 'rejects invalid --skip-patterns regex' do
+      expect { parse('--skip-patterns=[invalid', 'http://example.com') }
+        .to raise_error(ArgumentError, /Invalid skip pattern/)
+    end
+
     it 'parses --skip-archived without value' do
       opts = parse('--skip-archived', 'http://example.com')
       expect(opts.skip_archived).to eq(true)

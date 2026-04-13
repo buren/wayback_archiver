@@ -8,7 +8,7 @@ module WaybackArchiver
       :hosts, :spn2_options, :show_summary, :report_path,
       :session_path, :no_session, :resume_path,
       :check_mode, :status_mode, :skip_archived, :skip_archived_within,
-      :skip_duplicates,
+      :skip_duplicates, :skip_patterns,
       :urls,
       keyword_init: true
     )
@@ -163,6 +163,14 @@ module WaybackArchiver
 
           parser.on('--exclude-ext=zip,png', Array, 'Skip URLs with these extensions') do |value|
             opts.spn2_options[:exclude_ext] = value
+          end
+
+          parser.on('--skip-patterns=PATTERN', Array, 'Skip URLs matching regex pattern(s)') do |value|
+            opts.skip_patterns = value.map do |v|
+              Regexp.new(v)
+            rescue RegexpError => e
+              raise ArgumentError, "Invalid skip pattern '#{v}': #{e.message}"
+            end
           end
 
           parser.separator ''

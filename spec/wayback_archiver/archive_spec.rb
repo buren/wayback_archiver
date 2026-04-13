@@ -101,6 +101,42 @@ RSpec.describe WaybackArchiver::Archive do
       expect(WaybackArchiver::WaybackMachine).to have_received(:submit).twice
     end
 
+    describe 'skip_patterns filtering' do
+      before do
+        allow(WaybackArchiver::WaybackMachine).to receive(:submit) do |url, **_opts|
+          { 'url' => url, 'job_id' => "job-#{url.hash.abs}" }
+        end
+        allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses) do |ids|
+          ids.each_with_object({}) do |jid, h|
+            h[jid] = { 'status' => 'success', 'job_id' => jid, 'timestamp' => '20260326120000', 'original_url' => 'http://example.com' }
+          end
+        end
+      end
+
+      it 'excludes URLs matching a pattern' do
+        urls = %w[https://example.com https://example.com/page?hs_amp=true]
+        described_class.post(urls, skip_patterns: [/hs_amp=true/])
+
+        expect(WaybackArchiver::WaybackMachine).to have_received(:submit).once
+        expect(WaybackArchiver::WaybackMachine).to have_received(:submit).with('https://example.com')
+      end
+
+      it 'excludes URLs matching any of multiple patterns' do
+        urls = %w[https://example.com https://example.com/page?hs_amp=true https://example.com/tag/ruby]
+        described_class.post(urls, skip_patterns: [/hs_amp=true/, %r{/tag/}])
+
+        expect(WaybackArchiver::WaybackMachine).to have_received(:submit).once
+        expect(WaybackArchiver::WaybackMachine).to have_received(:submit).with('https://example.com')
+      end
+
+      it 'does not skip anything when skip_patterns is nil' do
+        urls = %w[https://example.com https://example.com/page?hs_amp=true]
+        described_class.post(urls, skip_patterns: nil)
+
+        expect(WaybackArchiver::WaybackMachine).to have_received(:submit).twice
+      end
+    end
+
     describe 'extension filtering' do
       before do
         allow(WaybackArchiver::WaybackMachine).to receive(:submit) do |url, **_opts|
@@ -695,6 +731,25 @@ RSpec.describe WaybackArchiver::Archive do
 
       expect(WaybackArchiver::WaybackMachine).to have_received(:submit).once
       expect(WaybackArchiver::WaybackMachine).to have_received(:submit).with('http://b.com')
+    end
+
+    it 'filters out URLs matching skip_patterns before submitting' do
+      allow(WaybackArchiver::URLCollector).to receive(:crawl)
+        .and_yield('http://example.com/page').and_yield('http://example.com/page?hs_amp=true')
+        .and_return(%w[http://example.com/page http://example.com/page?hs_amp=true])
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit) do |url|
+        { 'url' => url, 'job_id' => "job-#{url.hash.abs}" }
+      end
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses) do |ids|
+        ids.each_with_object({}) do |jid, h|
+          h[jid] = { 'status' => 'success', 'job_id' => jid, 'timestamp' => '20260326120000', 'original_url' => 'http://example.com/page' }
+        end
+      end
+
+      results = described_class.crawl('http://example.com', skip_patterns: [/hs_amp=true/])
+
+      expect(WaybackArchiver::WaybackMachine).to have_received(:submit).once
+      expect(WaybackArchiver::WaybackMachine).to have_received(:submit).with('http://example.com/page')
     end
 
     it 'applies extension filtering inline' do
