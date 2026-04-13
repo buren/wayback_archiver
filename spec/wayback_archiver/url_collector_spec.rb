@@ -166,6 +166,40 @@ RSpec.describe WaybackArchiver::URLCollector do
       expect(found_urls).not_to include('http://example.com/logo.png')
     end
 
+    it 'skips pages with non-success HTTP status codes' do
+      html_page = <<-HTML
+      <!DOCTYPE html>
+      <html>
+        <head><title>Testing</title></head>
+        <body>
+          <a href="http://example.com/found">OK page</a>
+          <a href="http://example.com/missing">Missing page</a>
+          <a href="http://example.com/error">Error page</a>
+        </body>
+      </html>
+      HTML
+
+      response_headers = { 'Content-Type' => 'text/html; charset=utf-8' }
+
+      stub_request(:get, 'http://example.com/robots.txt')
+        .to_return(status: 200, body: '', headers: {})
+      stub_request(:get, 'http://example.com/')
+        .to_return(status: 200, body: html_page, headers: response_headers)
+      stub_request(:get, 'http://example.com/found')
+        .to_return(status: 200, body: '', headers: response_headers)
+      stub_request(:get, 'http://example.com/missing')
+        .to_return(status: 404, body: 'Not Found', headers: response_headers)
+      stub_request(:get, 'http://example.com/error')
+        .to_return(status: 500, body: 'Server Error', headers: response_headers)
+
+      found_urls = described_class.crawl('http://example.com')
+
+      expect(found_urls).to include('http://example.com')
+      expect(found_urls).to include('http://example.com/found')
+      expect(found_urls).not_to include('http://example.com/missing')
+      expect(found_urls).not_to include('http://example.com/error')
+    end
+
     it 'passes exts and ignore_exts through to Spidr' do
       stub_request(:get, 'http://example.com')
         .to_return(status: 200, body: '', headers: {})

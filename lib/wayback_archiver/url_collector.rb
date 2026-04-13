@@ -57,6 +57,7 @@ module WaybackArchiver
 
       Spidr.site(start_at_url, **options) do |spider|
         spider.every_page do |page|
+          next unless page.ok?
           next unless archivable_page?(page)
 
           page_url = page.url.to_s
