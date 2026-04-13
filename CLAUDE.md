@@ -16,13 +16,13 @@ Ruby gem wrapping the Internet Archive's SPN2 API. CLI entry point (`bin/wayback
 
 **Configuration**: `WaybackArchiver.config` returns a `Configuration` instance holding all settings (concurrency, credentials, etc.). `WaybackArchiver.logger` and `.listener` are convenience delegates. All other config goes through `config`.
 
-**Options flow**: CLI → `options` hash → `WaybackArchiver.archive(**options)` → `Archive.post`/`Archive.crawl` → `Archive.batch_post` (chunked submit + poll loop). SPN2-specific options pass through via `**options` to `WaybackMachine`. Filtering options (`skip_urls`, `include_ext`, `exclude_ext`) are consumed by `Archive` before reaching `WaybackMachine`.
+**Options flow**: CLI → `options` hash → `WaybackArchiver.archive(**options)` → `Archive.post`/`Archive.crawl` → `Archive.batch_post` (chunked submit + poll loop). SPN2-specific options pass through via `**options` to `WaybackMachine`. Filtering options (`skip_urls`, `include_ext`, `exclude_ext`, `skip_duplicates`) are consumed by `Archive` before reaching `WaybackMachine`.
 
-**Event system**: `WaybackArchiver.listener` dispatches lifecycle events (`on_resolved`, `on_batch_start`, `on_submitted`, `on_completed`, `on_progress`, `on_waiting_for_slots`) to listeners. CLI uses `CLIListener` + `ProgressRenderer` for TTY progress bars.
+**Event system**: `WaybackArchiver.listener` dispatches lifecycle events (`on_resolved`, `on_batch_start`, `on_submitted`, `on_completed`, `on_progress`, `on_waiting_for_slots`, `on_duplicate_skipped`) to listeners. CLI uses `CLIListener` + `ProgressRenderer` for TTY progress bars.
 
-**Error handling**: `ErrorCodes` classifies 38 SPN2 `status_ext` codes into `:transient`, `:daily_limit`, `:permanent`. Transient errors trigger automatic retry with backoff (up to 3 attempts).
+**Error handling**: `ErrorCodes` classifies 38 SPN2 `status_ext` codes into `:transient`, `:daily_limit`, `:permanent`. Transient errors trigger automatic retry with backoff (up to 5 attempts). Retry logging is debug-level; only final failures log at ERROR.
 
-**Crawling**: Uses the [Spidr](https://github.com/postmodern/spidr) gem for web crawling.
+**Crawling**: Uses the [Spidr](https://github.com/postmodern/spidr) gem for web crawling. Non-success HTTP pages (404, 500, etc.) are filtered at crawl time. Duplicate content detection (`skip_duplicates`, default on) skips pages with the same URL path and identical body MD5 hash.
 
 **Concurrency**: `concurrent-ruby` thread pools. `ThreadPool.build(1)` returns `ImmediateExecutor` (synchronous); `build(n)` returns `FixedThreadPool`.
 

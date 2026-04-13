@@ -2,6 +2,11 @@
 
 ## HEAD
 
+- **Crawl deduplication** — pages with the same URL path and identical body content are automatically skipped during crawl, preventing infinite pagination from flooding SPN2 with duplicate submissions. Opt out with `--no-skip-duplicates` or `skip_duplicates: false`. New `on_duplicate_skipped` listener event and duplicate count in CLI summary.
+- **Crawl HTTP filtering** — non-success pages (404, 500, etc.) discovered during crawl are now filtered out before archiving instead of being submitted to SPN2 and failing predictably.
+- **Quieter retry logging** — intermediate retry attempts (connection errors, transient SPN2 errors, poll failures) now log at debug level instead of WARN. Only final failures (retry limit exceeded) log at ERROR.
+- **Increased retry limit** — per-URL retry cap for transient errors increased from 3 to 5, improving tolerance for intermittent SPN2 gateway timeouts and connection refused errors.
+
 ## v2.0.0
 
 **Breaking changes:**
@@ -38,7 +43,7 @@
 - **URL extension filtering** — `--include-ext=pdf,doc` archives only matching URLs; `--exclude-ext=zip,png` skips matching URLs. Available via Ruby API as `include_ext:` / `exclude_ext:` parameters.
 - **Outlinks availability** — `--outlinks-availability` returns last-capture timestamps for outlinks
 - **TTY progress bar** — sticky two-line footer with adaptive progress bar, ETA (exponential moving average), and state indicator (Submitting/Polling/Waiting). Automatically hidden on non-TTY output.
-- **Connection error retry** — transient connection errors (timeouts, refused, reset) retried with exponential backoff (up to 3 attempts)
+- **Connection error retry** — transient connection errors (timeouts, refused, reset) retried with exponential backoff (up to 5 attempts)
 - **Ctrl+C handling** — graceful interrupt shows summary of progress so far and a `--resume` command to continue
 - **Dynamic chunk sizing** — batch submissions adapt chunk size based on `check_user_status` response and available capture slots
 - **CLI improvements** — summary after archiving (`--[no-]summary`), `--quiet` mode, `--rss` flag, input validation for concurrency/limit/timeout/host patterns, startup banner showing limit/hosts/skip-archived, human-readable duration in summary (h/m/s)

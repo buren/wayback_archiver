@@ -14,6 +14,14 @@ results = WaybackArchiver.archive(
 
 puts "\nArchived #{results.count(&:success?)} of #{results.length} URLs"
 
+# Duplicate content detection is on by default — pages with the same
+# URL path and identical body are skipped. Disable with:
+# results = WaybackArchiver.archive(
+#   'https://example.com',
+#   strategy: :crawl,
+#   skip_duplicates: false
+# )
+
 # Crawl across subdomains using hosts (strings or regex patterns)
 # results = WaybackArchiver.archive(
 #   'https://www.example.com',

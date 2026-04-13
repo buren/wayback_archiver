@@ -21,6 +21,10 @@ class ProgressListener < WaybackArchiver::NullListener
     end
   end
 
+  def on_duplicate_skipped(url:)
+    puts "  SKIP #{url} (duplicate content)"
+  end
+
   def on_progress(captured:, failed:, pending:)
     puts "  ... #{captured} captured, #{failed} failed, #{pending} pending"
   end

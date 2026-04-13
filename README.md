@@ -139,6 +139,9 @@ wayback_archiver example.com --skip-archived=7d
 wayback_archiver example.com --crawl --include-ext=html,pdf
 wayback_archiver example.com --crawl --exclude-ext=zip,png,jpg
 
+# Disable duplicate content detection (on by default for crawl)
+wayback_archiver example.com --crawl --no-skip-duplicates
+
 # Check SPN2 system and user status
 wayback_archiver --status --access-key=KEY --secret-key=SECRET
 
@@ -236,6 +239,7 @@ Any object works — only implement the methods you need. Unimplemented events a
 | `on_batch_start` | Batch archiving begins | `total:` (`nil` during streaming crawl) |
 | `on_url_discovered` | URL found during crawl (crawl strategy only) | `url:, count:` |
 | `on_crawl_complete` | Crawler finished discovering URLs | `url_count:` |
+| `on_duplicate_skipped` | URL skipped as duplicate content (crawl only) | `url:` |
 | `on_submitted` | URL submitted to SPN2 | `url:, job_id:` |
 | `on_completed` | URL finished (success, cached, error) | `result:` |
 | `on_progress` | After each poll cycle | `captured:, failed:, pending:` |
