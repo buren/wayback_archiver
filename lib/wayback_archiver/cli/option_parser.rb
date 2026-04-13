@@ -8,6 +8,7 @@ module WaybackArchiver
       :hosts, :spn2_options, :show_summary, :report_path,
       :session_path, :no_session, :resume_path,
       :check_mode, :status_mode, :skip_archived, :skip_archived_within,
+      :skip_duplicates,
       :urls,
       keyword_init: true
     )
@@ -199,6 +200,10 @@ module WaybackArchiver
 
           parser.on('--[no-]summary', 'Print summary after archiving (default: true)') do |value|
             opts.show_summary = value
+          end
+
+          parser.on('--[no-]skip-duplicates', 'Skip URLs with duplicate page content (default: true)') do |value|
+            opts.skip_duplicates = value
           end
 
           parser.on('--report=PATH', String, 'Write report to file (CSV or JSON, detected from extension)') do |value|

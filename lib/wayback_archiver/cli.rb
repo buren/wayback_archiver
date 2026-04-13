@@ -7,13 +7,14 @@ require 'wayback_archiver/cli/summary'
 
 module WaybackArchiver
   class CLIListener < NullListener
-    attr_reader :renderer
+    attr_reader :renderer, :duplicates_skipped
 
     def initialize(stdout, tty: stdout.respond_to?(:tty?) && stdout.tty?)
       @stdout = stdout
       @tty = tty
       @mutex = Mutex.new
       @completed_count = 0
+      @duplicates_skipped = 0
       @renderer = CLI::ProgressRenderer.new(stdout) if @tty
     end
 
@@ -43,6 +44,10 @@ module WaybackArchiver
 
       @renderer.set_total(url_count)
       @renderer.repaint
+    end
+
+    def on_duplicate_skipped(url:)
+      @mutex.synchronize { @duplicates_skipped += 1 }
     end
 
     def on_submitted(url:, job_id:)
@@ -131,7 +136,7 @@ module WaybackArchiver
       results = run_archive
       @summary.write_report(results, @options.report_path)
       cleanup_session(results)
-      @summary.print_summary(results, @archive_start_time) if @options.show_summary
+      @summary.print_summary(results, @archive_start_time, duplicates_skipped: @cli_listener&.duplicates_skipped || 0) if @options.show_summary
     ensure
       @cli_listener&.finish unless @interrupted
       @log_output&.renderer = nil
@@ -264,6 +269,7 @@ module WaybackArchiver
         concurrency: @options.concurrency,
         limit: @options.limit,
         skip_urls: @skip_urls,
+        skip_duplicates: @options.skip_duplicates != false,
         **@options.spn2_options
       }
 

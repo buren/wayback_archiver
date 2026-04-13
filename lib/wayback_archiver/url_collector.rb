@@ -1,3 +1,4 @@
+require 'digest'
 require 'spidr'
 
 require 'wayback_archiver/sitemapper'
@@ -43,8 +44,9 @@ module WaybackArchiver
     #        /host[\d]+\.example\.com/
     #      ]
     #    )
-    def self.crawl(url, hosts: [], limit: WaybackArchiver.config.max_limit, exts: nil, ignore_exts: nil)
+    def self.crawl(url, hosts: [], limit: WaybackArchiver.config.max_limit, exts: nil, ignore_exts: nil, skip_duplicates: true)
       urls = []
+      seen_pages = {} # path (without query) => MD5 digest of body
       start_at_url = resolve_start_url(Request.build_uri(url).to_s)
       options = {
         robots: WaybackArchiver.config.respect_robots_txt,
@@ -59,6 +61,17 @@ module WaybackArchiver
         spider.every_page do |page|
           next unless page.ok?
           next unless archivable_page?(page)
+
+          if skip_duplicates
+            path = page.url.path
+            digest = Digest::MD5.hexdigest(page.body.to_s)
+            if seen_pages[path] == digest
+              WaybackArchiver.logger.debug "Skipping duplicate content: #{page.url}"
+              WaybackArchiver.listener.on_duplicate_skipped(url: page.url.to_s)
+              next
+            end
+            seen_pages[path] ||= digest
+          end
 
           page_url = page.url.to_s
           urls << page_url

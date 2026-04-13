@@ -45,14 +45,14 @@ module WaybackArchiver
     # @param [Array<String, Regexp>] hosts to crawl
     # @yield [archive_result] If a block is given, each result will be yielded
     # @yieldparam [ArchiveResult] archive_result
-    def self.crawl(source, hosts: [], concurrency: WaybackArchiver.config.concurrency, limit: WaybackArchiver.config.max_limit, skip_urls: nil, include_ext: nil, exclude_ext: nil, **options, &block)
+    def self.crawl(source, hosts: [], concurrency: WaybackArchiver.config.concurrency, limit: WaybackArchiver.config.max_limit, skip_urls: nil, include_ext: nil, exclude_ext: nil, skip_duplicates: true, **options, &block)
       queue = SizedQueue.new(CRAWL_QUEUE_SIZE)
       url_filter = URLFilter.new(include_ext: include_ext, exclude_ext: exclude_ext)
       discovered = Concurrent::AtomicFixnum.new(0)
 
       crawler_thread = Thread.new do
         Thread.current.report_on_exception = false # we re-raise via thread.value
-        URLCollector.crawl(source, hosts: hosts, limit: limit, exts: include_ext, ignore_exts: exclude_ext) do |url|
+        URLCollector.crawl(source, hosts: hosts, limit: limit, exts: include_ext, ignore_exts: exclude_ext, skip_duplicates: skip_duplicates) do |url|
           next if skip_urls&.include?(url)
           next unless url_filter.match?(url)
           count = discovered.increment

@@ -200,6 +200,132 @@ RSpec.describe WaybackArchiver::URLCollector do
       expect(found_urls).not_to include('http://example.com/error')
     end
 
+    describe 'duplicate content detection' do
+      let(:response_headers) { { 'Content-Type' => 'text/html; charset=utf-8' } }
+
+      before do
+        stub_request(:get, 'http://example.com/robots.txt')
+          .to_return(status: 200, body: '', headers: {})
+      end
+
+      it 'skips pages with same path and same body content' do
+        same_body = '<html><body>Same content</body></html>'
+        root_page = <<-HTML
+        <html><body>
+          <a href="http://example.com/page">Page</a>
+          <a href="http://example.com/page?p=1">Page 1</a>
+          <a href="http://example.com/page?p=2">Page 2</a>
+        </body></html>
+        HTML
+
+        stub_request(:get, 'http://example.com/')
+          .to_return(status: 200, body: root_page, headers: response_headers)
+        stub_request(:get, 'http://example.com/page')
+          .to_return(status: 200, body: same_body, headers: response_headers)
+        stub_request(:get, 'http://example.com/page?p=1')
+          .to_return(status: 200, body: same_body, headers: response_headers)
+        stub_request(:get, 'http://example.com/page?p=2')
+          .to_return(status: 200, body: same_body, headers: response_headers)
+
+        found_urls = described_class.crawl('http://example.com')
+
+        expect(found_urls).to include('http://example.com')
+        expect(found_urls).to include('http://example.com/page')
+        expect(found_urls).not_to include('http://example.com/page?p=1')
+        expect(found_urls).not_to include('http://example.com/page?p=2')
+      end
+
+      it 'keeps pages with same path but different body content' do
+        root_page = <<-HTML
+        <html><body>
+          <a href="http://example.com/page">Page</a>
+          <a href="http://example.com/page?p=2">Page 2</a>
+        </body></html>
+        HTML
+
+        stub_request(:get, 'http://example.com/')
+          .to_return(status: 200, body: root_page, headers: response_headers)
+        stub_request(:get, 'http://example.com/page')
+          .to_return(status: 200, body: '<html><body>Page one content</body></html>', headers: response_headers)
+        stub_request(:get, 'http://example.com/page?p=2')
+          .to_return(status: 200, body: '<html><body>Page two content</body></html>', headers: response_headers)
+
+        found_urls = described_class.crawl('http://example.com')
+
+        expect(found_urls).to include('http://example.com/page')
+        expect(found_urls).to include('http://example.com/page?p=2')
+      end
+
+      it 'keeps pages with different paths but same body content' do
+        same_body = '<html><body>Same content</body></html>'
+        root_page = <<-HTML
+        <html><body>
+          <a href="http://example.com/about">About</a>
+          <a href="http://example.com/contact">Contact</a>
+        </body></html>
+        HTML
+
+        stub_request(:get, 'http://example.com/')
+          .to_return(status: 200, body: root_page, headers: response_headers)
+        stub_request(:get, 'http://example.com/about')
+          .to_return(status: 200, body: same_body, headers: response_headers)
+        stub_request(:get, 'http://example.com/contact')
+          .to_return(status: 200, body: same_body, headers: response_headers)
+
+        found_urls = described_class.crawl('http://example.com')
+
+        expect(found_urls).to include('http://example.com/about')
+        expect(found_urls).to include('http://example.com/contact')
+      end
+
+      it 'fires on_duplicate_skipped listener event for skipped URLs' do
+        same_body = '<html><body>Same content</body></html>'
+        root_page = <<-HTML
+        <html><body>
+          <a href="http://example.com/page">Page</a>
+          <a href="http://example.com/page?p=1">Page 1</a>
+        </body></html>
+        HTML
+
+        stub_request(:get, 'http://example.com/')
+          .to_return(status: 200, body: root_page, headers: response_headers)
+        stub_request(:get, 'http://example.com/page')
+          .to_return(status: 200, body: same_body, headers: response_headers)
+        stub_request(:get, 'http://example.com/page?p=1')
+          .to_return(status: 200, body: same_body, headers: response_headers)
+
+        listener = instance_double(WaybackArchiver::NullListener)
+        allow(listener).to receive(:on_duplicate_skipped)
+        allow(WaybackArchiver).to receive(:listener).and_return(listener)
+
+        described_class.crawl('http://example.com')
+
+        expect(listener).to have_received(:on_duplicate_skipped).with(url: 'http://example.com/page?p=1')
+      end
+
+      it 'does not deduplicate when skip_duplicates is false' do
+        same_body = '<html><body>Same content</body></html>'
+        root_page = <<-HTML
+        <html><body>
+          <a href="http://example.com/page">Page</a>
+          <a href="http://example.com/page?p=1">Page 1</a>
+        </body></html>
+        HTML
+
+        stub_request(:get, 'http://example.com/')
+          .to_return(status: 200, body: root_page, headers: response_headers)
+        stub_request(:get, 'http://example.com/page')
+          .to_return(status: 200, body: same_body, headers: response_headers)
+        stub_request(:get, 'http://example.com/page?p=1')
+          .to_return(status: 200, body: same_body, headers: response_headers)
+
+        found_urls = described_class.crawl('http://example.com', skip_duplicates: false)
+
+        expect(found_urls).to include('http://example.com/page')
+        expect(found_urls).to include('http://example.com/page?p=1')
+      end
+    end
+
     it 'passes exts and ignore_exts through to Spidr' do
       stub_request(:get, 'http://example.com')
         .to_return(status: 200, body: '', headers: {})

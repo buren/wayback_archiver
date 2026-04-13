@@ -54,6 +54,10 @@ RSpec.describe WaybackArchiver::CLI::OptionParser do
       expect(parse('--no-summary', 'http://example.com').show_summary).to eq(false)
     end
 
+    it 'parses --no-skip-duplicates' do
+      expect(parse('--no-skip-duplicates', 'http://example.com').skip_duplicates).to eq(false)
+    end
+
     it 'parses --no-session' do
       expect(parse('--no-session', 'http://example.com').no_session).to eq(true)
     end

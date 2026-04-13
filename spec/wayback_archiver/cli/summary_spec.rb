@@ -97,6 +97,22 @@ RSpec.describe WaybackArchiver::CLI::Summary do
 
       expect(stdout_output).to include('URLs/min')
     end
+
+    it 'shows duplicates skipped count when present' do
+      results = [WaybackArchiver::ArchiveResult.new('http://a.com', timestamp: '20240101000000')]
+      start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      summary.print_summary(results, start, duplicates_skipped: 42)
+
+      expect(stdout_output).to include('Duplicates skipped: 42')
+    end
+
+    it 'omits duplicates skipped when zero' do
+      results = [WaybackArchiver::ArchiveResult.new('http://a.com', timestamp: '20240101000000')]
+      start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      summary.print_summary(results, start, duplicates_skipped: 0)
+
+      expect(stdout_output).not_to include('Duplicates skipped')
+    end
   end
 
   describe '#build_resume_command' do

@@ -69,6 +69,13 @@ module WaybackArchiver
     # @return [void]
     def on_progress(captured:, failed:, pending:); end
 
+    # Called when a URL is skipped during crawl because its content
+    # is a duplicate of a previously seen page at the same path.
+    #
+    # @param url [String] the URL that was skipped
+    # @return [void]
+    def on_duplicate_skipped(url:); end
+
     # Called when the SPN2 API has no available processing slots and
     # the archiver is waiting before retrying.
     #

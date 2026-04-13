@@ -9,7 +9,7 @@ module WaybackArchiver
         @stderr = stderr
       end
 
-      def print_summary(results, archive_start_time)
+      def print_summary(results, archive_start_time, duplicates_skipped: 0)
         tally = { succeeded: 0, submitted: 0, cached: 0, skipped: 0, failed: 0, errors: {} }
         results.each do |r|
           if r.errored?
@@ -42,6 +42,7 @@ module WaybackArchiver
         line << "  Submitted: #{tally[:submitted]}" if tally[:submitted] > 0
         line << "  Cached: #{tally[:cached]}" if tally[:cached] > 0
         line << "  Skipped: #{tally[:skipped]}" if tally[:skipped] > 0
+        line << "  Duplicates skipped: #{duplicates_skipped}" if duplicates_skipped > 0
         @stdout.puts line
 
         wall_seconds = [1, (Process.clock_gettime(Process::CLOCK_MONOTONIC) - archive_start_time).round(0).to_i].max
