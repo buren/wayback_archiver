@@ -181,6 +181,8 @@ module WaybackArchiver
     # @param [URI] uri the target URI.
     def self.build_http(uri)
       http = Net::HTTP.new(uri.host, uri.port)
+      http.open_timeout = 30
+      http.read_timeout = 60
       if uri.scheme == 'https'
         http.use_ssl = true
         http.verify_mode = OpenSSL::SSL::VERIFY_PEER

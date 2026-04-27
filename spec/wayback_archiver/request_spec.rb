@@ -225,6 +225,18 @@ RSpec.describe WaybackArchiver::Request do
       http = described_class.build_http(uri)
       expect(http.use_ssl?).to eq(false)
     end
+
+    it 'sets open_timeout' do
+      uri = URI.parse('https://example.com')
+      http = described_class.build_http(uri)
+      expect(http.open_timeout).to eq(30)
+    end
+
+    it 'sets read_timeout' do
+      uri = URI.parse('https://example.com')
+      http = described_class.build_http(uri)
+      expect(http.read_timeout).to eq(60)
+    end
   end
 
   describe '::post' do
