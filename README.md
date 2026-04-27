@@ -129,6 +129,10 @@ wayback_archiver example.com/sitemap.xml --sitemap
 wayback_archiver --file=urls.txt
 cat urls.txt | wayback_archiver --file=-
 
+# Discover URLs without archiving (pipe-friendly, one per line)
+wayback_archiver example.com --list-urls
+wayback_archiver example.com --crawl --list-urls --exclude-ext=png,jpg > urls.txt
+
 # Check which URLs are already archived (no archiving)
 wayback_archiver example.com --check
 

@@ -2,6 +2,7 @@
 
 ## HEAD
 
+- **List URLs mode** — `--list-urls` discovers URLs using any strategy (crawl, sitemap, RSS, auto) and prints them one per line without archiving. Useful for auditing site contents, previewing before archiving, or piping to other tools. Supports all filter options (`--skip-patterns`, `--include-ext`, `--exclude-ext`, `--limit`). Logging is suppressed by default for clean pipe-friendly output.
 - **Crawl deduplication** — pages with the same URL path and identical body content are automatically skipped during crawl, preventing infinite pagination from flooding SPN2 with duplicate submissions. Opt out with `--no-skip-duplicates` or `skip_duplicates: false`. New `on_duplicate_skipped` listener event and duplicate count in CLI summary.
 - **Crawl HTTP filtering** — non-success pages (404, 500, etc.) discovered during crawl are now filtered out before archiving instead of being submitted to SPN2 and failing predictably.
 - **Quieter retry logging** — intermediate retry attempts (connection errors, transient SPN2 errors, poll failures) now log at debug level instead of WARN. Only final failures (retry limit exceeded) log at ERROR.

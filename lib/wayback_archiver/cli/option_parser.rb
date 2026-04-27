@@ -7,7 +7,7 @@ module WaybackArchiver
       :strategy, :file_path, :log, :log_level, :concurrency, :limit,
       :hosts, :spn2_options, :show_summary, :report_path,
       :session_path, :no_session, :resume_path,
-      :check_mode, :status_mode, :skip_archived, :skip_archived_within,
+      :check_mode, :status_mode, :list_mode, :skip_archived, :skip_archived_within,
       :skip_duplicates, :skip_patterns,
       :urls,
       keyword_init: true
@@ -54,6 +54,7 @@ module WaybackArchiver
           resume_path: nil,
           check_mode: false,
           status_mode: false,
+          list_mode: false,
           skip_archived: false,
           skip_archived_within: nil,
           urls: []
@@ -146,6 +147,7 @@ module WaybackArchiver
           parser.separator 'Check options:'
 
           parser.on('--check', 'Check which URLs are already archived (does not archive)') { opts.check_mode = true }
+          parser.on('--list-urls', 'Discover URLs and print them (does not archive)') { opts.list_mode = true }
 
           parser.on('--skip-archived[=TIMEDELTA]', String,
                     'Skip URLs already in the Wayback Machine (client-side CDX check).',
@@ -238,7 +240,16 @@ module WaybackArchiver
           raise ArgumentError, "--check and --skip-archived are mutually exclusive"
         end
 
+        if @opts.list_mode && @opts.check_mode
+          raise ArgumentError, "--list-urls and --check are mutually exclusive"
+        end
+
+        if @opts.list_mode && @opts.skip_archived
+          raise ArgumentError, "--list-urls and --skip-archived are mutually exclusive"
+        end
+
         @opts.no_session = true if @opts.check_mode
+        @opts.no_session = true if @opts.list_mode
 
         if @opts.resume_path && @opts.session_path
           raise ArgumentError, "--resume and --session are mutually exclusive"

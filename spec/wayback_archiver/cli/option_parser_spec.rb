@@ -45,6 +45,10 @@ RSpec.describe WaybackArchiver::CLI::OptionParser do
       expect(parse('--check', 'http://example.com').check_mode).to eq(true)
     end
 
+    it 'parses --list-urls' do
+      expect(parse('--list-urls', 'http://example.com').list_mode).to eq(true)
+    end
+
     it 'parses --status' do
       opts = described_class.new(['--status'], stdout: stdout).parse!
       expect(opts.status_mode).to eq(true)
@@ -141,6 +145,16 @@ RSpec.describe WaybackArchiver::CLI::OptionParser do
   describe 'validation' do
     it 'rejects --check with --skip-archived' do
       expect { parse('--check', '--skip-archived', 'http://example.com') }
+        .to raise_error(ArgumentError, /mutually exclusive/)
+    end
+
+    it 'rejects --list-urls with --check' do
+      expect { parse('--list-urls', '--check', 'http://example.com') }
+        .to raise_error(ArgumentError, /mutually exclusive/)
+    end
+
+    it 'rejects --list-urls with --skip-archived' do
+      expect { parse('--list-urls', '--skip-archived', 'http://example.com') }
         .to raise_error(ArgumentError, /mutually exclusive/)
     end
 

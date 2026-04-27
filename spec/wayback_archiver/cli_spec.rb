@@ -95,6 +95,84 @@ RSpec.describe WaybackArchiver::CLI do
     end
   end
 
+  describe 'list-urls mode' do
+    it 'prints discovered URLs one per line' do
+      allow(WaybackArchiver).to receive(:discover_urls)
+        .and_return(%w[http://a.com http://b.com http://c.com])
+
+      cli = build_cli('--list-urls', '--no-summary', '--sitemap', 'http://example.com')
+      expect { cli.run }.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
+
+      lines = stdout_output.strip.split("\n")
+      expect(lines).to eq(%w[http://a.com http://b.com http://c.com])
+    end
+
+    it 'prints summary when enabled' do
+      allow(WaybackArchiver).to receive(:discover_urls).and_return(%w[http://a.com http://b.com])
+
+      cli = build_cli('--list-urls', '--sitemap', 'http://example.com')
+      expect { cli.run }.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
+
+      expect(stdout_output).to include('2 URL(s) discovered')
+    end
+
+    it 'applies --skip-patterns filter' do
+      allow(WaybackArchiver).to receive(:discover_urls)
+        .and_return(%w[http://example.com http://example.com/page?hs_amp=true])
+
+      cli = build_cli('--list-urls', '--no-summary', '--skip-patterns=hs_amp=true', '--sitemap', 'http://example.com')
+      expect { cli.run }.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
+
+      lines = stdout_output.strip.split("\n")
+      expect(lines).to eq(%w[http://example.com])
+    end
+
+    it 'applies --include-ext filter' do
+      allow(WaybackArchiver).to receive(:discover_urls)
+        .and_return(%w[http://example.com/doc.pdf http://example.com/image.png])
+
+      cli = build_cli('--list-urls', '--no-summary', '--include-ext=pdf', '--sitemap', 'http://example.com')
+      expect { cli.run }.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
+
+      lines = stdout_output.strip.split("\n")
+      expect(lines).to eq(%w[http://example.com/doc.pdf])
+    end
+
+    it 'applies --exclude-ext filter' do
+      allow(WaybackArchiver).to receive(:discover_urls)
+        .and_return(%w[http://example.com/doc.pdf http://example.com/image.png])
+
+      cli = build_cli('--list-urls', '--no-summary', '--exclude-ext=png', '--sitemap', 'http://example.com')
+      expect { cli.run }.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
+
+      lines = stdout_output.strip.split("\n")
+      expect(lines).to eq(%w[http://example.com/doc.pdf])
+    end
+
+    it 'suppresses log output by default' do
+      allow(WaybackArchiver).to receive(:discover_urls).and_return(%w[http://a.com])
+
+      cli = build_cli('--list-urls', '--no-summary', '--sitemap', 'http://example.com')
+      expect { cli.run }.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
+
+      expect(stdout_output).to eq("http://a.com\n")
+    end
+
+    it 'defaults to auto strategy' do
+      allow(WaybackArchiver).to receive(:discover_urls).and_return(%w[http://a.com])
+
+      cli = build_cli('--list-urls', '--no-summary', 'http://example.com')
+      expect { cli.run }.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
+
+      expect(WaybackArchiver).to have_received(:discover_urls).with(
+        'http://example.com',
+        strategy: 'auto',
+        hosts: [],
+        limit: -1
+      )
+    end
+  end
+
   describe '#setup_logger' do
     it 'creates a logger at the configured level' do
       cli = build_cli('--verbose', '--urls', '--no-session', '--no-summary', 'http://example.com')

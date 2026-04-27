@@ -128,6 +128,7 @@ module WaybackArchiver
       @options.strategy ||= 'auto'
 
       return run_check if @options.check_mode
+      return run_list_urls if @options.list_mode
 
       setup_session
       @archive_results = []
@@ -240,6 +241,38 @@ module WaybackArchiver
       end
 
       exit(0)
+    end
+
+    def run_list_urls
+      # Auto-quiet logging unless user explicitly set --verbose or --log=file
+      if @options.log == @stdout && @options.log_level >= Logger::INFO
+        @options.log_level = Logger::FATAL
+      end
+      setup_logger
+
+      all_urls = @options.urls.flat_map do |url|
+        WaybackArchiver.discover_urls(url, strategy: @options.strategy, hosts: @options.hosts, limit: @options.limit)
+      end
+
+      all_urls = apply_url_filters(all_urls)
+
+      all_urls.each { |url| @stdout.puts url }
+
+      @stdout.puts "\n#{all_urls.length} URL(s) discovered" if @options.show_summary
+
+      exit(0)
+    end
+
+    def apply_url_filters(urls)
+      if @options.skip_patterns && !@options.skip_patterns.empty?
+        urls = urls.reject { |url| @options.skip_patterns.any? { |pat| pat.match?(url) } }
+      end
+
+      include_ext = @options.spn2_options[:include_ext]
+      exclude_ext = @options.spn2_options[:exclude_ext]
+      urls = URLFilter.new(include_ext: include_ext, exclude_ext: exclude_ext).apply(urls)
+
+      urls
     end
 
     def run_archive
