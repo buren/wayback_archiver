@@ -146,7 +146,7 @@ RSpec.describe 'Listener events' do
     before do
       allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status)
         .and_return({ 'available' => 12, 'processing' => 0 })
-      allow(WaybackArchiver::Archive).to receive(:sleep)
+      allow_any_instance_of(WaybackArchiver::BatchSubmitter).to receive(:sleep)
     end
 
     it 'fires on_submitted for each URL that gets a job_id' do
@@ -241,7 +241,7 @@ RSpec.describe 'Listener events' do
     before do
       allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status)
         .and_return({ 'available' => 12, 'processing' => 0 })
-      allow(WaybackArchiver::Archive).to receive(:sleep)
+      allow_any_instance_of(WaybackArchiver::BatchSubmitter).to receive(:sleep)
     end
 
     it 'fires at the start of batch_post with post-filtering URL count' do
@@ -262,7 +262,7 @@ RSpec.describe 'Listener events' do
     before do
       allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status)
         .and_return({ 'available' => 12, 'processing' => 0 })
-      allow(WaybackArchiver::Archive).to receive(:sleep)
+      allow_any_instance_of(WaybackArchiver::BatchSubmitter).to receive(:sleep)
     end
 
     it 'fires during poll cycles' do
@@ -284,7 +284,7 @@ RSpec.describe 'Listener events' do
 
   describe 'on_waiting_for_slots' do
     before do
-      allow(WaybackArchiver::Archive).to receive(:sleep)
+      allow_any_instance_of(WaybackArchiver::BatchSubmitter).to receive(:sleep)
     end
 
     it 'fires when no slots are available' do

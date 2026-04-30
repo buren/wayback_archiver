@@ -4,7 +4,7 @@ require 'tmpdir'
 RSpec.describe WaybackArchiver::Archive do
   describe '::post' do
     before do
-      allow(described_class).to receive(:sleep)
+      allow_any_instance_of(WaybackArchiver::BatchSubmitter).to receive(:sleep)
       allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status).and_return({ 'available' => 12, 'processing' => 0 })
     end
 
@@ -693,7 +693,7 @@ RSpec.describe WaybackArchiver::Archive do
 
   describe '::crawl' do
     before do
-      allow(described_class).to receive(:sleep)
+      allow_any_instance_of(WaybackArchiver::BatchSubmitter).to receive(:sleep)
       allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status).and_return({ 'available' => 12, 'processing' => 0 })
     end
 

@@ -8,7 +8,7 @@ RSpec.describe WaybackArchiver::Archive, 'integration' do
     WaybackArchiver.config.access_key = 'test-ak'
     WaybackArchiver.config.secret_key = 'test-sk'
 
-    allow(WaybackArchiver::Archive).to receive(:sleep)
+    allow_any_instance_of(WaybackArchiver::BatchSubmitter).to receive(:sleep)
 
     stub_request(:get, %r{https://web\.archive\.org/save/status/user})
       .to_return(status: 200, body: { 'available' => 12, 'processing' => 0 }.to_json)
