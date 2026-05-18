@@ -261,19 +261,20 @@ RSpec.describe WaybackArchiver::CLI do
   end
 
   describe '#write_report' do
-    it 'writes a report when --report is set' do
+    it 'writes a report progressively when --report is set' do
       Dir.mktmpdir do |dir|
         report_path = File.join(dir, 'report.json')
         cli = build_cli('--urls', '--no-session', '--no-summary', "--report=#{report_path}", 'http://example.com')
 
-        results = [WaybackArchiver::ArchiveResult.new('http://example.com', timestamp: '20240101000000')]
-        allow(WaybackArchiver).to receive(:archive).and_return(results)
+        result = WaybackArchiver::ArchiveResult.new('http://example.com', timestamp: '20240101000000')
+        allow(WaybackArchiver).to receive(:archive).and_yield(result).and_return([result])
         cli.run
 
         expect(File.exist?(report_path)).to eq(true)
-        data = JSON.parse(File.read(report_path))
-        expect(data.length).to eq(1)
-        expect(data.first['url']).to eq('http://example.com')
+        lines = File.readlines(report_path).map(&:chomp).reject(&:empty?)
+        expect(lines.length).to eq(1)
+        data = JSON.parse(lines.first)
+        expect(data['url']).to eq('http://example.com')
       end
     end
 

@@ -1,4 +1,5 @@
 require 'wayback_archiver'
+require 'wayback_archiver/report_writer'
 require 'wayback_archiver/session_file'
 require 'wayback_archiver/timedelta'
 require 'wayback_archiver/cli/progress_renderer'
@@ -131,16 +132,18 @@ module WaybackArchiver
       return run_list_urls if @options.list_mode
 
       setup_session
+      setup_report_writer
       @archive_results = []
       install_signal_handler
 
       results = run_archive
-      @summary.write_report(results, @options.report_path)
       cleanup_session(results)
       @summary.print_summary(results, @archive_start_time, duplicates_skipped: @cli_listener&.duplicates_skipped || 0) if @options.show_summary
     ensure
       @cli_listener&.finish unless @interrupted
       @log_output&.renderer = nil
+      @report_writer&.close
+      WaybackArchiver.logger.info("Report written to #{@report_writer.path}") if @report_writer
       @session&.close
     end
 
@@ -187,6 +190,12 @@ module WaybackArchiver
       if @options.resume_path && @skip_urls&.any?
         WaybackArchiver.logger.info("Session contains #{@skip_urls.size} previously succeeded URL(s)")
       end
+    end
+
+    def setup_report_writer
+      return unless @options.report_path
+
+      @report_writer = ReportWriter.new(@options.report_path)
     end
 
     def run_status
@@ -281,6 +290,7 @@ module WaybackArchiver
       if @options.skip_archived
         skipped, extra_skip_urls = skip_archived_urls
         all_results.concat(skipped)
+        skipped.each { |r| @report_writer&.write_result(r) }
         @skip_urls ||= Set.new
         @skip_urls.merge(extra_skip_urls) if extra_skip_urls
       end
@@ -293,7 +303,10 @@ module WaybackArchiver
 
       archive_block = proc do |result|
         @session&.write_result(result)
-        @archive_results << result unless result.submitted?
+        unless result.submitted?
+          @report_writer&.write_result(result)
+          @archive_results << result
+        end
       end
 
       archive_opts = {

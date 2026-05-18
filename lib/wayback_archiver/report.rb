@@ -25,13 +25,13 @@ module WaybackArchiver
     def self.write_csv(results, path)
       CSV.open(path, 'w') do |csv|
         csv << COLUMNS
-        results.each { |r| csv << result_to_row(r) }
+        results.each { |r| csv << result_row(r) }
       end
     end
     private_class_method :write_csv
 
     def self.write_json(results, path)
-      data = results.map { |r| result_to_hash(r) }
+      data = results.map { |r| result_hash(r) }
       File.write(path, JSON.pretty_generate(data))
     end
     private_class_method :write_json
@@ -50,7 +50,7 @@ module WaybackArchiver
     end
     private_class_method :write_check_json
 
-    def self.result_to_row(result)
+    def self.result_row(result)
       [
         result.uri,
         result.success?,
@@ -64,9 +64,8 @@ module WaybackArchiver
         result.error&.to_s
       ]
     end
-    private_class_method :result_to_row
 
-    def self.result_to_hash(result)
+    def self.result_hash(result)
       {
         'url'            => result.uri,
         'success'        => result.success?,
@@ -80,7 +79,6 @@ module WaybackArchiver
         'error'           => result.error&.to_s
       }
     end
-    private_class_method :result_to_hash
 
     def self.check_to_row(result)
       [result.url, result.archived?, result.timestamp, result.wayback_url]
