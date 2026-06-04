@@ -58,6 +58,35 @@ module WaybackArchiver
       @queue = @queue.dup if @queue.is_a?(Array)
       @submitted = 0
 
+      begin
+        run_submission_loop
+
+        # Surface any exception raised by the crawler thread. value joins first,
+        # so this also waits out a crawler still tearing down on the abort path.
+        @source_thread&.value
+
+        # Any URLs still pending after final poll were submitted but unconfirmed
+        @pending.each do |job_id, url|
+          result = ArchiveResult.new(url, job_id: job_id, status_ext: 'submitted')
+          @results << result
+        end
+
+        WaybackArchiver.logger.info "#{@counts[:success]} of #{@results.length} URL(s) posted to Wayback Machine"
+        @results
+      ensure
+        # Never leak the crawler thread. Closing the queue unblocks a crawler
+        # backpressured on a full SizedQueue (its push raises ClosedQueueError,
+        # which it rescues); join then guarantees it has exited.
+        if @source_thread
+          @queue.close if @queue.respond_to?(:close) && !@queue.closed?
+          @source_thread.join
+        end
+      end
+    end
+
+    private
+
+    def run_submission_loop
       loop do
         until queue_exhausted?
           chunk_size = available_slots
@@ -110,21 +139,7 @@ module WaybackArchiver
         break if queue_exhausted? # no transient errors re-queued
         WaybackArchiver.logger.info("Re-submitting #{@retry_buffer.size + @queue.size} URL(s) after transient poll errors")
       end
-
-      # Re-raise any exception from the crawler thread
-      @source_thread&.value if @source_thread && !@source_thread.alive?
-
-      # Any URLs still pending after final poll were submitted but unconfirmed
-      @pending.each do |job_id, url|
-        result = ArchiveResult.new(url, job_id: job_id, status_ext: 'submitted')
-        @results << result
-      end
-
-      WaybackArchiver.logger.info "#{@counts[:success]} of #{@results.length} URL(s) posted to Wayback Machine"
-      @results
     end
-
-    private
 
     # Check if the queue has been fully consumed.
     # For streaming mode (source_thread present), the queue is only exhausted
@@ -318,13 +333,30 @@ module WaybackArchiver
     end
 
     def abort_remaining
-      all_urls = @retry_buffer + (@queue.is_a?(Array) ? @queue : [])
+      all_urls = @retry_buffer + drain_all_queued
       @retry_buffer.clear
       all_urls.each do |url|
         result = ArchiveResult.new(url, error: Request::ClientError.new('Connection refused by web.archive.org'))
         @counts[:error] += 1
         record_result(result)
       end
+    end
+
+    # Pull every remaining URL out of the queue without blocking, so abort can
+    # record them as errors rather than silently dropping them. For a closed
+    # SizedQueue, non-blocking pop drains remaining items then returns nil.
+    def drain_all_queued
+      return @queue if @queue.is_a?(Array)
+
+      drained = []
+      loop do
+        item = @queue.pop(true)
+        break if item.nil?
+        drained << item
+      rescue ThreadError
+        break
+      end
+      drained
     end
 
     def log_progress

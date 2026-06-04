@@ -16,10 +16,36 @@
 - **Authentication required** — the Wayback Machine SPN2 API no longer allows anonymous access. You must configure Internet Archive S3 API keys (`WAYBACK_ACCESS_KEY`/`WAYBACK_SECRET_KEY`) before archiving. Get your keys at [archive.org/account/s3.php](https://archive.org/account/s3.php). Read-only operations like `--check` (CDX API) still work without credentials.
 - Switched from SPN1 to **SPN2 API** — captures are now submitted via POST and polled for completion
 - `archive`, `crawl`, `sitemap`, `urls` now return **all results** (including failures), not just successes. Use `result.success?` to filter.
+- `ArchiveResult#success?` is now `false` for `submitted?` (queued but unconfirmed) and `cached?`/`skipped?` results, not only for errors. Code that treated every non-errored result as a success may need to account for these states.
+- **Module-level setters removed** — settings now live on `WaybackArchiver.config`. The following no longer exist and raise `NoMethodError`: `WaybackArchiver.logger=`, `.default_logger!`, `.user_agent`/`.user_agent=`, `.concurrency=`, `.max_limit=`, `.respect_robots_txt`/`.respect_robots_txt=`, and `.adapter`/`.adapter=` (the swappable adapter extension point is gone; archiving always uses SPN2). See the migration table below.
 - Default concurrency changed from 1 to 4
 - Ruby >= 3.1 required
 - SSL certificate verification enabled by default
 - Removed deprecated development dependencies (`coveralls`, `redcarpet`, `byebug`)
+
+**Migration from v1:**
+
+| v1 (removed) | v2 |
+| --- | --- |
+| `WaybackArchiver.logger = l` | `WaybackArchiver.config.logger = l` |
+| `WaybackArchiver.concurrency = n` | `WaybackArchiver.config.concurrency = n` |
+| `WaybackArchiver.max_limit = n` | `WaybackArchiver.config.max_limit = n` |
+| `WaybackArchiver.user_agent = s` | `WaybackArchiver.config.user_agent = s` |
+| `WaybackArchiver.respect_robots_txt = b` | `WaybackArchiver.config.respect_robots_txt = b` |
+| `WaybackArchiver.default_logger!` | (removed — logger defaults to `NullLogger`) |
+| `WaybackArchiver.adapter = a` | (removed — SPN2 is the only backend) |
+
+The `configure` block still works and is the recommended entry point:
+
+```ruby
+WaybackArchiver.configure do |config|
+  config.access_key = 'your-access-key'
+  config.secret_key = 'your-secret-key'
+  config.concurrency = 8
+end
+```
+
+CLI exit codes: `0` success, `1` finished with one or more failed URLs, `2` invalid arguments, `3` credentials missing, `130` interrupted (Ctrl+C).
 
 **New features:**
 
@@ -40,7 +66,7 @@
 - **RSS/Atom feed strategy** — `strategy: :rss` for archiving URLs from RSS and Atom feeds (not included in `:auto` since feeds typically contain only recent posts)
 - **Report export** — `--report=results.csv` or `--report=results.json` from the CLI
 - **Event listener system** — subscribe to lifecycle events (`on_resolved`, `on_batch_start`, `on_url_discovered`, `on_crawl_complete`, `on_submitted`, `on_completed`, `on_progress`, `on_waiting_for_slots`) for custom progress reporting. Subclass `NullListener`, pass a hash of procs, or use any object — unimplemented events are silently skipped.
-- **Configuration class** — all settings extracted into `WaybackArchiver::Configuration`, accessed via `WaybackArchiver.config`. The `configure` block and convenience getters (`logger`, `listener`) are unchanged.
+- **Configuration class** — all settings extracted into `WaybackArchiver::Configuration`, accessed via `WaybackArchiver.config`. The `configure` block and the read-only convenience delegates `WaybackArchiver.logger`/`.listener` still work; the module-level *setters* were removed (see Breaking changes above).
 - **SPN2 system/user status** — `--status` flag queries `POST /save/status/system` and `POST /save/status/user` and exits
 - **URL extension filtering** — `--include-ext=pdf,doc` archives only matching URLs; `--exclude-ext=zip,png` skips matching URLs. Available via Ruby API as `include_ext:` / `exclude_ext:` parameters.
 - **Outlinks availability** — `--outlinks-availability` returns last-capture timestamps for outlinks

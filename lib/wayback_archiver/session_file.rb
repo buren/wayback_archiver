@@ -27,6 +27,8 @@ module WaybackArchiver
     def write_result(result)
       line = JSON.generate(serialize(result))
       @mutex.synchronize do
+        next if @file.closed?
+
         @file.puts(line)
         @file.flush
       end
@@ -51,11 +53,15 @@ module WaybackArchiver
       Set.new
     end
 
-    # Close the file handle. Safe to call multiple times.
+    # Close the file handle. Safe to call multiple times. Synchronized with
+    # write_result so a close during a concurrent write (e.g. from a Ctrl+C
+    # signal handler) cannot close the handle mid-puts.
     def close
-      return if @file.closed?
+      @mutex.synchronize do
+        next if @file.closed?
 
-      @file.close
+        @file.close
+      end
     end
 
     # Close and delete the session file.

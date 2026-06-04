@@ -101,6 +101,7 @@ module WaybackArchiver
           parser.separator ''
           parser.separator 'Authentication (get keys at https://archive.org/account/s3.php):'
           parser.separator '  Preferred: set WAYBACK_ACCESS_KEY and WAYBACK_SECRET_KEY env vars'
+          parser.separator '  (IA_S3_ACCESS_KEY / IA_S3_SECRET_KEY are also accepted)'
 
           parser.on('--access-key=KEY', String, 'Internet Archive S3 access key') do |value|
             WaybackArchiver.config.access_key = value
@@ -236,6 +237,10 @@ module WaybackArchiver
       end
 
       def validate!
+        if @opts.spn2_options[:screenshot_dir] && !@opts.spn2_options[:capture_screenshot]
+          raise ArgumentError, "--screenshot-dir requires --capture-screenshot"
+        end
+
         if @opts.check_mode && @opts.skip_archived
           raise ArgumentError, "--check and --skip-archived are mutually exclusive"
         end

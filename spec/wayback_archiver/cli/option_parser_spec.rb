@@ -185,6 +185,20 @@ RSpec.describe WaybackArchiver::CLI::OptionParser do
       expect { parse('--urls') }
         .to raise_error(ArgumentError, /required/)
     end
+
+    it 'rejects --screenshot-dir without --capture-screenshot' do
+      Dir.mktmpdir do |dir|
+        expect { parse('--screenshot-dir', dir, 'http://example.com') }
+          .to raise_error(ArgumentError, /--screenshot-dir requires --capture-screenshot/)
+      end
+    end
+
+    it 'allows --screenshot-dir with --capture-screenshot' do
+      Dir.mktmpdir do |dir|
+        expect { parse('--screenshot-dir', dir, '--capture-screenshot', 'http://example.com') }
+          .not_to raise_error
+      end
+    end
   end
 
   describe 'URL reading' do

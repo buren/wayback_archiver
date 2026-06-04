@@ -111,8 +111,22 @@ module WaybackArchiver
       def close; end
     end
 
+    # Exit codes (the read-only modes exit 0 internally):
+    #   0   success — nothing failed
+    #   1   archiving finished but one or more URLs failed
+    #   2   usage / invalid arguments
+    #   3   archiving credentials missing
+    #   130 interrupted (Ctrl+C)
     def self.run(argv = ARGV, stdout: $stdout, stderr: $stderr)
-      new(argv, stdout: stdout, stderr: stderr).run
+      cli = begin
+        new(argv, stdout: stdout, stderr: stderr)
+      rescue ::OptionParser::ParseError, ArgumentError => e
+        # Invalid CLI input — show a clean one-line message, not a backtrace.
+        stderr.puts "wayback_archiver: #{e.message}"
+        return exit(2)
+      end
+      code = cli.run
+      exit(code) if code.is_a?(Integer)
     end
 
     def initialize(argv, stdout: $stdout, stderr: $stderr)
@@ -131,6 +145,8 @@ module WaybackArchiver
       return run_check if @options.check_mode
       return run_list_urls if @options.list_mode
 
+      ensure_credentials!
+
       setup_session
       setup_report_writer
       @archive_results = []
@@ -139,6 +155,7 @@ module WaybackArchiver
       results = run_archive
       cleanup_session(results)
       @summary.print_summary(results, @archive_start_time, duplicates_skipped: @cli_listener&.duplicates_skipped || 0) if @options.show_summary
+      results.any?(&:errored?) ? 1 : 0
     ensure
       @cli_listener&.finish unless @interrupted
       @log_output&.renderer = nil
@@ -148,6 +165,18 @@ module WaybackArchiver
     end
 
     private
+
+    # Fail fast before any discovery/submission if archiving credentials are
+    # missing, instead of surfacing one AuthenticationError per worker thread
+    # deep into a run.
+    def ensure_credentials!
+      return if WaybackArchiver.config.credentials?
+
+      @stderr.puts 'wayback_archiver: Wayback Machine credentials required. ' \
+        'Get keys at https://archive.org/account/s3.php, then set WAYBACK_ACCESS_KEY ' \
+        'and WAYBACK_SECRET_KEY (or pass --access-key/--secret-key).'
+      exit(3)
+    end
 
     def setup_logger
       log_target = @options.log
@@ -229,6 +258,8 @@ module WaybackArchiver
         WaybackArchiver.discover_urls(url, strategy: @options.strategy, hosts: @options.hosts, limit: @options.limit)
       end
 
+      all_urls = apply_url_filters(all_urls)
+
       WaybackArchiver.logger.info("Checking #{all_urls.length} URL(s) against the Wayback Machine")
       check_results = WaybackArchiver.check(all_urls, concurrency: @options.concurrency)
       check_results.sort_by!(&:url)
@@ -241,6 +272,8 @@ module WaybackArchiver
         end
       end
 
+      # Written once at the end (not progressively like the archive path):
+      # --check is a fast read-only CDX pass, so a crash just means a cheap re-run.
       @summary.write_report(check_results, @options.report_path)
 
       if @options.show_summary
@@ -394,7 +427,7 @@ module WaybackArchiver
         summary.print_summary(results, start_time) if results.length > 0 && start_time
         stderr.puts "Interrupted. Resume with:"
         stderr.puts "  #{cmd}"
-        exit(1)
+        exit(130)
       end
     end
   end

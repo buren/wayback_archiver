@@ -79,6 +79,8 @@ module WaybackArchiver
     end
 
     # Batch-poll the status of multiple capture jobs.
+    # Not rate-limited: the SPN2 12/min cap applies to captures (submits) only,
+    # not to status reads (see docs/spn2-api.md "Max captures/min").
     # @return [Hash<String, Hash>] job_id => status hash.
     # @param [Array<String>] job_ids to check.
     def self.poll_statuses(job_ids)

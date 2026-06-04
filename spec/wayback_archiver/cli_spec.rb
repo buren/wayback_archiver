@@ -19,11 +19,42 @@ RSpec.describe WaybackArchiver::CLI do
     described_class.new(args, stdout: stdout, stderr: stderr)
   end
 
+  # The archive path now fails fast without credentials; archive-path examples
+  # stub WaybackArchiver.archive, so give them credentials to get past preflight.
+  before do
+    WaybackArchiver.config.access_key = 'test-access'
+    WaybackArchiver.config.secret_key = 'test-secret'
+  end
+
   describe '.run' do
     it 'creates an instance and calls run' do
       expect_any_instance_of(described_class).to receive(:run).and_call_original
       allow(WaybackArchiver).to receive(:archive).and_return([])
-      described_class.run(['--urls', '--no-session', '--no-summary', 'http://example.com'], stdout: stdout, stderr: stderr)
+      expect do
+        described_class.run(['--urls', '--no-session', '--no-summary', 'http://example.com'], stdout: stdout, stderr: stderr)
+      end.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
+    end
+
+    it 'exits 1 when one or more URLs failed' do
+      failed = [WaybackArchiver::ArchiveResult.new('http://example.com', error: StandardError.new('fail'))]
+      allow(WaybackArchiver).to receive(:archive).and_return(failed)
+      expect do
+        described_class.run(['--urls', '--no-session', '--no-summary', 'http://example.com'], stdout: stdout, stderr: stderr)
+      end.to raise_error(SystemExit) { |e| expect(e.status).to eq(1) }
+    end
+  end
+
+  describe 'credentials preflight' do
+    it 'exits before archiving when credentials are missing' do
+      WaybackArchiver.config.access_key = nil
+      WaybackArchiver.config.secret_key = nil
+      allow(WaybackArchiver).to receive(:archive)
+
+      cli = build_cli('--urls', '--no-session', '--no-summary', 'http://example.com')
+      expect { cli.run }.to raise_error(SystemExit) { |e| expect(e.status).to eq(3) }
+
+      expect(stderr_output).to include('credentials required')
+      expect(WaybackArchiver).not_to have_received(:archive)
     end
   end
 

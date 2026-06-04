@@ -11,6 +11,15 @@ RSpec.describe 'CLI session flags' do
     end
   end
 
+  # These examples only care about session bookkeeping, not archiving: satisfy
+  # the credentials preflight with dummy keys and stub the archive so the run
+  # never touches the network.
+  before do
+    WaybackArchiver.config.access_key = 'test-access'
+    WaybackArchiver.config.secret_key = 'test-secret'
+    allow(WaybackArchiver).to receive(:archive).and_return([])
+  end
+
   def write_url_file(content, name: 'urls.txt')
     path = File.join(@tmpdir, name)
     File.write(path, content)
@@ -60,6 +69,39 @@ RSpec.describe 'CLI session flags' do
       stdout, _stderr, _status = run_cli('--file', url_file, '--resume', session_path, '--urls')
 
       expect(stdout).to include("Resuming from session: #{session_path}")
+    end
+  end
+
+  describe 'resume round-trip' do
+    it 'skips previously-succeeded URLs and retries the rest on resume' do
+      session_path = File.join(@tmpdir, 'roundtrip.jsonl')
+
+      # First run: a.com succeeds, b.com fails. The CLI's archive block writes
+      # both to the session file as they complete.
+      success = WaybackArchiver::ArchiveResult.new('http://a.com', timestamp: '20240101000000')
+      failure = WaybackArchiver::ArchiveResult.new('http://b.com', error: StandardError.new('boom'))
+      allow(WaybackArchiver).to receive(:archive) do |_urls, **_opts, &block|
+        block.call(success)
+        block.call(failure)
+        [success, failure]
+      end
+
+      run_cli('http://a.com', 'http://b.com', '--urls', '--no-summary', "--session=#{session_path}")
+
+      expect(File.exist?(session_path)).to eq(true)
+
+      # Second run resumes: the succeeded URL must be handed to archive as a
+      # skip, so only the failed URL is attempted again.
+      captured_skip = nil
+      allow(WaybackArchiver).to receive(:archive) do |_urls, **opts, &_block|
+        captured_skip = opts[:skip_urls]
+        []
+      end
+
+      run_cli('http://a.com', 'http://b.com', '--urls', '--no-summary', "--resume=#{session_path}")
+
+      expect(captured_skip).to include('http://a.com')
+      expect(captured_skip).not_to include('http://b.com')
     end
   end
 

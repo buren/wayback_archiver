@@ -178,6 +178,70 @@ RSpec.describe WaybackArchiver::CLI::Summary do
 
       expect(cmd).to include('--js-behavior-timeout=10')
     end
+
+    it 'round-trips the report path' do
+      opts = build_options(strategy: 'urls', report_path: '/tmp/out.csv')
+      session = instance_double(WaybackArchiver::SessionFile, path: '/tmp/session.jsonl')
+
+      cmd = summary.build_resume_command(opts, session)
+
+      expect(cmd).to include('--report=/tmp/out.csv')
+    end
+
+    it 'round-trips skip patterns by source' do
+      opts = build_options(strategy: 'urls', skip_patterns: [/hs_amp=true/, %r{/tag/}])
+      session = instance_double(WaybackArchiver::SessionFile, path: '/tmp/session.jsonl')
+
+      cmd = summary.build_resume_command(opts, session)
+
+      # The value is shell-escaped so the command is safe to copy-paste; the
+      # shell unescapes it back to hs_amp=true,/tag/ before the program sees it.
+      expect(cmd).to include('--skip-patterns=hs_amp\=true,/tag/')
+    end
+
+    it 'emits --no-skip-duplicates only when explicitly disabled' do
+      session = instance_double(WaybackArchiver::SessionFile, path: '/tmp/session.jsonl')
+
+      disabled = summary.build_resume_command(build_options(skip_duplicates: false), session)
+      default = summary.build_resume_command(build_options, session)
+
+      expect(disabled).to include('--no-skip-duplicates')
+      expect(default).not_to include('skip-duplicates')
+    end
+
+    it 'round-trips --skip-archived with and without a window' do
+      session = instance_double(WaybackArchiver::SessionFile, path: '/tmp/session.jsonl')
+
+      windowed = summary.build_resume_command(
+        build_options(skip_archived: true, skip_archived_within: '7d'), session
+      )
+      bare = summary.build_resume_command(build_options(skip_archived: true), session)
+
+      expect(windowed).to include('--skip-archived=7d')
+      expect(bare).to include('--skip-archived')
+      expect(bare).not_to include('--skip-archived=')
+    end
+
+    it 'round-trips verbosity from the log level' do
+      session = instance_double(WaybackArchiver::SessionFile, path: '/tmp/session.jsonl')
+
+      verbose = summary.build_resume_command(build_options(log_level: Logger::DEBUG), session)
+      quiet = summary.build_resume_command(build_options(log_level: Logger::FATAL), session)
+      default = summary.build_resume_command(build_options(log_level: Logger::INFO), session)
+
+      expect(verbose).to include('--verbose')
+      expect(quiet).to include('--quiet')
+      expect(default).not_to match(/--verbose|--quiet/)
+    end
+
+    it 'round-trips a log file path' do
+      opts = build_options(log: '/tmp/run.log')
+      session = instance_double(WaybackArchiver::SessionFile, path: '/tmp/session.jsonl')
+
+      cmd = summary.build_resume_command(opts, session)
+
+      expect(cmd).to include('--log=/tmp/run.log')
+    end
   end
 
   describe '#print_resume_message' do

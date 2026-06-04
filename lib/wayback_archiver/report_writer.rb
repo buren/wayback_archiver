@@ -26,6 +26,8 @@ module WaybackArchiver
     # @param result [ArchiveResult]
     def write_result(result)
       @mutex.synchronize do
+        next if @file.closed?
+
         case @format
         when :csv  then @file.puts(Report.result_row(result).to_csv)
         when :json then @file.puts(JSON.generate(Report.result_hash(result)))
@@ -34,11 +36,15 @@ module WaybackArchiver
       end
     end
 
-    # Close the file handle. Safe to call multiple times.
+    # Close the file handle. Safe to call multiple times. Synchronized with
+    # write_result so a close during a concurrent write (e.g. from a Ctrl+C
+    # signal handler) cannot close the handle mid-puts.
     def close
-      return if @file.closed?
+      @mutex.synchronize do
+        next if @file.closed?
 
-      @file.close
+        @file.close
+      end
     end
 
     private

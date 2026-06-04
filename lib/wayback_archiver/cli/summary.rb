@@ -72,7 +72,23 @@ module WaybackArchiver
             parts << "--#{flag}=#{value}"
           end
         end
-        parts.join(' ')
+
+        # Output / filtering flags that aren't SPN2 capture options but still
+        # shape the run — drop any of these and the resumed run behaves
+        # differently (e.g. stops writing the report, re-archives filtered URLs).
+        parts << "--report=#{Shellwords.shellescape(options.report_path)}" if options.report_path
+        if options.skip_patterns&.any?
+          sources = options.skip_patterns.map(&:source).join(',')
+          parts << "--skip-patterns=#{Shellwords.shellescape(sources)}"
+        end
+        parts << '--no-skip-duplicates' if options.skip_duplicates == false
+        if options.skip_archived
+          parts << (options.skip_archived_within ? "--skip-archived=#{Shellwords.shellescape(options.skip_archived_within)}" : '--skip-archived')
+        end
+        parts << "--log=#{Shellwords.shellescape(options.log)}" if options.log.is_a?(String)
+        parts << resume_verbosity_flag(options.log_level)
+
+        parts.compact.join(' ')
       end
 
       def print_resume_message(resume_command)
@@ -99,6 +115,16 @@ module WaybackArchiver
       end
 
       private
+
+      # Map the resolved log level back to the flag that produced it. INFO is
+      # the default, so it needs no flag.
+      def resume_verbosity_flag(log_level)
+        case log_level
+        when Logger::DEBUG then '--verbose'
+        when Logger::WARN  then '--no-verbose'
+        when Logger::FATAL then '--quiet'
+        end
+      end
 
       def format_duration(total_seconds)
         hours, remainder = total_seconds.divmod(3600)

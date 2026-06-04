@@ -331,6 +331,34 @@ RSpec.describe WaybackArchiver::WaybackMachine do
         expect(result.error).to be_a(JSON::ParserError)
       end
 
+      it 'treats a raw HTTP 503 on submit as an error (handled by body, not status)' do
+        stub_request(:post, save_url)
+          .to_return(status: 503, body: '<html>Service Unavailable</html>')
+
+        result = described_class.call(url)
+
+        expect(result.errored?).to eq(true)
+        expect(result.error).to be_a(JSON::ParserError)
+      end
+
+      it 'retries a 429 submit carrying a session-limit JSON body, then succeeds' do
+        call_count = 0
+        stub_request(:post, save_url).to_return do
+          call_count += 1
+          if call_count == 1
+            { status: 429, body: { message: 'You have already reached the limit of active Save Page Now sessions.' }.to_json }
+          else
+            { status: 200, body: { url: url, job_id: job_id }.to_json }
+          end
+        end
+        stub_status(success_status(original_url: url))
+
+        result = described_class.call(url)
+
+        expect(result.success?).to eq(true)
+        expect(call_count).to be > 1
+      end
+
       it 'returns ArchiveResult with error when submit response has no job_id' do
         stub_request(:post, save_url)
           .to_return(status: 200, body: { 'message' => 'something unexpected' }.to_json)

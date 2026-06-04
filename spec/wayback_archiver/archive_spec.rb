@@ -856,6 +856,58 @@ RSpec.describe WaybackArchiver::Archive do
     end
   end
 
+  describe 'BatchSubmitter abort' do
+    before do
+      allow_any_instance_of(WaybackArchiver::BatchSubmitter).to receive(:sleep)
+    end
+
+    it 'records still-queued streaming URLs as errors instead of dropping them' do
+      queue = SizedQueue.new(100)
+      queue.push('http://a.com')
+      queue.push('http://b.com')
+      crawler = Thread.new {} # already finished — queue is fully populated
+      crawler.join
+
+      allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status)
+        .and_raise(WaybackArchiver::Request::ClientError, 'Errno::ECONNREFUSED, Connection refused')
+
+      results = WaybackArchiver::BatchSubmitter.new(
+        queue, concurrency: 1, source_thread: crawler
+      ).call
+
+      expect(results.map(&:uri)).to contain_exactly('http://a.com', 'http://b.com')
+      expect(results).to all(satisfy(&:errored?))
+    end
+  end
+
+  # The rest of the suite forces concurrency=1 (see spec_helper) to keep WebMock
+  # and rspec-mocks deterministic. This block deliberately runs the dispatch
+  # pipeline under multiple real threads to catch orchestration-layer races.
+  describe 'orchestration under real concurrency' do
+    before do
+      allow_any_instance_of(WaybackArchiver::BatchSubmitter).to receive(:sleep)
+      allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status)
+        .and_return({ 'available' => 12, 'processing' => 0 })
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit) do |url|
+        { 'url' => url, 'job_id' => "job-#{url[/\d+/]}" }
+      end
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses) do |ids|
+        ids.each_with_object({}) do |jid, h|
+          h[jid] = { 'status' => 'success', 'job_id' => jid, 'timestamp' => '20260326120000', 'original_url' => 'http://example.com' }
+        end
+      end
+    end
+
+    it 'archives every URL exactly once with concurrency > 1' do
+      urls = (1..24).map { |i| "http://example.com/#{i}" }
+
+      results = described_class.post(urls, concurrency: 4)
+
+      expect(results.map(&:uri)).to match_array(urls)
+      expect(results).to all(satisfy(&:success?))
+    end
+  end
+
   describe '::post_url' do
     it 'delegates to WaybackMachine' do
       url = 'https://example.com'

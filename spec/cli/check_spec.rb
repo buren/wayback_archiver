@@ -26,6 +26,16 @@ RSpec.describe 'CLI --check flag' do
 
       expect(stdout).not_to include('Session file:')
     end
+
+    it 'applies URL filters before checking' do
+      url_file = write_url_file("https://example.com/a.pdf\nhttps://example.com/b.html\n")
+      allow(WaybackArchiver).to receive(:check).and_return([])
+
+      run_cli('--check', '--file', url_file, '--urls', '--exclude-ext', 'pdf')
+
+      expect(WaybackArchiver).to have_received(:check)
+        .with(['https://example.com/b.html'], concurrency: anything)
+    end
   end
 
   describe 'mutually exclusive flags' do

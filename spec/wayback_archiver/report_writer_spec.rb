@@ -159,5 +159,12 @@ RSpec.describe WaybackArchiver::ReportWriter do
       writer.close
       expect { writer.close }.not_to raise_error
     end
+
+    it 'makes subsequent writes a safe no-op instead of raising IOError' do
+      path = File.join(@tmpdir, 'report.csv')
+      writer = described_class.new(path)
+      writer.close
+      expect { writer.write_result(success_result) }.not_to raise_error
+    end
   end
 end

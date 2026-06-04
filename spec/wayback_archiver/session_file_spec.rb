@@ -215,6 +215,12 @@ RSpec.describe WaybackArchiver::SessionFile do
       session.close
       expect { session.close }.not_to raise_error
     end
+
+    it 'makes subsequent writes a safe no-op instead of raising IOError' do
+      session = described_class.new(session_path)
+      session.close
+      expect { session.write_result(make_result('http://a.com')) }.not_to raise_error
+    end
   end
 
   describe '#delete!' do

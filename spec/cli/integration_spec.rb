@@ -37,6 +37,14 @@ RSpec.describe 'CLI integration', :integration do
     expect(stderr).to include('invalid option')
   end
 
+  it 'reports user errors cleanly without a Ruby backtrace' do
+    _stdout, stderr, status = run_cli_subprocess('--bogus-flag')
+
+    expect(status.exitstatus).to eq(2)
+    expect(stderr).to start_with('wayback_archiver:')
+    expect(stderr).not_to match(/\.rb:\d+:in/) # no backtrace frames
+  end
+
   it 'reports validation errors for mutually exclusive flags' do
     _stdout, stderr, status = run_cli_subprocess('--check', '--skip-archived', 'http://example.com')
 
