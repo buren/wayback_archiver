@@ -937,6 +937,47 @@ RSpec.describe WaybackArchiver::Archive do
     end
   end
 
+  describe 'unknown option validation' do
+    before do
+      allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status)
+        .and_return({ 'available' => 12, 'processing' => 0 })
+    end
+
+    # A typo'd option used to be silently dropped by build_post_body —
+    # capture_screenshots: true archived without screenshots and told no one.
+    it 'raises ArgumentError for unknown options in post' do
+      expect { described_class.post(%w[http://example.com], capture_screenshots: true) }
+        .to raise_error(ArgumentError, /capture_screenshots/)
+    end
+
+    it 'raises ArgumentError for unknown options in crawl' do
+      expect { described_class.crawl('http://example.com', capture_screenshots: true) }
+        .to raise_error(ArgumentError, /capture_screenshots/)
+    end
+
+    it 'raises ArgumentError for unknown options in post_url' do
+      allow(WaybackArchiver::WaybackMachine).to receive(:call)
+
+      expect { described_class.post_url('http://example.com', screenshots: true) }
+        .to raise_error(ArgumentError, /screenshots/)
+      expect(WaybackArchiver::WaybackMachine).not_to have_received(:call)
+    end
+
+    it 'accepts every documented SPN2 option plus local side-channel options' do
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit)
+        .and_return({ 'url' => 'http://example.com', 'timestamp' => '20260326120000' })
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses).and_return({})
+
+      all_options = (WaybackArchiver::WaybackMachine::BOOLEAN_OPTIONS +
+                     WaybackArchiver::WaybackMachine::VALUE_OPTIONS).to_h { |k| [k, '1'] }
+      all_options[:screenshot_dir] = 'shots/'
+      all_options[:skip_duplicates] = true
+
+      expect { described_class.post(%w[http://example.com], **all_options) }
+        .not_to raise_error
+    end
+  end
+
   describe 'BatchSubmitter abort' do
     before do
       allow_any_instance_of(WaybackArchiver::BatchSubmitter).to receive(:sleep)

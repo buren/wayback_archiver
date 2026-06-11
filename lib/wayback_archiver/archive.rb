@@ -6,6 +6,17 @@ require 'wayback_archiver/wayback_machine'
 module WaybackArchiver
   # Post URL(s) to Wayback Machine
   class Archive
+    # Keys accepted via **options across the archive entry points: the SPN2
+    # capture params plus local side-channel options consumed downstream
+    # (screenshot_dir at result construction, skip_duplicates by the CLI's
+    # option plumbing). Anything else is a typo — build_post_body would
+    # silently drop it, so reject it loudly here instead.
+    ALLOWED_OPTIONS = (
+      WaybackMachine::BOOLEAN_OPTIONS +
+      WaybackMachine::VALUE_OPTIONS +
+      %i[screenshot_dir skip_duplicates]
+    ).freeze
+
     # Send URLs to Wayback Machine.
     # @return [Array<ArchiveResult>] one per submitted URL, including failures.
     # @param urls [Array<String>] URLs to send.
@@ -29,6 +40,7 @@ module WaybackArchiver
     # @example Request full-page screenshots
     #   Archive.post(urls, capture_screenshot: true, screenshot_dir: 'shots/')
     def self.post(urls, concurrency: WaybackArchiver.config.concurrency, limit: WaybackArchiver.config.max_limit, skip_urls: nil, skip_patterns: nil, include_ext: nil, exclude_ext: nil, **options, &block)
+      validate_options!(options)
       WaybackArchiver.logger.debug "Total URLs to be sent: #{urls.length}"
       WaybackArchiver.logger.debug "Request are sent with up to #{concurrency} parallel threads"
 
@@ -86,6 +98,7 @@ module WaybackArchiver
     #     puts r.uri if r.success?
     #   end
     def self.crawl(source, hosts: [], concurrency: WaybackArchiver.config.concurrency, limit: WaybackArchiver.config.max_limit, skip_urls: nil, skip_patterns: nil, include_ext: nil, exclude_ext: nil, skip_duplicates: true, **options, &block)
+      validate_options!(options)
       queue = SizedQueue.new(CRAWL_QUEUE_SIZE)
       url_filter = URLFilter.new(include_ext: include_ext, exclude_ext: exclude_ext)
       discovered = Concurrent::AtomicFixnum.new(0)
@@ -123,7 +136,18 @@ module WaybackArchiver
     # @example With capture options
     #   Archive.post_url('https://example.com', capture_screenshot: true)
     def self.post_url(url, **options)
+      validate_options!(options)
       WaybackMachine.call(url, **options)
     end
+
+    def self.validate_options!(options)
+      unknown = options.keys - ALLOWED_OPTIONS
+      return if unknown.empty?
+
+      raise ArgumentError,
+            "Unknown option#{'s' if unknown.size > 1}: #{unknown.map(&:inspect).join(', ')}. " \
+            "Supported options: #{ALLOWED_OPTIONS.map(&:inspect).join(', ')}"
+    end
+    private_class_method :validate_options!
   end
 end
