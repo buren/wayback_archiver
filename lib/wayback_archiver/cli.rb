@@ -274,6 +274,8 @@ module WaybackArchiver
       check_results.each do |r|
         if r.archived?
           @stdout.puts "  \u2713 #{r.url}  #{r.captured_at}  #{r.wayback_url}"
+        elsif r.errored?
+          @stdout.puts "  ? #{r.url}  (check failed: #{r.error.message})"
         else
           @stdout.puts "  \u2717 #{r.url}  (not archived)"
         end
@@ -283,13 +285,19 @@ module WaybackArchiver
       # --check is a fast read-only CDX pass, so a crash just means a cheap re-run.
       @summary.write_report(check_results, @options.report_path)
 
+      errored_count = check_results.count(&:errored?)
       if @options.show_summary
         archived_count = check_results.count(&:archived?)
-        not_archived_count = check_results.length - archived_count
-        @stdout.puts "\n#{archived_count} archived, #{not_archived_count} not archived (#{check_results.length} total)"
+        not_archived_count = check_results.length - archived_count - errored_count
+        line = "\n#{archived_count} archived, #{not_archived_count} not archived"
+        line << ", #{errored_count} check failed" if errored_count > 0
+        line << " (#{check_results.length} total)"
+        @stdout.puts line
       end
 
-      exit(0)
+      # Failed lookups mean archived? is unknown, not false \u2014 exit nonzero so
+      # scripts can't mistake an archive.org outage for 'not archived'.
+      exit(errored_count > 0 ? 1 : 0)
     end
 
     def run_list_urls

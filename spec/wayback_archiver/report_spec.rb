@@ -128,6 +128,26 @@ RSpec.describe WaybackArchiver::Report do
         WaybackArchiver::CheckResult.new('http://other.com', archived: false)
       end
 
+      let(:errored_check) do
+        WaybackArchiver::CheckResult.new('http://down.com', archived: false,
+                                         error: WaybackArchiver::Request::ServerError.new('503'))
+      end
+
+      # Regression: failed CDX lookups were written as archived=false with no
+      # error indication — indistinguishable from genuinely unarchived URLs.
+      it 'includes the check error in CSV and JSON output' do
+        csv_path = File.join(@tmpdir, 'check.csv')
+        described_class.write([errored_check], csv_path)
+        header, row = CSV.read(csv_path)
+        expect(header).to include('error')
+        expect(row[header.index('error')]).to include('503')
+
+        json_path = File.join(@tmpdir, 'check.json')
+        described_class.write([errored_check], json_path)
+        data = JSON.parse(File.read(json_path))
+        expect(data[0]['error']).to include('503')
+      end
+
       it 'writes check CSV with correct columns' do
         path = File.join(@tmpdir, 'check.csv')
         described_class.write([archived_check, not_archived_check], path)

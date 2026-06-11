@@ -19,6 +19,12 @@ module WaybackArchiver
       @archived
     end
 
+    # @return [Boolean] true if the CDX lookup itself failed — archived? is
+    #   then unknown, not false.
+    def errored?
+      !!@error
+    end
+
     # @return [String, nil] formatted date (YYYY-MM-DD) of the most recent capture
     def captured_at
       return nil unless timestamp && timestamp.length >= 8
