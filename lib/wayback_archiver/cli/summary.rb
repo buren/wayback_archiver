@@ -68,9 +68,9 @@ module WaybackArchiver
           if value == true
             parts << "--#{flag}"
           elsif value.is_a?(Array)
-            parts << "--#{flag}=#{value.join(',')}"
+            parts << "--#{flag}=#{Shellwords.shellescape(value.join(','))}"
           elsif value
-            parts << "--#{flag}=#{value}"
+            parts << "--#{flag}=#{Shellwords.shellescape(value.to_s)}"
           end
         end
 

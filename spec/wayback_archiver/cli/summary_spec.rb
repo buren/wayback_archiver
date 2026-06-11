@@ -179,6 +179,23 @@ RSpec.describe WaybackArchiver::CLI::Summary do
       expect(cmd).to include('--js-behavior-timeout=10')
     end
 
+    # Regression: SPN2 option values were the only unescaped values in the
+    # resume command — pasting a command with --if-not-archived-within='3d 5h
+    # 20m' fed '5h' and '20m' to the shell as positional URL arguments.
+    it 'shell-escapes SPN2 option values' do
+      opts = build_options(strategy: 'urls', spn2_options: {
+                             if_not_archived_within: '3d 5h 20m',
+                             use_user_agent: 'Mozilla/5.0 (X11; Linux)'
+                           })
+      session = instance_double(WaybackArchiver::SessionFile, path: '/tmp/session.jsonl')
+
+      cmd = summary.build_resume_command(opts, session)
+
+      tokens = Shellwords.split(cmd)
+      expect(tokens).to include('--if-not-archived-within=3d 5h 20m')
+      expect(tokens).to include('--use-user-agent=Mozilla/5.0 (X11; Linux)')
+    end
+
     it 'round-trips the report path' do
       opts = build_options(strategy: 'urls', report_path: '/tmp/out.csv')
       session = instance_double(WaybackArchiver::SessionFile, path: '/tmp/session.jsonl')
