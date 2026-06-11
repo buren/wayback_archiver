@@ -17,6 +17,7 @@
 - Switched from SPN1 to **SPN2 API** — captures are now submitted via POST and polled for completion
 - `archive`, `crawl`, `sitemap`, `urls` now return **all results** (including failures), not just successes. Use `result.success?` to filter.
 - `ArchiveResult#success?` is now `false` for `submitted?` (queued but unconfirmed) results in addition to errors. `cached?` and `skipped?` results count as successes (the URL is archived / was intentionally not re-archived) — use the `cached?`/`skipped?` predicates if you need to distinguish them.
+- **Positional strategy argument removed** — `WaybackArchiver.archive('example.com', :crawl)` now raises `ArgumentError`. Use the keyword form: `WaybackArchiver.archive('example.com', strategy: :crawl)`.
 - **Module-level setters removed** — settings now live on `WaybackArchiver.config`. The following no longer exist and raise `NoMethodError`: `WaybackArchiver.logger=`, `.default_logger!`, `.user_agent`/`.user_agent=`, `.concurrency=`, `.max_limit=`, `.respect_robots_txt`/`.respect_robots_txt=`, and `.adapter`/`.adapter=` (the swappable adapter extension point is gone; archiving always uses SPN2). See the migration table below.
 - Default concurrency changed from 1 to 4
 - Ruby >= 3.1 required

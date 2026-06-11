@@ -71,46 +71,13 @@ RSpec.describe WaybackArchiver do
     end
 
     context 'legacy strategy param' do
-      it 'raises ArgumentError when passed unknown strategy' do
+      # v1 supported archive('example.com', :crawl); v2 removed the dual
+      # positional/keyword signature. The positional form must fail loudly,
+      # not silently archive with the wrong (default) strategy.
+      it 'raises ArgumentError for the removed v1 positional strategy' do
         expect do
-          described_class.archive('http://example.com', :watman_strategy)
+          described_class.archive('http://example.com', :crawl)
         end.to raise_error(ArgumentError)
-      end
-
-      it 'calls ::auto when passed auto as strategy' do
-        allow(described_class).to receive(:auto).and_return([])
-        described_class.archive('http://example.com', :auto)
-        expect(described_class).to have_received(:auto).once
-      end
-
-      it 'calls ::crawl when passed crawl as strategy' do
-        allow(described_class).to receive(:crawl).and_return([])
-        described_class.archive('http://example.com', :crawl)
-        expect(described_class).to have_received(:crawl).once
-      end
-
-      it 'calls ::urls when passed urls as strategy' do
-        allow(described_class).to receive(:urls).and_return([])
-        described_class.archive('http://example.com', :urls)
-        expect(described_class).to have_received(:urls).once
-      end
-
-      it 'calls ::urls when passed url as strategy' do
-        allow(described_class).to receive(:urls).and_return([])
-        described_class.archive('http://example.com', :url)
-        expect(described_class).to have_received(:urls).once
-      end
-
-      it 'calls ::sitemap when passed sitemap as strategy' do
-        allow(described_class).to receive(:sitemap).and_return([])
-        described_class.archive('http://example.com', :sitemap)
-        expect(described_class).to have_received(:sitemap).once
-      end
-
-      it 'calls ::rss when passed rss as strategy' do
-        allow(described_class).to receive(:rss).and_return([])
-        described_class.archive('http://example.com/feed.xml', :rss)
-        expect(described_class).to have_received(:rss).once
       end
     end
   end

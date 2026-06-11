@@ -54,7 +54,6 @@ module WaybackArchiver
   #    WaybackArchiver.archive('example.com', strategy: :url)
   #    WaybackArchiver.archive('example.com', strategy: :url, concurrency: 10)
   #    WaybackArchiver.archive('example.com', strategy: :url, limit: 100) # send max 100 URLs
-  #    WaybackArchiver.archive('example.com', :url)
   # @example Crawl multiple hosts
   #    WaybackArchiver.archive(
   #      'http://example.com',
@@ -63,9 +62,7 @@ module WaybackArchiver
   #        /host[\d]+\.example\.com/
   #      ]
   #    )
-  def self.archive(source, legacy_strategy = nil, strategy: :auto, hosts: [], concurrency: config.concurrency, limit: config.max_limit, skip_urls: nil, **options, &block)
-    strategy = legacy_strategy || strategy
-
+  def self.archive(source, strategy: :auto, hosts: [], concurrency: config.concurrency, limit: config.max_limit, skip_urls: nil, **options, &block)
     case strategy.to_s
     when 'crawl'   then crawl(source, concurrency: concurrency, limit: limit, hosts: hosts, skip_urls: skip_urls, **options, &block)
     when 'auto'    then auto(source, concurrency: concurrency, limit: limit, hosts: hosts, skip_urls: skip_urls, **options, &block)
