@@ -385,6 +385,34 @@ RSpec.describe WaybackArchiver::Archive do
       expect(WaybackArchiver::WaybackMachine).not_to have_received(:poll_statuses)
     end
 
+    # Regression: success/error counters were incremented at four scattered
+    # call sites; cached results and submit-time permanent failures were
+    # recorded without being counted, so progress events and the final
+    # summary undercounted — and the cold-start abort heuristic
+    # (counts[:success] == 0) could spuriously abort runs that archived
+    # everything from cache.
+    it 'counts cached results as captured in progress totals' do
+      tl = WaybackArchiver::TestListener.new
+      WaybackArchiver.config.listener = tl
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit)
+        .and_return({ 'url' => 'http://example.com', 'timestamp' => '20260326120000' })
+
+      described_class.post(%w[http://example.com])
+
+      expect(tl.progress_events.last[:captured]).to eq(1)
+    end
+
+    it 'counts submit-time permanent failures in progress totals' do
+      tl = WaybackArchiver::TestListener.new
+      WaybackArchiver.config.listener = tl
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit)
+        .and_return({ 'status' => 'error', 'status_ext' => 'error:blocked-url', 'message' => 'blocked' })
+
+      described_class.post(%w[http://example.com])
+
+      expect(tl.progress_events.last[:failed]).to eq(1)
+    end
+
     it 'emits a final on_progress with pending: 0 once poll_until_done drains the last jobs' do
       progress_events = []
       listener = {

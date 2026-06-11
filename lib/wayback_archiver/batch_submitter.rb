@@ -248,7 +248,6 @@ module WaybackArchiver
         if @retries[url] > MAX_RETRIES
           WaybackArchiver.logger.error("Retry limit exceeded (#{MAX_RETRIES}) for #{url}")
           result = ArchiveResult.new(url, error: Request::ServerError.new('retry limit exceeded'))
-          @counts[:error] += 1
           record_result(result)
         else
           requeued << url
@@ -305,10 +304,8 @@ module WaybackArchiver
 
         result = ArchiveResult.from_status(url, job_id, status, **@options)
         if result.success?
-          @counts[:success] += 1
           WaybackArchiver.logger.debug("Captured #{url} [#{result.formatted_timestamp}]")
         elsif result.errored?
-          @counts[:error] += 1
           WaybackArchiver.logger.debug("Capture failed for #{url}: #{result.status_ext}")
         end
         record_result(result)
@@ -337,7 +334,6 @@ module WaybackArchiver
       @retry_buffer.clear
       all_urls.each do |url|
         result = ArchiveResult.new(url, error: Request::ClientError.new('Connection refused by web.archive.org'))
-        @counts[:error] += 1
         record_result(result)
       end
     end
@@ -364,7 +360,15 @@ module WaybackArchiver
       WaybackArchiver.listener.on_progress(captured: @counts[:success], failed: @counts[:error], pending: @pending.size)
     end
 
+    # Single funnel for final per-URL results: counts, callbacks, collection.
+    # Every code path that produces a final result must go through here so
+    # the progress totals can't drift from the recorded results.
     def record_result(result)
+      if result.errored?
+        @counts[:error] += 1
+      elsif result.success?
+        @counts[:success] += 1
+      end
       @block&.call(result)
       WaybackArchiver.listener.on_completed(result: result)
       @results << result
