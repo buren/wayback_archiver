@@ -464,6 +464,17 @@ RSpec.describe WaybackArchiver::CLI do
           expect(stdout_output).to include('[1]')
           expect(stdout_output).to include('[2]')
         end
+
+        # Regression: the counter padding was computed as ' ' * (4 - n.to_s.length),
+        # which raises ArgumentError (negative argument) once n reaches 10000 —
+        # crashing runs archiving >= 10k URLs at the moment of the 10000th result.
+        it 'handles 5+ digit counters without raising' do
+          result = WaybackArchiver::ArchiveResult.new('http://example.com', timestamp: '20240101000000')
+          listener.instance_variable_set(:@completed_count, 9_999)
+
+          expect { listener.on_completed(result: result) }.not_to raise_error
+          expect(stdout_output).to include('[10000]')
+        end
       end
 
       describe '#on_progress' do
