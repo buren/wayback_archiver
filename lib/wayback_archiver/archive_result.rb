@@ -40,7 +40,8 @@ module WaybackArchiver
 
     # @return [Boolean] true if errored
     def errored?
-      !!error || (status_ext.is_a?(String) && status_ext.start_with?('error:'))
+      !!error || !!response_error ||
+        (status_ext.is_a?(String) && status_ext.start_with?('error:'))
     end
 
     # @return [Boolean] true if skipped (e.g. already archived, CDX pre-check)
@@ -88,7 +89,7 @@ module WaybackArchiver
     # For successes: the capture duration.
     def status_detail
       if errored?
-        error_message || status_ext || error&.message
+        error_message || response_error || status_ext || error&.message
       elsif cached?
         formatted_timestamp
       elsif duration_sec

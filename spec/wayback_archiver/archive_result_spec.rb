@@ -247,6 +247,20 @@ RSpec.describe WaybackArchiver::ArchiveResult do
       expect(result.status_ext).to eq('cached')
     end
 
+    # Regression: an SPN2 error status without a status_ext key produced a
+    # result with error=nil and status_ext=nil, so errored? was false and the
+    # failed capture was counted, logged, and displayed as a success.
+    it 'treats an error status without status_ext as errored' do
+      status = { 'status' => 'error', 'message' => 'Something went wrong' }
+
+      result = described_class.from_status(url, job_id, status)
+
+      expect(result.errored?).to eq(true)
+      expect(result.success?).to eq(false)
+      expect(result.status_label).to eq('FAIL')
+      expect(result.status_detail).to eq('Something went wrong')
+    end
+
     it 'builds an error result from an error status hash' do
       status = {
         'status' => 'error',

@@ -16,7 +16,7 @@
 - **Authentication required** — the Wayback Machine SPN2 API no longer allows anonymous access. You must configure Internet Archive S3 API keys (`WAYBACK_ACCESS_KEY`/`WAYBACK_SECRET_KEY`) before archiving. Get your keys at [archive.org/account/s3.php](https://archive.org/account/s3.php). Read-only operations like `--check` (CDX API) still work without credentials.
 - Switched from SPN1 to **SPN2 API** — captures are now submitted via POST and polled for completion
 - `archive`, `crawl`, `sitemap`, `urls` now return **all results** (including failures), not just successes. Use `result.success?` to filter.
-- `ArchiveResult#success?` is now `false` for `submitted?` (queued but unconfirmed) and `cached?`/`skipped?` results, not only for errors. Code that treated every non-errored result as a success may need to account for these states.
+- `ArchiveResult#success?` is now `false` for `submitted?` (queued but unconfirmed) results in addition to errors. `cached?` and `skipped?` results count as successes (the URL is archived / was intentionally not re-archived) — use the `cached?`/`skipped?` predicates if you need to distinguish them.
 - **Module-level setters removed** — settings now live on `WaybackArchiver.config`. The following no longer exist and raise `NoMethodError`: `WaybackArchiver.logger=`, `.default_logger!`, `.user_agent`/`.user_agent=`, `.concurrency=`, `.max_limit=`, `.respect_robots_txt`/`.respect_robots_txt=`, and `.adapter`/`.adapter=` (the swappable adapter extension point is gone; archiving always uses SPN2). See the migration table below.
 - Default concurrency changed from 1 to 4
 - Ruby >= 3.1 required
