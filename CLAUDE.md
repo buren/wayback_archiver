@@ -44,7 +44,7 @@ The authoritative API docs are in `docs/spn2-api.md` (converted from the officia
 - `lib/wayback_archiver.rb` — strategy dispatch, `discover_urls`, convenience delegates
 - `lib/wayback_archiver/configuration.rb` — `Configuration` class (all settings)
 - `lib/wayback_archiver/archive.rb` — `post`, `crawl`, `batch_post`, URL filtering
-- `lib/wayback_archiver/adapters/wayback_machine.rb` — SPN2 submit/poll, rate limiting
+- `lib/wayback_archiver/wayback_machine.rb` — SPN2 submit/poll, rate limiting
 - `lib/wayback_archiver/error_codes.rb` — SPN2 `status_ext` → category mapping (transient/daily_limit/permanent)
 - `lib/wayback_archiver/archive_result.rb` — `ArchiveResult` value object with status helpers
 - `lib/wayback_archiver/cdx.rb` — CDX API client for `--check` / `--skip-archived`

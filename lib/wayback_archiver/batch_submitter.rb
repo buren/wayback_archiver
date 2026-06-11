@@ -1,7 +1,7 @@
 require 'concurrent'
 
 require 'wayback_archiver/thread_pool'
-require 'wayback_archiver/adapters/wayback_machine'
+require 'wayback_archiver/wayback_machine'
 require 'wayback_archiver/archive_result'
 require 'wayback_archiver/request'
 require 'wayback_archiver/error_codes'

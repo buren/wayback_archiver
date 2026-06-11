@@ -1,7 +1,7 @@
 require 'concurrent'
 
 require 'wayback_archiver/batch_submitter'
-require 'wayback_archiver/adapters/wayback_machine'
+require 'wayback_archiver/wayback_machine'
 
 module WaybackArchiver
   # Post URL(s) to Wayback Machine
