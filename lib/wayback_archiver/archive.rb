@@ -27,12 +27,16 @@ module WaybackArchiver
     # @param include_ext [Array<String>, nil] only submit URLs with these extensions.
     # @param exclude_ext [Array<String>, nil] omit URLs with these extensions.
     # @param options [Hash] forwarded to SPN2 (capture_all:, capture_screenshot:, ...).
-    # @yield [archive_result] yielded as each result lands; use for streaming.
+    # @yield [archive_result] called when a URL is accepted by SPN2 (interim
+    #   result, +submitted?+ true) and again with the final result — guard with
+    #   +result.submitted?+ to process only final results. May be invoked from
+    #   multiple threads.
     # @yieldparam [ArchiveResult] archive_result
     # @example Archive a handful of URLs
     #   Archive.post(['https://example.com', 'https://example.com/about'])
-    # @example Stream results as they arrive
+    # @example Stream final results as they arrive
     #   Archive.post(urls) do |r|
+    #     next if r.submitted? # interim notification — final result comes later
     #     puts r.success? ? r.wayback_url : "FAIL #{r.uri}: #{r.error}"
     #   end
     # @example Resume — skip URLs we've already archived
@@ -85,7 +89,10 @@ module WaybackArchiver
     # @param exclude_ext [Array<String>, nil] omit URLs with these extensions.
     # @param skip_duplicates [Boolean] when true, pages with the same path and identical body are deduped.
     # @param options [Hash] forwarded to SPN2 (capture_all:, capture_screenshot:, ...).
-    # @yield [archive_result] yielded as each result lands; use for streaming.
+    # @yield [archive_result] called when a URL is accepted by SPN2 (interim
+    #   result, +submitted?+ true) and again with the final result — guard with
+    #   +result.submitted?+ to process only final results. May be invoked from
+    #   multiple threads.
     # @yieldparam [ArchiveResult] archive_result
     # @example Crawl a site
     #   Archive.crawl('https://example.com')

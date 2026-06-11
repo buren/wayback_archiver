@@ -5,9 +5,13 @@ module WaybackArchiver
   # All methods may be called from multiple threads (batch mode uses
   # thread pools). Implementations must handle their own thread safety.
   #
+  # For forward compatibility, accept +**_rest+ in your overrides: events may
+  # gain keyword arguments in minor releases, and an implementation with an
+  # exact signature would raise ArgumentError when that happens.
+  #
   # @example Subclass to log completed captures
   #   class MyListener < WaybackArchiver::NullListener
-  #     def on_completed(result:)
+  #     def on_completed(result:, **_rest)
   #       puts "#{result.uri} => #{result.status_label}"
   #     end
   #   end

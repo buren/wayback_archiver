@@ -79,10 +79,16 @@ WaybackArchiver.archive('example.com',
 
 **Processing results:**
 
-Each strategy returns an array of results and accepts a block:
+Each strategy returns an array of results and accepts a block. The block is
+called when a URL is accepted by SPN2 (an interim result where
+`result.submitted?` is true) and again with the final result once the capture
+completes — guard with `submitted?` if you only want final results. It may be
+called from multiple threads.
 
 ```ruby
 results = WaybackArchiver.archive('example.com') do |result|
+  next if result.submitted? # interim notification — final result comes later
+
   if result.success?
     puts "Archived: #{result.wayback_url}"
   else
