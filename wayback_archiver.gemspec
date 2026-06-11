@@ -17,22 +17,31 @@ Gem::Specification.new do |spec|
 
   spec.files         = Dir.glob('{bin,lib}/**/*')
   spec.executables   = spec.files.grep(%r{^bin/}) { |f| File.basename(f) }
-  spec.test_files    = spec.files.grep(%r{^(test|spec|features)/})
   spec.require_paths = ['lib']
 
-  spec.required_ruby_version = '>= 2.0.0'
+  spec.required_ruby_version = '>= 3.1.0'
 
+  spec.post_install_message = <<~MSG
+    [wayback_archiver] BREAKING CHANGE in v2.0:
+    Authentication is now required. The Wayback Machine SPN2 API no longer
+    allows anonymous access. Set WAYBACK_ACCESS_KEY and WAYBACK_SECRET_KEY
+    environment variables before archiving.
+    Get your keys at: https://archive.org/account/s3.php
+  MSG
+
+  spec.add_runtime_dependency 'logger'                     # No longer in default gems as of Ruby 4.0
   spec.add_runtime_dependency 'spidr',         '~> 0.7.1' # Crawl sites
-  spec.add_runtime_dependency 'concurrent-ruby', '~> 1.3' # Concurrency primitivies
-  spec.add_runtime_dependency 'rexml',         '~> 3.3.9'
+  spec.add_runtime_dependency 'concurrent-ruby', '~> 1.3' # Concurrency primitives
+  spec.add_runtime_dependency 'webrobots',     '~> 0.1.2'  # robots.txt parsing (sitemap autodiscovery)
+  spec.add_runtime_dependency 'robots',        '~> 0.10'   # robots.txt support for Spidr (respect_robots_txt)
+  spec.add_runtime_dependency 'rexml',         '~> 3.3'
+  spec.add_runtime_dependency 'rss',            '~> 0.3'      # RSS/Atom feed parsing
+  spec.add_runtime_dependency 'csv'                           # CSV report output
 
-  spec.add_development_dependency 'bundler',   '~> 2.1'
-  spec.add_development_dependency 'rake',      '~> 12.3'
+  spec.add_development_dependency 'bundler',   '>= 2.1'
+  spec.add_development_dependency 'rake',      '~> 13.0'
   spec.add_development_dependency 'rspec',     '~> 3.1'
   spec.add_development_dependency 'yard',      '~> 0.9'
-  spec.add_development_dependency 'simplecov', '~> 0.14.1'
-  spec.add_development_dependency 'coveralls', '~> 0.8'
-  spec.add_development_dependency 'redcarpet', '~> 3.2'
-  spec.add_development_dependency 'webmock', '~> 3.0'
-  spec.add_development_dependency 'byebug', '~> 11.1.3'
+  spec.add_development_dependency 'simplecov', '~> 0.22'
+  spec.add_development_dependency 'webmock',   '~> 3.0'
 end

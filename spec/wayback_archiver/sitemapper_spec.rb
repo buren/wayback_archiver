@@ -5,7 +5,7 @@ RSpec.describe WaybackArchiver::Sitemapper do
     {
       'Accept' => '*/*',
       'Accept-Encoding' => 'gzip;q=1.0,deflate;q=0.6,identity;q=0.3',
-      'User-Agent' => WaybackArchiver.user_agent
+      'User-Agent' => WaybackArchiver.config.user_agent
     }
   end
 
@@ -15,15 +15,23 @@ RSpec.describe WaybackArchiver::Sitemapper do
   let(:sitemap_xml) { File.read('spec/data/sitemap.xml') }
 
   describe '::autodiscover' do
+    context 'with a URL missing the scheme' do
+      it 'normalizes the URL before querying robots.txt' do
+        stub_request(:get, 'http://www.example.com/robots.txt')
+          .to_return(status: 200, body: robots_txt, headers: { 'Content-Type' => 'text/plain' })
+
+        stub_request(:get, 'http://www.example.com/sitemap.xml')
+          .with(headers: headers)
+          .to_return(status: 200, body: sitemap_xml, headers: {})
+
+        expect(described_class.autodiscover('www.example.com')).to eq(%w[http://www.example.com/])
+      end
+    end
+
     context 'with found Sitemap location in robots.txt' do
       it 'fetches those Sitemap(s) and returns all present URLs' do
-        # The robots gem doesn't play nice with the WebMock so we can't test this until
-        # https://github.com/fizx/robots/pull/9 is merged.
-        # Until then we're gonna use rspec-mocks
-        # stub_request(:get, 'http://www.example.com/robots.txt').
-        #   with(headers: headers).
-        #   to_return(status: 200, body: robots_txt, headers: {})
-        allow_any_instance_of(Robots).to receive(:other_values).and_return('Sitemap' => %w[http://www.example.com/sitemap.xml])
+        stub_request(:get, 'http://www.example.com/robots.txt')
+          .to_return(status: 200, body: robots_txt, headers: { 'Content-Type' => 'text/plain' })
 
         stub_request(:get, 'http://www.example.com/sitemap.xml')
           .with(headers: headers)
@@ -33,7 +41,11 @@ RSpec.describe WaybackArchiver::Sitemapper do
       end
 
       it 'returns empty list on request error' do
-        allow_any_instance_of(Robots).to receive(:other_values).and_raise(WaybackArchiver::Request::Error)
+        stub_request(:get, 'http://www.example.com/robots.txt')
+          .to_return(status: 200, body: robots_txt, headers: { 'Content-Type' => 'text/plain' })
+
+        stub_request(:get, 'http://www.example.com/sitemap.xml')
+          .to_raise(WaybackArchiver::Request::Error)
 
         expect(described_class.autodiscover('http://www.example.com')).to be_empty
       end
@@ -43,8 +55,7 @@ RSpec.describe WaybackArchiver::Sitemapper do
       it 'returns all present URLs if a Sitemap is found' do
         base_url = 'http://www.example.com'
         stub_request(:get, "#{base_url}/robots.txt")
-          .with(headers: headers)
-          .to_return(status: 200, body: robots_txt, headers: {})
+          .to_return(status: 200, body: "User-agent: *\nAllow: /\n", headers: { 'Content-Type' => 'text/plain' })
 
         sitemap_path = WaybackArchiver::Sitemapper::COMMON_SITEMAP_LOCATIONS.first
 
@@ -56,12 +67,26 @@ RSpec.describe WaybackArchiver::Sitemapper do
       end
     end
 
+    context 'when a network error occurs during common location probing' do
+      it 'rescues Request::Error and returns empty array' do
+        base_url = 'http://www.example.com'
+        stub_request(:get, "#{base_url}/robots.txt")
+          .to_return(status: 200, body: "User-agent: *\nAllow: /\n", headers: { 'Content-Type' => 'text/plain' })
+
+        # First common location raises a network error
+        allow(WaybackArchiver::Request).to receive(:get)
+          .with(/sitemap/, anything)
+          .and_raise(WaybackArchiver::Request::ServerError, 'connection reset')
+
+        expect(described_class.autodiscover(base_url)).to eq([])
+      end
+    end
+
     context 'at the provided URL' do
       it 'returns all present URLs if a Sitemap is found' do
         base_url = 'http://www.example.com'
         stub_request(:get, "#{base_url}/robots.txt")
-          .with(headers: headers)
-          .to_return(status: 200, body: robots_txt, headers: {})
+          .to_return(status: 200, body: "User-agent: *\nAllow: /\n", headers: { 'Content-Type' => 'text/plain' })
 
         WaybackArchiver::Sitemapper::COMMON_SITEMAP_LOCATIONS.each do |sitemap_path|
           stub_request(:get, [base_url, sitemap_path].join('/'))
@@ -131,10 +156,14 @@ RSpec.describe WaybackArchiver::Sitemapper do
       end
     end
 
-    it 'returns empty list on request error' do
+    # A network error must propagate: returning [] made 'site unreachable'
+    # indistinguishable from 'empty sitemap' for library callers. The auto
+    # cascade still falls back to crawl — autodiscover keeps its rescue.
+    it 'raises on request error' do
       allow(WaybackArchiver::Request).to receive(:get).and_raise(WaybackArchiver::Request::Error)
 
-      expect(described_class.urls(url: 'http://www.example.com')).to be_empty
+      expect { described_class.urls(url: 'http://www.example.com') }
+        .to raise_error(WaybackArchiver::Request::Error)
     end
   end
 end

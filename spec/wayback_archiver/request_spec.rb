@@ -6,7 +6,7 @@ RSpec.describe WaybackArchiver::Request do
       {
         'Accept' => '*/*',
         'Accept-Encoding' => 'gzip;q=1.0,deflate;q=0.6,identity;q=0.3',
-        'User-Agent' => WaybackArchiver.user_agent
+        'User-Agent' => WaybackArchiver.config.user_agent
       }
     end
 
@@ -92,6 +92,27 @@ RSpec.describe WaybackArchiver::Request do
       result = described_class.get('https://example.com', raise_on_http_error: false)
 
       expect(result.code).to eq('400')
+    end
+
+    it 'returns redirect response directly when follow_redirects is false' do
+      stub_request(:get, 'https://example.com/')
+        .to_return(status: 301, body: '', headers: { 'location' => 'https://example.com/new' })
+
+      result = described_class.get('https://example.com', follow_redirects: false)
+
+      expect(result.code).to eq('301')
+    end
+
+    it 'sends custom headers when provided' do
+      custom_headers = { 'Authorization' => 'LOW key:secret', 'Accept' => 'application/json' }
+
+      stub_request(:get, 'https://example.com/')
+        .with(headers: headers.merge(custom_headers))
+        .to_return(status: 200, body: 'ok')
+
+      result = described_class.get('https://example.com', headers: custom_headers)
+
+      expect(result.code).to eq('200')
     end
   end
 
@@ -180,21 +201,145 @@ RSpec.describe WaybackArchiver::Request do
     end
   end
 
-  describe '::blank?' do
-    it 'returns true if passed nil' do
-      expect(described_class.blank?(nil)).to eq(true)
+  describe '::build_http' do
+    it 'returns Net::HTTP instance' do
+      uri = URI.parse('https://example.com')
+      http = described_class.build_http(uri)
+      expect(http).to be_a(Net::HTTP)
     end
 
-    it 'returns true if passed empty string' do
-      expect(described_class.blank?('')).to eq(true)
+    it 'enables SSL for https URIs' do
+      uri = URI.parse('https://example.com')
+      http = described_class.build_http(uri)
+      expect(http.use_ssl?).to eq(true)
     end
 
-    it 'returns true if passed string with only spaces' do
-      expect(described_class.blank?('  ')).to eq(true)
+    it 'sets verify_mode to VERIFY_PEER for https' do
+      uri = URI.parse('https://example.com')
+      http = described_class.build_http(uri)
+      expect(http.verify_mode).to eq(OpenSSL::SSL::VERIFY_PEER)
     end
 
-    it 'returns false if passed non-string empty' do
-      expect(described_class.blank?('buren')).to eq(false)
+    it 'does not enable SSL for http URIs' do
+      uri = URI.parse('http://example.com')
+      http = described_class.build_http(uri)
+      expect(http.use_ssl?).to eq(false)
+    end
+
+    it 'sets open_timeout' do
+      uri = URI.parse('https://example.com')
+      http = described_class.build_http(uri)
+      expect(http.open_timeout).to eq(30)
+    end
+
+    it 'sets read_timeout' do
+      uri = URI.parse('https://example.com')
+      http = described_class.build_http(uri)
+      expect(http.read_timeout).to eq(60)
     end
   end
+
+  describe '::post' do
+    it 'sends a POST request and returns Response' do
+      stub_request(:post, 'https://example.com/save')
+        .with(
+          body: 'url=http%3A%2F%2Ftest.com',
+          headers: { 'Accept' => 'application/json' }
+        )
+        .to_return(status: 200, body: '{"job_id":"abc123"}', headers: {})
+
+      result = described_class.post(
+        'https://example.com/save',
+        body: { 'url' => 'http://test.com' },
+        headers: { 'Accept' => 'application/json' }
+      )
+      expect(result.code).to eq('200')
+      expect(result.body).to eq('{"job_id":"abc123"}')
+    end
+
+    it 'maps Timeout::Error to ServerError' do
+      allow_any_instance_of(Net::HTTP).to receive(:request).and_raise(Timeout::Error)
+
+      expect do
+        described_class.post('https://example.com/save', body: {}, headers: {})
+      end.to raise_error(described_class::ServerError)
+    end
+
+    it 'maps SocketError to ClientError' do
+      allow_any_instance_of(Net::HTTP).to receive(:request).and_raise(SocketError)
+
+      expect do
+        described_class.post('https://example.com/save', body: {}, headers: {})
+      end.to raise_error(described_class::ClientError)
+    end
+
+    it 'maps IOError to ClientError' do
+      allow_any_instance_of(Net::HTTP).to receive(:request).and_raise(IOError)
+
+      expect do
+        described_class.post('https://example.com/save', body: {}, headers: {})
+      end.to raise_error(described_class::ClientError)
+    end
+
+    it 'maps OpenSSL::SSL::SSLError to ServerError' do
+      allow_any_instance_of(Net::HTTP).to receive(:request).and_raise(OpenSSL::SSL::SSLError)
+
+      expect do
+        described_class.post('https://example.com/save', body: {}, headers: {})
+      end.to raise_error(described_class::ServerError)
+    end
+
+    it 'sends User-Agent header' do
+      stub_request(:post, 'https://example.com/save')
+        .with(headers: { 'User-Agent' => WaybackArchiver.config.user_agent })
+        .to_return(status: 200, body: 'ok')
+
+      described_class.post('https://example.com/save', body: {})
+    end
+
+    it 'sends custom headers' do
+      stub_request(:post, 'https://example.com/save')
+        .with(headers: { 'Authorization' => 'LOW key:secret' })
+        .to_return(status: 200, body: 'ok')
+
+      described_class.post('https://example.com/save', body: {}, headers: { 'Authorization' => 'LOW key:secret' })
+    end
+
+    it 'decompresses gzipped response body' do
+      gz = StringIO.new
+      writer = Zlib::GzipWriter.new(gz)
+      writer.write('compressed content')
+      writer.close
+
+      stub_request(:post, 'https://example.com/save')
+        .to_return(status: 200, body: gz.string)
+
+      result = described_class.post('https://example.com/save', body: {})
+      expect(result.body).to eq('compressed content')
+    end
+  end
+
+  describe '::get error handling' do
+    it 'maps IOError to ClientError' do
+      allow_any_instance_of(Net::HTTP).to receive(:request).and_raise(IOError)
+
+      expect { described_class.get('https://example.com') }
+        .to raise_error(described_class::ClientError)
+    end
+
+    it 'maps Zlib::Error to ServerError' do
+      allow_any_instance_of(Net::HTTP).to receive(:request).and_raise(Zlib::Error)
+
+      expect { described_class.get('https://example.com') }
+        .to raise_error(described_class::ServerError)
+    end
+
+    it 'includes error class in the error message' do
+      allow_any_instance_of(Net::HTTP).to receive(:request).and_raise(SocketError.new('getaddrinfo failed'))
+
+      expect { described_class.get('https://example.com') }
+        .to raise_error(described_class::ClientError, /SocketError/)
+    end
+  end
+
 end

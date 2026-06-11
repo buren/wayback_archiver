@@ -1,0 +1,5 @@
+#!/usr/bin/env ruby
+require "bundler/setup"
+require "wayback_archiver"
+require "irb"
+IRB.start(__FILE__)

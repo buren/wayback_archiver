@@ -9,6 +9,7 @@ require 'wayback_archiver/response'
 
 module WaybackArchiver
   # Make HTTP requests
+  # @api private
   class Request
     # General error, something went wrong
     class Error < StandardError; end
@@ -69,7 +70,8 @@ module WaybackArchiver
       uri,
       max_redirects: MAX_REDIRECTS,
       raise_on_http_error: false,
-      follow_redirects: true
+      follow_redirects: true,
+      headers: {}
     )
       uri = build_uri(uri)
 
@@ -77,14 +79,11 @@ module WaybackArchiver
       until redirect_count > max_redirects
         WaybackArchiver.logger.debug "Requesting #{uri}"
 
-        http = Net::HTTP.new(uri.host, uri.port)
-        if uri.scheme == 'https'
-          http.use_ssl = true
-          http.verify_mode = OpenSSL::SSL::VERIFY_NONE
-        end
+        http = build_http(uri)
 
         request = Net::HTTP::Get.new(uri.request_uri)
-        request['User-Agent'] = WaybackArchiver.user_agent
+        request['User-Agent'] = WaybackArchiver.config.user_agent
+        headers.each { |key, value| request[key] = value }
 
         result = perform_request(uri, http, request)
         response = result.response
@@ -178,20 +177,38 @@ module WaybackArchiver
       response_body
     end
 
-    # Return whether a value is blank or not.
-    # @return [Boolean] whether the value is blank or not.
-    # @param [Object] value the value to check if its blank or not.
-    # @example Returns false for nil.
-    #    Request.blank?(nil)
-    # @example Returns false for empty string.
-    #    Request.blank?('')
-    # @example Returns false for string with only spaces.
-    #    Request.blank?('  ')
-    def self.blank?(value)
-      return true unless value
-      return true if value.strip.empty?
+    # Build a Net::HTTP instance for the given URI.
+    # @return [Net::HTTP]
+    # @param [URI] uri the target URI.
+    def self.build_http(uri)
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.open_timeout = 30
+      http.read_timeout = 60
+      if uri.scheme == 'https'
+        http.use_ssl = true
+        http.verify_mode = OpenSSL::SSL::VERIFY_PEER
+      end
+      http
+    end
 
-      false
+    # Send a POST request.
+    # @return [Response] the http response representation.
+    # @param [String, URI] uri to post to.
+    # @param body [Hash] form-encoded body parameters.
+    # @param headers [Hash] HTTP headers.
+    def self.post(uri, body: {}, headers: {})
+      uri = build_uri(uri)
+      http = build_http(uri)
+
+      request = Net::HTTP::Post.new(uri.request_uri)
+      request['User-Agent'] = WaybackArchiver.config.user_agent
+      headers.each { |key, value| request[key] = value }
+      request.set_form_data(body)
+
+      result = perform_request(uri, http, request)
+      raise result.error if result.error
+
+      build_response(uri, result.response)
     end
 
     private
@@ -201,11 +218,12 @@ module WaybackArchiver
       response = http.request(request)
       GETStruct.new(response)
     rescue *REQUEST_ERRORS.keys => e
-      build_request_error(uri, e, REQUEST_ERRORS.fetch(e.class))
+      error_klass = REQUEST_ERRORS.find { |k, _| e.is_a?(k) }&.last || ServerError
+      build_request_error(uri, e, error_klass)
     end
 
     def self.build_request_error(uri, error, error_wrapper_klass)
-      WaybackArchiver.logger.error "Request to #{uri} failed: #{error_wrapper_klass}, #{error.class}, #{error.message}"
+      WaybackArchiver.logger.debug "Request to #{uri} failed: #{error_wrapper_klass}, #{error.class}, #{error.message}"
 
       GETStruct.new(
         Response.new,

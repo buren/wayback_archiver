@@ -2,11 +2,12 @@ require 'logger'
 
 # Test logger
 class TestLogger < Logger
-  attr_reader :info_log, :debug_log, :error_log
+  attr_reader :info_log, :debug_log, :warn_log, :error_log
 
   def initialize(*_args)
     @info_log = []
     @debug_log = []
+    @warn_log = []
     @error_log = []
   end
 
@@ -15,6 +16,7 @@ class TestLogger < Logger
     case log_type
     when 0 then @debug_log
     when 1 then @info_log
+    when 2 then @warn_log
     when 3 then @error_log
     end << log_string
   end

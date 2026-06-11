@@ -1,11 +1,12 @@
 require 'set'
-require 'robots'
+require 'webrobots'
 
 require 'wayback_archiver/sitemap'
 require 'wayback_archiver/request'
 
 module WaybackArchiver
   # Fetch and parse sitemaps recursively
+  # @api private
   class Sitemapper
     # Common locations for Sitemap(s)
     COMMON_SITEMAP_LOCATIONS = %w[
@@ -25,11 +26,12 @@ module WaybackArchiver
     #    Sitemapper.autodiscover('https://google.com/')
     # @see http://www.sitemaps.org
     def self.autodiscover(url)
+      url = Request.build_uri(url).to_s
       WaybackArchiver.logger.info 'Looking for Sitemap(s) in /robots.txt'
-      robots = Robots.new(WaybackArchiver.user_agent)
-      sitemaps = robots.other_values(url)['Sitemap']
+      robots = WebRobots.new(WaybackArchiver.config.user_agent)
+      sitemaps = robots.sitemaps(url)
 
-      if sitemaps
+      if sitemaps.any?
         return sitemaps.flat_map do |sitemap|
           WaybackArchiver.logger.info "Fetching Sitemap at #{sitemap}"
           urls(url: sitemap)
@@ -50,6 +52,9 @@ module WaybackArchiver
       WaybackArchiver.logger.info "Looking for Sitemap at #{url}"
       urls(url: url)
     rescue Request::Error => e
+      # autodiscover is the auto-cascade probe: a network failure here means
+      # 'no sitemap found' and the caller falls back to crawling. The explicit
+      # sitemap strategy (Sitemapper.urls) lets the error propagate instead.
       WaybackArchiver.logger.error "Error raised when requesting #{url}, #{e.class}, #{e.message}"
       []
     end
@@ -81,10 +86,6 @@ module WaybackArchiver
       else
         sitemap.urls.map { |url| url&.strip }
       end
-    rescue Request::Error => e
-      WaybackArchiver.logger.error "Error raised when requesting #{url}, #{e.class}, #{e.message}"
-
-      []
     end
   end
 end
