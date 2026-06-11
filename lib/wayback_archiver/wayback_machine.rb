@@ -32,15 +32,22 @@ module WaybackArchiver
       capture_cookie use_user_agent target_username target_password
     ].freeze
 
+    # Guards lazy rate-limiter construction: the first calls come from
+    # concurrent pool workers, and a bare ||= could build two limiters,
+    # briefly doubling the requests/min cap.
+    RATE_LIMITER_MUTEX = Mutex.new
+
     # Returns the rate limiter, creating one if needed.
     # @return [RateLimiter]
     def self.rate_limiter
-      @rate_limiter ||= RateLimiter.for_current_user
+      RATE_LIMITER_MUTEX.synchronize do
+        @rate_limiter ||= RateLimiter.for_current_user
+      end
     end
 
     # Reset the rate limiter (e.g. after credentials change).
     def self.reset_rate_limiter!
-      @rate_limiter = nil
+      RATE_LIMITER_MUTEX.synchronize { @rate_limiter = nil }
     end
 
     # Send URL to Wayback Machine via SPN2.

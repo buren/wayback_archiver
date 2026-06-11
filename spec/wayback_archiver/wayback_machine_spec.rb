@@ -34,6 +34,32 @@ RSpec.describe WaybackArchiver::WaybackMachine do
     { status: 'success', job_id: job_id, timestamp: '20260326120000' }.merge(extra)
   end
 
+  describe '.rate_limiter' do
+    # Closes a test-review gap: nothing asserted submit actually consults the
+    # rate limiter (the suite force-disables it), so deleting the acquire
+    # call would have gone unnoticed.
+    it 'acquires a slot on every submit' do
+      limiter = instance_double(WaybackArchiver::RateLimiter, acquire: nil)
+      allow(described_class).to receive(:rate_limiter).and_return(limiter)
+      stub_submit
+
+      described_class.submit(url)
+
+      expect(limiter).to have_received(:acquire).once
+    end
+
+    it 'returns the same instance across concurrent first calls' do
+      # @rate_limiter ||= is non-atomic: two workers hitting their first
+      # submit concurrently could each build a limiter, briefly doubling the
+      # 12/min cap. Initialization is serialized behind a mutex.
+      described_class.reset_rate_limiter!
+
+      instances = Array.new(20) { Thread.new { described_class.rate_limiter } }.map(&:value)
+
+      expect(instances.uniq.size).to eq(1)
+    end
+  end
+
   describe '::call' do
     context 'without credentials' do
       it 'raises AuthenticationError' do
