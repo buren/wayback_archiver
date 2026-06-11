@@ -44,8 +44,18 @@ end
 module SubprocessCLIHelper
   require 'open3'
 
+  # Credential env vars are explicitly unset (nil) so subprocess tests can
+  # never hit the live SPN2 API on a machine with real keys exported — the
+  # in-process ENV stubbing in spec_helper does not apply to child processes.
+  BLANK_CREDENTIALS = {
+    'WAYBACK_ACCESS_KEY' => nil,
+    'WAYBACK_SECRET_KEY' => nil,
+    'IA_S3_ACCESS_KEY' => nil,
+    'IA_S3_SECRET_KEY' => nil
+  }.freeze
+
   def run_cli_subprocess(*args, stdin_data: nil, env: {})
     bin = File.expand_path('../../bin/wayback_archiver', __dir__)
-    Open3.capture3(env, RbConfig.ruby, bin, *args, stdin_data: stdin_data)
+    Open3.capture3(BLANK_CREDENTIALS.merge(env), RbConfig.ruby, bin, *args, stdin_data: stdin_data)
   end
 end
