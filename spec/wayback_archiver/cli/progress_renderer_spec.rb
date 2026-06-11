@@ -25,6 +25,28 @@ RSpec.describe WaybackArchiver::CLI::ProgressRenderer do
     end
   end
 
+  describe 'multiple batches' do
+    # Regression: archiving several positional sources fires on_batch_start
+    # once per source. set_total replaced the previous batch's total while
+    # the completion counter kept accumulating — the second batch showed
+    # '3/2 (150%)' and a negative ETA. Totals must accumulate across batches.
+    it 'accumulates totals across batches instead of overflowing 100%' do
+      renderer.begin_batch
+      renderer.set_total(2)
+      renderer.start
+      renderer.record_completion(errored: false)
+      renderer.record_completion(errored: false)
+
+      renderer.begin_batch
+      renderer.set_total(2)
+      renderer.record_completion(errored: false)
+      renderer.repaint
+
+      expect(clean_output).to include('3/4 (75%)')
+      expect(clean_output).not_to match(/\(1\d\d%\)|-\d+s/)
+    end
+  end
+
   describe '#print_result' do
     before do
       renderer.set_total(10)

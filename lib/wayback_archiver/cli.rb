@@ -29,6 +29,7 @@ module WaybackArchiver
       @stdout.puts
       return unless @renderer
 
+      @renderer.begin_batch
       @renderer.set_total(total) if total
       @renderer.start
       @renderer.repaint

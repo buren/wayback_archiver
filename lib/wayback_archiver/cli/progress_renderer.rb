@@ -39,6 +39,7 @@ module WaybackArchiver
         @failed = 0
         @pending = 0
         @discovered = 0
+        @total_base = 0
         @state = STATE_SUBMITTING
         @start_time = nil
         @last_ema_time = nil
@@ -49,9 +50,20 @@ module WaybackArchiver
         @terminal_width_checked_at = nil
       end
 
+      # Mark the start of a new batch. Completions accumulate across batches
+      # (one CLI invocation can archive several sources), so each batch's
+      # total is offset by everything already completed — otherwise the
+      # second batch's set_total would shrink @total below @completed and
+      # the footer would show >100% with a negative ETA.
+      def begin_batch
+        @mutex.synchronize do
+          @total_base = @completed
+        end
+      end
+
       def set_total(total)
         @mutex.synchronize do
-          @total = total
+          @total = @total_base + total
           @total_known = true
         end
       end
