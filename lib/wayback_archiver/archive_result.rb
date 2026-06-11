@@ -3,18 +3,16 @@ require 'wayback_archiver/error_codes'
 module WaybackArchiver
   # Result data for posting URL to archive
   class ArchiveResult
-    attr_reader :uri, :code, :request_url, :response_error, :error,
+    attr_reader :uri, :response_error, :error,
                 :job_id, :timestamp, :duration_sec, :resources,
                 :outlinks, :screenshot_url, :screenshot_path,
                 :status_ext, :original_url
 
-    def initialize(uri, code: nil, request_url: nil, response_error: nil, error: nil,
+    def initialize(uri, response_error: nil, error: nil,
                    job_id: nil, timestamp: nil, duration_sec: nil, resources: nil,
                    outlinks: nil, screenshot_url: nil, screenshot_path: nil,
                    status_ext: nil, original_url: nil)
       @uri = uri
-      @code = code
-      @request_url = request_url
       @response_error = response_error
       @error = error
       @job_id = job_id
@@ -26,11 +24,6 @@ module WaybackArchiver
       @screenshot_path = screenshot_path
       @status_ext = status_ext
       @original_url = original_url
-    end
-
-    # @return [String] the URL that was archived
-    def archived_url
-      uri
     end
 
     # @return [Boolean] true if success (not submitted or errored)
@@ -126,8 +119,7 @@ module WaybackArchiver
           screenshot_url: status['screenshot'],
           screenshot_path: screenshot_path,
           original_url: status['original_url'],
-          status_ext: status_ext,
-          code: '200'
+          status_ext: status_ext
         )
       end
     end

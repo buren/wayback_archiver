@@ -8,7 +8,7 @@ module WaybackArchiver
   # @example Subclass to log completed captures
   #   class MyListener < WaybackArchiver::NullListener
   #     def on_completed(result:)
-  #       puts "#{result.archived_url} => #{result.status_label}"
+  #       puts "#{result.uri} => #{result.status_label}"
   #     end
   #   end
   #

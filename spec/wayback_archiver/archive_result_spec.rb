@@ -1,12 +1,6 @@
 require 'spec_helper'
 
 RSpec.describe WaybackArchiver::ArchiveResult do
-  describe '#archived_url' do
-    it 'returns the uri' do
-      expect(described_class.new('buren').archived_url).to eq('buren')
-    end
-  end
-
   describe '#errored?' do
     it 'returns true if error is set' do
       expect(described_class.new(nil, error: true).errored?).to eq(true)
@@ -221,7 +215,6 @@ RSpec.describe WaybackArchiver::ArchiveResult do
       expect(result.job_id).to eq(job_id)
       expect(result.timestamp).to eq('20260326120000')
       expect(result.duration_sec).to eq(3.5)
-      expect(result.code).to eq('200')
     end
 
     it 'handles nil job_id for cached results' do
