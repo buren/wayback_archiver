@@ -242,6 +242,26 @@ RSpec.describe WaybackArchiver::CLI do
       end
     end
 
+    # Regression: after the CDX pass, run_archive re-resolved the original
+    # strategy — with crawl/auto the entire site was crawled a second time.
+    # Discovery must happen once; the remaining URLs are archived directly.
+    it 'discovers once and archives the remaining URLs directly' do
+      allow(WaybackArchiver).to receive(:discover_urls)
+        .and_return(%w[http://example.com/a http://example.com/b])
+      allow(WaybackArchiver).to receive(:check).and_return([
+        WaybackArchiver::CheckResult.new('http://example.com/a', archived: true, timestamp: '20260101000000'),
+        WaybackArchiver::CheckResult.new('http://example.com/b', archived: false)
+      ])
+      allow(WaybackArchiver).to receive(:archive).and_return([])
+
+      cli = build_cli('--skip-archived', '--no-session', '--no-summary', '--crawl', 'http://example.com')
+      expect { cli.run }.not_to raise_error
+
+      expect(WaybackArchiver).to have_received(:discover_urls).once
+      expect(WaybackArchiver).to have_received(:archive)
+        .with(%w[http://example.com/b], hash_including(strategy: 'urls'))
+    end
+
     it 'checks without a window when --skip-archived has no value' do
       allow(WaybackArchiver).to receive(:discover_urls).and_return(%w[http://example.com/page])
       allow(WaybackArchiver).to receive(:check).and_return([])

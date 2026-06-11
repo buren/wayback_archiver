@@ -345,13 +345,12 @@ module WaybackArchiver
 
     def run_archive
       all_results = []
+      urls_to_archive = nil
 
       if @options.skip_archived
-        skipped, extra_skip_urls = skip_archived_urls
+        skipped, urls_to_archive = skip_archived_urls
         all_results.concat(skipped)
         skipped.each { |r| @report_writer&.write_result(r) }
-        @skip_urls ||= Set.new
-        @skip_urls.merge(extra_skip_urls) if extra_skip_urls
       end
 
       WaybackArchiver.logger.info(@summary.startup_banner(@options))
@@ -379,7 +378,13 @@ module WaybackArchiver
         **@options.spn2_options
       }
 
-      results = if %w[urls url].include?(@options.strategy)
+      results = if urls_to_archive
+                  # Discovery already happened during the --skip-archived CDX
+                  # pass — archive the remaining URLs directly instead of
+                  # re-resolving the strategy (which would crawl the whole
+                  # site a second time).
+                  WaybackArchiver.archive(urls_to_archive, **archive_opts.merge(strategy: 'urls'), &archive_block)
+                elsif %w[urls url].include?(@options.strategy)
                   WaybackArchiver.archive(@options.urls, **archive_opts, &archive_block)
                 else
                   @options.urls.flat_map do |url|
@@ -391,11 +396,17 @@ module WaybackArchiver
       all_results
     end
 
+    # Discover, CDX-check, and split URLs for --skip-archived.
+    # @return [Array(Array<ArchiveResult>, Array<String>)] results for the
+    #   already-archived URLs (skipped) and the remaining URLs to archive.
     def skip_archived_urls
       urls_to_check = @options.urls.flat_map do |url|
         WaybackArchiver.discover_urls(url, strategy: @options.strategy, hosts: @options.hosts, limit: @options.limit)
       end
 
+      # Apply local filters before burning CDX requests on URLs the archive
+      # step would drop anyway.
+      urls_to_check = apply_url_filters(urls_to_check)
       urls_to_check = urls_to_check.reject { |u| @skip_urls&.include?(u) } if @skip_urls
 
       from = @options.skip_archived_within && Timedelta.to_cdx_timestamp(@options.skip_archived_within)
@@ -404,19 +415,21 @@ module WaybackArchiver
       archived_checks = check_results.select(&:archived?)
 
       skipped_results = []
-      extra_skip_urls = []
+      archived_urls = Set.new
 
       archived_checks.each do |cr|
         result = ArchiveResult.new(cr.url, status_ext: 'skipped:already-archived', timestamp: cr.timestamp)
         @session&.write_result(result)
         skipped_results << result
-        extra_skip_urls << cr.url
+        archived_urls << cr.url
         WaybackArchiver.logger.debug("Skipping #{cr.url} (archived #{cr.timestamp})")
       end
 
       WaybackArchiver.logger.info("Skipped #{archived_checks.length} already-archived URL(s)") if archived_checks.any?
 
-      [skipped_results, extra_skip_urls]
+      # Errored checks (archived? unknown) stay in the to-archive list — when
+      # in doubt, archive.
+      [skipped_results, urls_to_check.reject { |u| archived_urls.include?(u) }]
     end
 
     def cleanup_session(results)
