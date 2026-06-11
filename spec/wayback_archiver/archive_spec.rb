@@ -937,6 +937,26 @@ RSpec.describe WaybackArchiver::Archive do
     end
   end
 
+  describe 'worker exception safety' do
+    # Regression: the pool.post block only rescued Request::Error. Any other
+    # StandardError raised in a worker (e.g. a listener writing to a closed
+    # pipe) was swallowed by concurrent-ruby — the URL silently vanished from
+    # the results and the totals went quietly wrong.
+    it 'records an error result when a worker raises an unexpected exception' do
+      allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status)
+        .and_return({ 'available' => 12, 'processing' => 0 })
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses).and_return({})
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit)
+        .and_raise(Errno::EPIPE, 'Broken pipe')
+
+      results = described_class.post(%w[http://example.com])
+
+      expect(results.length).to eq(1)
+      expect(results.first.uri).to eq('http://example.com')
+      expect(results.first.errored?).to eq(true)
+    end
+  end
+
   describe 'unknown option validation' do
     before do
       allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status)

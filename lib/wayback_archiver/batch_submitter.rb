@@ -121,6 +121,12 @@ module WaybackArchiver
             rescue Request::Error => e
               WaybackArchiver.logger.debug("Connection error for #{url}: #{e.message}, will retry")
               retry_urls << url
+            rescue StandardError => e
+              # Anything escaping a pool worker is swallowed by concurrent-ruby
+              # — the URL would silently vanish from the results. Record it as
+              # an error so the totals always add up.
+              WaybackArchiver.logger.error("Unexpected error for #{url}: #{e.class}, #{e.message}")
+              record_result(ArchiveResult.new(url, error: e))
             end
           end
           pool.shutdown
