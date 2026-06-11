@@ -379,8 +379,9 @@ module WaybackArchiver
 
       urls_to_check = urls_to_check.reject { |u| @skip_urls&.include?(u) } if @skip_urls
 
-      WaybackArchiver.logger.info("Checking #{urls_to_check.length} URL(s) against the Wayback Machine")
-      check_results = WaybackArchiver.check(urls_to_check, concurrency: @options.concurrency)
+      from = @options.skip_archived_within && Timedelta.to_cdx_timestamp(@options.skip_archived_within)
+      WaybackArchiver.logger.info("Checking #{urls_to_check.length} URL(s) against the Wayback Machine#{" (archived within #{@options.skip_archived_within})" if from}")
+      check_results = WaybackArchiver.check(urls_to_check, concurrency: @options.concurrency, from: from)
       archived_checks = check_results.select(&:archived?)
 
       skipped_results = []

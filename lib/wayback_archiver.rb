@@ -206,9 +206,11 @@ module WaybackArchiver
   # @return [Array<CheckResult>] check results for each URL.
   # @param [Array<String>] urls to check.
   # @param [Integer] concurrency number of concurrent CDX requests.
+  # @param [String, nil] from CDX timestamp (YYYYMMDDHHMMSS); only captures at
+  #   or after this time count as archived.
   # @yield [CheckResult] each result as it completes.
-  def self.check(urls, concurrency: config.concurrency, &block)
-    CDX.check_urls(urls, concurrency: concurrency, &block)
+  def self.check(urls, concurrency: config.concurrency, from: nil, &block)
+    CDX.check_urls(urls, concurrency: concurrency, from: from, &block)
   end
 
   # Auto-discover URLs without archiving (mirrors the auto strategy logic).

@@ -204,6 +204,41 @@ RSpec.describe WaybackArchiver::CLI do
     end
   end
 
+  describe 'skip-archived mode' do
+    # Regression: --skip-archived=TIMEDELTA parsed the window but never used
+    # it — the CDX check ran without from:, so anything EVER archived was
+    # skipped instead of anything archived within the window.
+    it 'passes the parsed time window through to the CDX check' do
+      require 'time'
+      allow(WaybackArchiver).to receive(:discover_urls).and_return(%w[http://example.com/page])
+      allow(WaybackArchiver).to receive(:check).and_return([])
+      allow(WaybackArchiver).to receive(:archive).and_return([])
+
+      cli = build_cli('--skip-archived=7d', '--no-session', '--no-summary', '--sitemap', 'http://example.com')
+      expect { cli.run }.not_to raise_error
+
+      expect(WaybackArchiver).to have_received(:check) do |urls, concurrency:, from:|
+        expect(urls).to eq(%w[http://example.com/page])
+        expect(from).to match(/\A\d{14}\z/)
+        cutoff = Time.strptime(from, '%Y%m%d%H%M%S')
+        expect(cutoff).to be_within(60).of(Time.now - (7 * 86_400))
+      end
+    end
+
+    it 'checks without a window when --skip-archived has no value' do
+      allow(WaybackArchiver).to receive(:discover_urls).and_return(%w[http://example.com/page])
+      allow(WaybackArchiver).to receive(:check).and_return([])
+      allow(WaybackArchiver).to receive(:archive).and_return([])
+
+      cli = build_cli('--skip-archived', '--no-session', '--no-summary', '--sitemap', 'http://example.com')
+      expect { cli.run }.not_to raise_error
+
+      expect(WaybackArchiver).to have_received(:check) do |_urls, concurrency:, from:|
+        expect(from).to be_nil
+      end
+    end
+  end
+
   describe '#setup_logger' do
     it 'creates a logger at the configured level' do
       cli = build_cli('--verbose', '--urls', '--no-session', '--no-summary', 'http://example.com')

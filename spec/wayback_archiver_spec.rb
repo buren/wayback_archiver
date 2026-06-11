@@ -358,7 +358,17 @@ RSpec.describe WaybackArchiver do
       described_class.check(urls)
 
       expect(described_class::CDX).to have_received(:check_urls)
-        .with(urls, concurrency: WaybackArchiver.config.concurrency)
+        .with(urls, concurrency: WaybackArchiver.config.concurrency, from: nil)
+    end
+
+    it 'passes from: through to CDX.check_urls' do
+      urls = %w[http://a.com]
+      allow(described_class::CDX).to receive(:check_urls).and_return([])
+
+      described_class.check(urls, from: '20260604120000')
+
+      expect(described_class::CDX).to have_received(:check_urls)
+        .with(urls, concurrency: WaybackArchiver.config.concurrency, from: '20260604120000')
     end
 
     it 'passes block through to CDX.check_urls' do
