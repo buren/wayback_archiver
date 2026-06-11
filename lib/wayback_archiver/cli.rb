@@ -116,6 +116,7 @@ module WaybackArchiver
     #   1   archiving finished but one or more URLs failed
     #   2   usage / invalid arguments
     #   3   archiving credentials missing
+    #   4   network error during discovery (sitemap/feed unreachable)
     #   130 interrupted (Ctrl+C)
     def self.run(argv = ARGV, stdout: $stdout, stderr: $stderr)
       cli = begin
@@ -125,7 +126,14 @@ module WaybackArchiver
         stderr.puts "wayback_archiver: #{e.message}"
         return exit(2)
       end
-      code = cli.run
+      code = begin
+        cli.run
+      rescue Request::Error => e
+        # Discovery failures (unreachable sitemap/feed) raise; per-URL archive
+        # failures never do — they come back as errored results.
+        stderr.puts "wayback_archiver: #{e.message}"
+        4
+      end
       exit(code) if code.is_a?(Integer)
     end
 

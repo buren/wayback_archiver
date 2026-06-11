@@ -156,10 +156,14 @@ RSpec.describe WaybackArchiver::Sitemapper do
       end
     end
 
-    it 'returns empty list on request error' do
+    # A network error must propagate: returning [] made 'site unreachable'
+    # indistinguishable from 'empty sitemap' for library callers. The auto
+    # cascade still falls back to crawl — autodiscover keeps its rescue.
+    it 'raises on request error' do
       allow(WaybackArchiver::Request).to receive(:get).and_raise(WaybackArchiver::Request::Error)
 
-      expect(described_class.urls(url: 'http://www.example.com')).to be_empty
+      expect { described_class.urls(url: 'http://www.example.com') }
+        .to raise_error(WaybackArchiver::Request::Error)
     end
   end
 end

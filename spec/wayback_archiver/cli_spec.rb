@@ -204,6 +204,23 @@ RSpec.describe WaybackArchiver::CLI do
     end
   end
 
+  describe 'discovery failure' do
+    # Discovery network errors now propagate from the sitemap/rss strategy
+    # entry points (they used to be swallowed into []); the CLI must turn
+    # them into a clean one-line error, not a raw backtrace.
+    it 'reports a clean error and exits 4 when discovery raises' do
+      allow(WaybackArchiver).to receive(:archive)
+        .and_raise(WaybackArchiver::Request::ServerError.new('Errno::ECONNREFUSED, Connection refused'))
+
+      expect do
+        described_class.run(['--sitemap', '--no-session', '--no-summary', 'http://example.com'],
+                            stdout: stdout, stderr: stderr)
+      end.to raise_error(SystemExit) { |e| expect(e.status).to eq(4) }
+
+      expect(stderr_output).to include('wayback_archiver: Errno::ECONNREFUSED, Connection refused')
+    end
+  end
+
   describe 'skip-archived mode' do
     # Regression: --skip-archived=TIMEDELTA parsed the window but never used
     # it — the CDX check ran without from:, so anything EVER archived was

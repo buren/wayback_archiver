@@ -51,6 +51,9 @@ module WaybackArchiver
       WaybackArchiver.logger.info "Looking for Sitemap at #{url}"
       urls(url: url)
     rescue Request::Error => e
+      # autodiscover is the auto-cascade probe: a network failure here means
+      # 'no sitemap found' and the caller falls back to crawling. The explicit
+      # sitemap strategy (Sitemapper.urls) lets the error propagate instead.
       WaybackArchiver.logger.error "Error raised when requesting #{url}, #{e.class}, #{e.message}"
       []
     end
@@ -82,10 +85,6 @@ module WaybackArchiver
       else
         sitemap.urls.map { |url| url&.strip }
       end
-    rescue Request::Error => e
-      WaybackArchiver.logger.error "Error raised when requesting #{url}, #{e.class}, #{e.message}"
-
-      []
     end
   end
 end
