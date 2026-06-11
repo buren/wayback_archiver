@@ -44,7 +44,7 @@ module WaybackArchiver
     #        /host[\d]+\.example\.com/
     #      ]
     #    )
-    def self.crawl(url, hosts: [], limit: WaybackArchiver.config.max_limit, exts: nil, ignore_exts: nil, skip_duplicates: true)
+    def self.crawl(url, hosts: [], limit: WaybackArchiver.config.max_limit, exts: nil, ignore_exts: nil, skip_duplicates: true, capture_all: false)
       urls = []
       seen_pages = {} # path (without query) => MD5 digest of body
       start_at_url = resolve_start_url(Request.build_uri(url).to_s)
@@ -59,7 +59,9 @@ module WaybackArchiver
 
       Spidr.site(start_at_url, **options) do |spider|
         spider.every_page do |page|
-          next unless page.ok?
+          # Non-success pages would fail predictably at SPN2 — except under
+          # capture_all, whose purpose is archiving 4xx/5xx error pages.
+          next unless page.ok? || (capture_all && page.code.to_i >= 400)
           next unless archivable_page?(page)
 
           if skip_duplicates

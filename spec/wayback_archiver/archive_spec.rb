@@ -922,6 +922,19 @@ RSpec.describe WaybackArchiver::Archive do
         hash_including(exts: %w[html], ignore_exts: %w[pdf])
       )
     end
+
+    it 'passes capture_all through to URLCollector.crawl so error pages are discovered' do
+      allow(WaybackArchiver::URLCollector).to receive(:crawl).and_return([])
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit)
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses).and_return({})
+
+      described_class.crawl('http://example.com', capture_all: true)
+
+      expect(WaybackArchiver::URLCollector).to have_received(:crawl).with(
+        'http://example.com',
+        hash_including(capture_all: true)
+      )
+    end
   end
 
   describe 'BatchSubmitter abort' do

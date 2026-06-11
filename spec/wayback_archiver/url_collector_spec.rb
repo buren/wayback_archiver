@@ -78,6 +78,46 @@ RSpec.describe WaybackArchiver::URLCollector do
     end
   end
 
+  describe '::crawl with capture_all' do
+    # Regression: the crawler unconditionally filtered non-OK pages, so
+    # --capture-all (whose purpose is archiving 4xx/5xx pages) silently
+    # never submitted error pages discovered via crawl.
+    def stub_site_with_dead_link
+      html_page = <<-HTML
+      <!DOCTYPE html>
+      <html>
+        <head><title>Testing</title></head>
+        <body><a href="http://example.com/missing">Dead link</a></body>
+      </html>
+      HTML
+      response_headers = { 'Content-Type' => 'text/html; charset=utf-8' }
+
+      stub_request(:get, 'http://example.com/robots.txt')
+        .to_return(status: 200, body: '', headers: {})
+      stub_request(:get, 'http://example.com/')
+        .to_return(status: 200, body: html_page, headers: response_headers)
+      stub_request(:get, 'http://example.com/missing')
+        .to_return(status: 404, body: '<html>Not Found</html>', headers: response_headers)
+    end
+
+    it 'yields HTTP error pages when capture_all is set' do
+      stub_site_with_dead_link
+
+      found = described_class.crawl('http://example.com', capture_all: true)
+
+      expect(found).to include('http://example.com/missing')
+    end
+
+    it 'filters HTTP error pages by default' do
+      stub_site_with_dead_link
+
+      found = described_class.crawl('http://example.com')
+
+      expect(found).not_to include('http://example.com/missing')
+      expect(found).to include('http://example.com')
+    end
+  end
+
   describe '::crawl' do
     let(:headers) do
       {
