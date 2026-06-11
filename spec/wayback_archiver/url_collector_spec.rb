@@ -38,6 +38,46 @@ RSpec.describe WaybackArchiver::URLCollector do
     end
   end
 
+  describe '::crawl with respect_robots_txt' do
+    after { WaybackArchiver.config.respect_robots_txt = WaybackArchiver::DEFAULT_RESPECT_ROBOTS_TXT }
+
+    # Regression: deleting the vendored lib/robots.rb in v2 left Spidr's
+    # robots: true option without the Robots constant it requires, so enabling
+    # respect_robots_txt raised ArgumentError at crawl start.
+    it 'crawls politely, skipping robots.txt-disallowed paths' do
+      WaybackArchiver.config.respect_robots_txt = true
+
+      robots_txt = "User-agent: *\nDisallow: /private\n"
+      html_page = <<-HTML
+      <!DOCTYPE html>
+      <html>
+        <head><title>Testing</title></head>
+        <body>
+          <a href="http://example.com/public">Public</a>
+          <a href="http://example.com/private">Private</a>
+        </body>
+      </html>
+      HTML
+      response_headers = { 'Content-Type' => 'text/html; charset=utf-8' }
+
+      # The robots gem only honors robots.txt when status is exactly ["200", "OK"]
+      # and content type is text/plain; anything else falls back to allow-all.
+      stub_request(:get, 'http://example.com/robots.txt')
+        .to_return(status: [200, 'OK'], body: robots_txt, headers: { 'Content-Type' => 'text/plain' })
+      stub_request(:get, 'http://example.com/')
+        .to_return(status: 200, body: html_page, headers: response_headers)
+      stub_request(:get, 'http://example.com/public')
+        .to_return(status: 200, body: '', headers: response_headers)
+      # Deliberately no stub for /private — fetching it would raise via WebMock
+
+      found = described_class.crawl('http://example.com')
+
+      expect(found).to include('http://example.com/public')
+      expect(found).not_to include('http://example.com/private')
+      expect(a_request(:get, 'http://example.com/private')).not_to have_been_made
+    end
+  end
+
   describe '::crawl' do
     let(:headers) do
       {

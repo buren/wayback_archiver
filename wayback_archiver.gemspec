@@ -32,7 +32,8 @@ Gem::Specification.new do |spec|
   spec.add_runtime_dependency 'logger'                     # No longer in default gems as of Ruby 4.0
   spec.add_runtime_dependency 'spidr',         '~> 0.7.1' # Crawl sites
   spec.add_runtime_dependency 'concurrent-ruby', '~> 1.3' # Concurrency primitives
-  spec.add_runtime_dependency 'webrobots',     '~> 0.1.2'  # robots.txt parsing
+  spec.add_runtime_dependency 'webrobots',     '~> 0.1.2'  # robots.txt parsing (sitemap autodiscovery)
+  spec.add_runtime_dependency 'robots',        '~> 0.10'   # robots.txt support for Spidr (respect_robots_txt)
   spec.add_runtime_dependency 'rexml',         '~> 3.3'
   spec.add_runtime_dependency 'rss',            '~> 0.3'      # RSS/Atom feed parsing
   spec.add_runtime_dependency 'csv'                           # CSV report output
