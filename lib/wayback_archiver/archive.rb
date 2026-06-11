@@ -48,11 +48,7 @@ module WaybackArchiver
       WaybackArchiver.logger.debug "Total URLs to be sent: #{urls.length}"
       WaybackArchiver.logger.debug "Request are sent with up to #{concurrency} parallel threads"
 
-      urls_queue = if limit == -1
-                     urls
-                   else
-                     urls[0...limit]
-                   end
+      urls_queue = urls
 
       if skip_urls && !skip_urls.empty?
         before = urls_queue.length
@@ -69,6 +65,11 @@ module WaybackArchiver
       end
 
       urls_queue = URLFilter.new(include_ext: include_ext, exclude_ext: exclude_ext).apply(urls_queue)
+
+      # Limit applies AFTER the filters: it is documented as a cap on URLs to
+      # submit, so skipped/filtered URLs must not consume the budget (a
+      # resumed run with --limit would otherwise silently under-archive).
+      urls_queue = urls_queue[0...limit] unless limit == -1
 
       BatchSubmitter.new(urls_queue, concurrency: concurrency, **options, &block).call
     end

@@ -937,6 +937,27 @@ RSpec.describe WaybackArchiver::Archive do
     end
   end
 
+  describe 'limit vs filter ordering' do
+    # Regression: limit sliced the URL list BEFORE the skip filters ran, so
+    # session-skipped URLs consumed the budget — a resumed run with --limit
+    # silently under-archived even though eligible URLs remained.
+    it 'applies skip filters before the limit so skipped URLs do not consume the budget' do
+      submitted = nil
+      fake_submitter = instance_double(WaybackArchiver::BatchSubmitter, call: [])
+      allow(WaybackArchiver::BatchSubmitter).to receive(:new) do |queue, **|
+        submitted = queue
+        fake_submitter
+      end
+
+      urls = %w[http://example.com/old1 http://example.com/old2
+                http://example.com/new1 http://example.com/new2]
+      described_class.post(urls, limit: 2,
+                           skip_urls: Set['http://example.com/old1', 'http://example.com/old2'])
+
+      expect(submitted).to eq(%w[http://example.com/new1 http://example.com/new2])
+    end
+  end
+
   describe 'worker exception safety' do
     # Regression: the pool.post block only rescued Request::Error. Any other
     # StandardError raised in a worker (e.g. a listener writing to a closed
