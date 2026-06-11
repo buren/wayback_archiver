@@ -3,6 +3,7 @@ require 'rexml/document'
 
 module WaybackArchiver
   # Parse Sitemaps, https://www.sitemaps.org
+  # @api private
   class Sitemap
     attr_reader :document
 

@@ -3,6 +3,7 @@ require 'json'
 
 module WaybackArchiver
   # Write archive or check results to CSV or JSON files
+  # @api private
   class Report
     COLUMNS = %w[url success wayback_url job_id timestamp duration_sec screenshot_url status_ext error_category error].freeze
     CHECK_COLUMNS = %w[url archived timestamp wayback_url error].freeze

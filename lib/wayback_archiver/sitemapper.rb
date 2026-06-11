@@ -6,6 +6,7 @@ require 'wayback_archiver/request'
 
 module WaybackArchiver
   # Fetch and parse sitemaps recursively
+  # @api private
   class Sitemapper
     # Common locations for Sitemap(s)
     COMMON_SITEMAP_LOCATIONS = %w[

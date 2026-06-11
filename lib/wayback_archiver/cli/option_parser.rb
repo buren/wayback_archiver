@@ -13,6 +13,7 @@ module WaybackArchiver
       keyword_init: true
     )
 
+    # @api private
     class OptionParser
       def initialize(argv, stdout:)
         @argv = argv.dup

@@ -7,6 +7,7 @@ require 'wayback_archiver/request'
 
 module WaybackArchiver
   # Retrive URLs from different sources
+  # @api private
   class URLCollector
     # Retrieve URLs from Sitemap.
     # @return [Array<String>] of URLs defined in Sitemap.

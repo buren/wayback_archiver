@@ -3,6 +3,7 @@ require 'wayback_archiver'
 
 module WaybackArchiver
   class CLI
+    # @api private
     class Summary
       def initialize(stdout:, stderr:)
         @stdout = stdout

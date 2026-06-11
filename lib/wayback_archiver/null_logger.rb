@@ -2,6 +2,7 @@ require 'logger'
 
 module WaybackArchiver
   # Don't log anything / Send the logs to the abyss
+  # @api private
   class NullLogger < Logger
     # Allow any and all params
     def initialize(*args); end

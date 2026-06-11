@@ -1,6 +1,7 @@
 module WaybackArchiver
   # Thread-safe sliding window rate limiter.
   # Tracks timestamps of recent requests and sleeps when the rate limit is reached.
+  # @api private
   class RateLimiter
     RATE = 12 # captures per minute
 

@@ -1,4 +1,5 @@
 module WaybackArchiver
+  # @api private
   class URLFilter
     def initialize(include_ext: nil, exclude_ext: nil)
       @include_ext = normalize(include_ext)

@@ -2,6 +2,7 @@ require 'wayback_archiver/request'
 
 module WaybackArchiver
   # Download screenshots from the Wayback Machine
+  # @api private
   class Screenshot
     # Download a screenshot to a local directory.
     # @return [String] the saved file path.

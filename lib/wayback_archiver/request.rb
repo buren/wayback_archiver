@@ -9,6 +9,7 @@ require 'wayback_archiver/response'
 
 module WaybackArchiver
   # Make HTTP requests
+  # @api private
   class Request
     # General error, something went wrong
     class Error < StandardError; end

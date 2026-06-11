@@ -307,6 +307,18 @@ The public API (`archive`, `crawl`, `sitemap`, `urls`) is unchanged. Existing co
 
 [RubyDoc](http://www.rubydoc.info/github/buren/wayback_archiver/master)
 
+### Public API
+
+The supported public API is: the `WaybackArchiver` module methods
+(`archive`, `crawl`, `sitemap`, `rss`, `urls`, `check`, `discover_urls`,
+`configure`, `config`), `Configuration`, `Archive`, `ArchiveResult`,
+`CheckResult`, `ErrorCodes`, and the listener classes
+(`NullListener`, `ListenerProxy`). These follow semantic versioning.
+
+Everything else (classes tagged `@api private` — HTTP plumbing, the batch
+submitter, discovery internals, the CLI implementation) is internal and may
+change in any release.
+
 ```bash
 yard # generates documentation to doc/
 ```

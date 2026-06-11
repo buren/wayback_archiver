@@ -9,6 +9,7 @@ module WaybackArchiver
   #
   # CSV files get a header row on construction and one data row per result.
   # JSON/JSONL files use JSONL format (one JSON object per line).
+  # @api private
   class ReportWriter
     attr_reader :path
 

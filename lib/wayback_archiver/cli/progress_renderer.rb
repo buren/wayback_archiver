@@ -8,6 +8,7 @@ module WaybackArchiver
     # Line 2: current state (Submitting.../Polling.../Waiting for available slots...)
     #
     # Thread-safe: all public methods synchronize on an internal mutex.
+    # @api private
     class ProgressRenderer
       ALPHA = 2.0 / (10 + 1) # EMA smoothing factor, N=10
       MIN_COMPLETIONS_FOR_ETA = 5

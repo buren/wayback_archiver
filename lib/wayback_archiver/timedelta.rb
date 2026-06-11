@@ -2,6 +2,7 @@ module WaybackArchiver
   # Parse human-readable time duration strings like "3d 5h 20m" into seconds.
   # Supported units: d (days), h (hours), m (minutes), s (seconds).
   # A bare number is treated as seconds.
+  # @api private
   module Timedelta
     UNITS = { 'd' => 86_400, 'h' => 3_600, 'm' => 60, 's' => 1 }.freeze
 

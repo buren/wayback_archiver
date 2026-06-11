@@ -9,6 +9,7 @@ require 'wayback_archiver/thread_pool'
 module WaybackArchiver
   # Client for the Wayback Machine CDX API.
   # Used to check if URLs are already archived.
+  # @api private
   class CDX
     URL = 'https://web.archive.org/cdx/search/cdx'.freeze
 

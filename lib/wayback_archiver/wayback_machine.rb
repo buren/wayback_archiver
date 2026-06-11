@@ -9,6 +9,7 @@ require 'wayback_archiver/screenshot'
 
 module WaybackArchiver
   # WaybackMachine adapter using the SPN2 API
+  # @api private
   class WaybackMachine
     # Raised when polling exceeds the timeout
     class PollTimeoutError < StandardError; end

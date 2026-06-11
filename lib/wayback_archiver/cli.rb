@@ -7,6 +7,7 @@ require 'wayback_archiver/cli/option_parser'
 require 'wayback_archiver/cli/summary'
 
 module WaybackArchiver
+  # @api private
   class CLIListener < NullListener
     attr_reader :renderer, :duplicates_skipped
 
@@ -90,6 +91,7 @@ module WaybackArchiver
     end
   end
 
+  # @api private
   class CLI
     # IO wrapper that routes writes through the progress renderer's
     # clear/write/redraw cycle so log messages don't collide with

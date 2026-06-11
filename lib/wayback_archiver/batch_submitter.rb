@@ -23,6 +23,7 @@ module WaybackArchiver
   #   being empty is not sufficient while the crawler is still running).
   # @param options [Hash] SPN2 capture options forwarded to WaybackMachine.
   # @param block [Proc] optional per-result callback.
+  # @api private
   class BatchSubmitter
     FALLBACK_CHUNK_SIZE = 2   # conservative fallback when check_user_status fails mid-run
     MAX_RETRIES         = 5   # per-URL retry cap for transient errors (session limits, connection errors)

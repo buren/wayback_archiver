@@ -1,6 +1,7 @@
 module WaybackArchiver
   # Response data struct
   Response = Struct.new(:code, :message, :body, :uri, :error)
+  # @api private
   class Response
     # Returns true if a successfull response
     # @example check if Response was successfull

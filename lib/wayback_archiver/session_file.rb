@@ -5,6 +5,7 @@ require 'tmpdir'
 module WaybackArchiver
   # Append-only JSONL session file for crash recovery and resumable archiving.
   # Each line records the result of one URL archive attempt.
+  # @api private
   class SessionFile
     attr_reader :path
 

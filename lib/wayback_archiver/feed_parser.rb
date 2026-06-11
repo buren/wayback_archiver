@@ -5,6 +5,7 @@ require 'wayback_archiver/request'
 
 module WaybackArchiver
   # Fetch and parse RSS/Atom feeds to extract URLs
+  # @api private
   class FeedParser
     # Common locations for RSS/Atom feeds
     COMMON_FEED_PATHS = %w[

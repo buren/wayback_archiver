@@ -1,5 +1,6 @@
 module WaybackArchiver
   # Convenience class for HTTP response codes
+  # @api private
   class HTTPCode
     # Type of code as symbol
     # @return [Symbol] code type
