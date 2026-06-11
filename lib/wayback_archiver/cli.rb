@@ -446,8 +446,11 @@ module WaybackArchiver
       Signal.trap('INT') do
         # Clear the sticky progress footer before writing the summary,
         # otherwise the ensure block's finish call would erase our output
-        # with ANSI cursor-up sequences.
-        stdout.write(ProgressRenderer::CLEAR_FOOTER) if stdout.respond_to?(:tty?) && stdout.tty?
+        # with ANSI cursor-up sequences. Only when the footer is actually on
+        # screen — before the batch starts (discovery, CDX checks) the
+        # cursor-up escapes would erase real output above the cursor.
+        renderer = cli_ref.instance_variable_get(:@cli_listener)&.renderer
+        stdout.write(CLI::ProgressRenderer::CLEAR_FOOTER) if renderer&.footer_drawn?
         cli_ref.instance_variable_set(:@interrupted, true)
         results = cli_ref.instance_variable_get(:@archive_results)
         start_time = cli_ref.instance_variable_get(:@archive_start_time)

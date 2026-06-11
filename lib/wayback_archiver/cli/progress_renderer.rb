@@ -50,6 +50,13 @@ module WaybackArchiver
         @terminal_width_checked_at = nil
       end
 
+      # Whether the sticky footer is currently on screen. Deliberately
+      # lock-free: read from the CLI's SIGINT trap, where acquiring the
+      # render mutex could deadlock against an interrupted render.
+      def footer_drawn?
+        @footer_drawn
+      end
+
       # Mark the start of a new batch. Completions accumulate across batches
       # (one CLI invocation can archive several sources), so each batch's
       # total is offset by everything already completed — otherwise the

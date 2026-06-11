@@ -479,6 +479,33 @@ RSpec.describe WaybackArchiver::CLI do
       expect(Signal).not_to receive(:trap)
       cli.run
     end
+
+    # Regression: the trap wrote CLEAR_FOOTER (3x cursor-up + clear-line)
+    # whenever stdout was a TTY, even when the sticky footer had never been
+    # drawn — Ctrl-C during the discovery phase erased 3 lines of real
+    # terminal output above the cursor.
+    it 'does not emit cursor-up escapes when the footer was never drawn' do
+      require 'tmpdir'
+      Dir.mktmpdir do |dir|
+        handler = nil
+        allow(Signal).to receive(:trap) { |_sig, &blk| handler = blk }
+        allow(stdout).to receive(:tty?).and_return(true)
+        # Archive without ever firing on_batch_start — footer never drawn
+        # (simulates Ctrl-C during discovery).
+        allow(WaybackArchiver).to receive(:archive).and_return([])
+
+        cli = build_cli('--urls', '--no-summary', "--session=#{File.join(dir, 's.jsonl')}", 'http://example.com')
+        cli.run
+        expect(handler).not_to be_nil
+
+        stdout.string = +'' # only capture trap output
+        expect { handler.call }.to raise_error(SystemExit) { |e| expect(e.status).to eq(130) }
+
+        expect(stdout_output).not_to include("\e[A"),
+          "trap emitted CURSOR_UP escapes with no footer drawn:\n#{stdout_output.inspect}"
+        expect(stderr_output).to include('Resume with:')
+      end
+    end
   end
 
   describe WaybackArchiver::CLIListener do
