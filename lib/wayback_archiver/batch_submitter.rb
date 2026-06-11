@@ -216,26 +216,26 @@ module WaybackArchiver
         return
       end
 
-      job_id = response['job_id']
-      if job_id.nil? && response['timestamp']
+      outcome, value = WaybackMachine.classify_submit_response(response, url)
+      case outcome
+      when :pending
+        @pending[value] = url
+        submitted_result = ArchiveResult.new(url, job_id: value, status_ext: 'submitted')
+        @block&.call(submitted_result)
+        WaybackArchiver.listener.on_submitted(url: url, job_id: value)
+      when :cached
         WaybackArchiver.logger.debug("Recent capture returned for #{url} [#{response['timestamp']}]")
         result = ArchiveResult.from_status(url, nil, response, status_ext: 'cached', **@options)
         record_result(result)
-      elsif job_id.nil?
-        msg = response['message'] || "Unexpected submit response for #{url}"
-        if msg.include?('limit of active')
-          retry_urls << url
-        else
-          error = Request::ServerError.new(msg)
-          WaybackArchiver.logger.error(error.message)
-          result = ArchiveResult.new(url, error: error)
-          record_result(result)
-        end
-      else
-        @pending[job_id] = url
-        submitted_result = ArchiveResult.new(url, job_id: job_id, status_ext: 'submitted')
-        @block&.call(submitted_result)
-        WaybackArchiver.listener.on_submitted(url: url, job_id: job_id)
+      when :retry
+        WaybackArchiver.logger.debug("Transient submit error for #{url}: #{value}, will retry")
+        retry_urls << url
+      when :error
+        msg, status_ext = value
+        error = Request::ServerError.new(msg)
+        WaybackArchiver.logger.error(error.message)
+        result = ArchiveResult.new(url, error: error, status_ext: status_ext)
+        record_result(result)
       end
     end
 

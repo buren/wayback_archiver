@@ -74,8 +74,40 @@ module WaybackArchiver
       response = Request.post(SAVE_URL, body: body, headers: headers)
       JSON.parse(response.body)
     rescue JSON::ParserError => e
+      # A non-JSON body on an HTTP error status is transient load-shedding
+      # (proxy/CDN HTML error pages on 5xx/429) — raise so the retry
+      # machinery handles it instead of failing the URL permanently.
+      unless response.success?
+        raise Request::ServerError,
+              "SPN2 submit returned HTTP #{response.code} with non-JSON body for #{url}"
+      end
+
       WaybackArchiver.logger.error("Failed to submit #{url}: #{e.class}, #{e.message}")
       ArchiveResult.new(url, error: e)
+    end
+
+    # Classify a parsed SPN2 submit response. Single source of truth for
+    # submit-time outcome handling — used by both the single-URL path
+    # (submit_and_poll) and the batch path (BatchSubmitter).
+    # @param data [Hash] parsed JSON submit response.
+    # @param url [String] the submitted URL (for messages).
+    # @return [Array(Symbol, Object)] one of:
+    #   [:pending, job_id]              capture started, poll for completion
+    #   [:cached, data]                 recent capture returned inline (if_not_archived_within)
+    #   [:retry, reason]                transient submit-time error, submit again
+    #   [:error, [message, status_ext]] permanent submit failure
+    def self.classify_submit_response(data, url)
+      job_id = data['job_id']
+      return [:pending, job_id] if job_id
+      return [:cached, data] if data['timestamp']
+
+      status_ext = data['status_ext']
+      return [:retry, status_ext] if ErrorCodes.retryable?(status_ext)
+
+      msg = data['message'] || "Unexpected submit response for #{url}"
+      return [:retry, 'error:user-session-limit'] if msg.include?('limit of active')
+
+      [:error, [msg, status_ext]]
     end
 
     # Batch-poll the status of multiple capture jobs.
@@ -125,26 +157,21 @@ module WaybackArchiver
       data = submit(url, **options)
       return data if data.is_a?(ArchiveResult) # submission failed
 
-      job_id = data['job_id']
-      unless job_id
+      outcome, value = classify_submit_response(data, url)
+      case outcome
+      when :cached
         # SPN2 returns the capture directly when if_not_archived_within matches a recent snapshot
-        if data['timestamp']
-          WaybackArchiver.logger.info("Recent capture returned for #{url} [#{data['timestamp']}]")
-          return ArchiveResult.from_status(url, nil, data, status_ext: 'cached', **options)
-        end
-
-        status_ext = data['status_ext']
-        if ErrorCodes.retryable?(status_ext)
-          raise RetryableError, status_ext
-        end
-
-        msg = data['message'] || "Unexpected submit response for #{url}"
-        raise RetryableError, 'error:user-session-limit' if msg.include?('limit of active')
-
+        WaybackArchiver.logger.info("Recent capture returned for #{url} [#{data['timestamp']}]")
+        return ArchiveResult.from_status(url, nil, data, status_ext: 'cached', **options)
+      when :retry
+        raise RetryableError, value
+      when :error
+        msg, status_ext = value
         WaybackArchiver.logger.error("Submit failed for #{url}: #{msg}")
         return ArchiveResult.new(url, error: Request::ServerError.new(msg), status_ext: status_ext)
       end
 
+      job_id = value
       WaybackArchiver.logger.info("Capture started for #{url}, job_id: #{job_id}")
 
       status = poll_until_complete(job_id)

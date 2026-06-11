@@ -173,6 +173,81 @@ RSpec.describe WaybackArchiver::Archive, 'integration' do
     end
   end
 
+  describe 'transient submit-time status_ext → retry → success' do
+    # Regression: batch mode only retried submit responses whose message
+    # contained 'limit of active'; a retryable status_ext (per ErrorCodes)
+    # was recorded as a permanent failure — while the single-URL path
+    # retried it. Both paths must honor ErrorCodes.retryable?.
+    it 'retries a submit response with a retryable status_ext' do
+      url = 'http://example.com/transient'
+      job_id = 'job-transient-ok'
+
+      stub_request(:post, 'https://web.archive.org/save')
+        .with(body: hash_including('url' => url))
+        .to_return(
+          { status: 200, body: { 'status' => 'error', 'status_ext' => 'error:too-many-requests',
+                                 'message' => 'The server cannot currently handle the request' }.to_json },
+          { status: 200, body: { 'url' => url, 'job_id' => job_id }.to_json }
+        )
+
+      stub_batch_poll(job_id => success_status(job_id, url))
+
+      results = described_class.post([url], concurrency: 1)
+
+      expect(results.length).to eq(1)
+      expect(results.first.success?).to eq(true)
+      expect(WebMock).to have_requested(:post, 'https://web.archive.org/save')
+        .with(body: hash_including('url' => url))
+        .times(2)
+    end
+
+    # Regression: a 5xx/429 with a non-JSON body (HTML load-shedding page)
+    # became JSON::ParserError → terminal failure, bypassing all retry.
+    it 'retries a raw HTTP 503 with an HTML body on submit' do
+      url = 'http://example.com/lb-hiccup'
+      job_id = 'job-lb-ok'
+      call_count = 0
+
+      stub_request(:post, 'https://web.archive.org/save')
+        .with(body: hash_including('url' => url))
+        .to_return do
+          call_count += 1
+          if call_count == 1
+            { status: 503, body: '<html>Service Unavailable</html>' }
+          else
+            { status: 200, body: { 'url' => url, 'job_id' => job_id }.to_json }
+          end
+        end
+
+      stub_batch_poll(job_id => success_status(job_id, url))
+
+      results = described_class.post([url], concurrency: 1)
+
+      expect(results.length).to eq(1)
+      expect(results.first.success?).to eq(true)
+      expect(call_count).to eq(2)
+    end
+
+    it 'records the status_ext on permanent submit failures' do
+      url = 'http://example.com/blocked'
+
+      stub_request(:post, 'https://web.archive.org/save')
+        .with(body: hash_including('url' => url))
+        .to_return(status: 200, body: { 'status' => 'error', 'status_ext' => 'error:blocked-url',
+                                        'message' => 'URL is on a block list' }.to_json)
+
+      results = described_class.post([url], concurrency: 1)
+
+      expect(results.length).to eq(1)
+      expect(results.first.errored?).to eq(true)
+      expect(results.first.status_ext).to eq('error:blocked-url')
+      # Permanent error: no retry
+      expect(WebMock).to have_requested(:post, 'https://web.archive.org/save')
+        .with(body: hash_including('url' => url))
+        .times(1)
+    end
+  end
+
   describe 'transient poll error → re-submit → success' do
     it 're-queues URL on transient poll error and succeeds on second attempt' do
       url = 'http://example.com/proxy-retry'

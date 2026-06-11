@@ -331,14 +331,25 @@ RSpec.describe WaybackArchiver::WaybackMachine do
         expect(result.error).to be_a(JSON::ParserError)
       end
 
-      it 'treats a raw HTTP 503 on submit as an error (handled by body, not status)' do
-        stub_request(:post, save_url)
-          .to_return(status: 503, body: '<html>Service Unavailable</html>')
+      # A non-JSON body on an HTTP error status is transient load-shedding
+      # (proxy/CDN HTML error pages) — it must go through the retry machinery,
+      # not become a terminal JSON::ParserError failure.
+      it 'retries a raw HTTP 503 with non-JSON body on submit, then succeeds' do
+        call_count = 0
+        stub_request(:post, save_url).to_return do
+          call_count += 1
+          if call_count == 1
+            { status: 503, body: '<html>Service Unavailable</html>' }
+          else
+            { status: 200, body: { url: url, job_id: job_id }.to_json }
+          end
+        end
+        stub_status(success_status(original_url: url))
 
         result = described_class.call(url)
 
-        expect(result.errored?).to eq(true)
-        expect(result.error).to be_a(JSON::ParserError)
+        expect(result.success?).to eq(true)
+        expect(call_count).to be > 1
       end
 
       it 'retries a 429 submit carrying a session-limit JSON body, then succeeds' do
