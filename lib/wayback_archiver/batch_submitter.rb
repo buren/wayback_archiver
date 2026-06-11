@@ -102,9 +102,11 @@ module WaybackArchiver
 
           # In streaming mode the queue may be temporarily empty while the
           # crawler is still discovering URLs. Do useful work (poll pending
-          # jobs) while waiting for more URLs to arrive.
+          # jobs) while waiting for more URLs to arrive — but at most once per
+          # POLL_INTERVAL: this branch loops every 0.2s, and polling each
+          # iteration would hammer the status endpoint 3-5 times per second.
           if chunk.empty?
-            poll_pending unless @pending.empty?
+            idle_poll
             log_progress
             sleep(0.2)
             next
@@ -268,6 +270,17 @@ module WaybackArchiver
         WaybackArchiver.logger.debug("Re-queuing #{requeued.size} URL(s) due to transient error")
         @retry_buffer.concat(requeued)
       end
+    end
+
+    # Poll from the idle (queue-empty) loop, rate-limited to POLL_INTERVAL.
+    def idle_poll
+      return if @pending.empty?
+
+      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      return if @last_idle_poll && (now - @last_idle_poll) < WaybackMachine::POLL_INTERVAL
+
+      @last_idle_poll = now
+      poll_pending
     end
 
     # Single poll pass: collect completed results from pending jobs.

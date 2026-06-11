@@ -1022,6 +1022,54 @@ RSpec.describe WaybackArchiver::Archive do
     end
   end
 
+  describe 'BatchSubmitter idle-poll throttling' do
+    # Regression: while a slow crawler kept the queue empty with captures in
+    # flight, the idle loop POSTed to the SPN2 status endpoint on every
+    # 0.2s iteration — 3-5 requests/second versus the 3s POLL_INTERVAL used
+    # everywhere else. The idle poll must respect POLL_INTERVAL.
+    it 'does not poll the status endpoint on every idle iteration' do
+      queue = SizedQueue.new(10)
+      gate = Queue.new
+      crawler = Thread.new { gate.pop }
+      queue.push('http://example.com/first')
+
+      allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status)
+        .and_return({ 'available' => 12, 'processing' => 0 })
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit)
+        .and_return({ 'url' => 'http://example.com/first', 'job_id' => 'job-1' })
+
+      idle_iterations = 0
+      poll_calls = 0
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses) do |ids|
+        poll_calls += 1
+        # Job stays pending while the crawler is 'discovering'; resolves after.
+        status = if idle_iterations >= 50
+                   { 'status' => 'success', 'timestamp' => '20260326120000', 'original_url' => 'http://example.com/first' }
+                 else
+                   { 'status' => 'pending' }
+                 end
+        ids.to_h { |jid| [jid, status.merge('job_id' => jid)] }
+      end
+
+      submitter = WaybackArchiver::BatchSubmitter.new(queue, concurrency: 1, source_thread: crawler)
+      allow(submitter).to receive(:sleep) do |duration|
+        if duration == 0.2
+          idle_iterations += 1
+          gate.push(:done) if idle_iterations == 50
+        end
+      end
+
+      results = submitter.call
+
+      expect(results.length).to eq(1)
+      expect(idle_iterations).to be >= 50
+      # Old behavior: one poll per idle iteration (~50+). Throttled: the 3s
+      # POLL_INTERVAL spans all ~50 sub-millisecond test iterations.
+      expect(poll_calls).to be < 10,
+        "expected idle polling to be throttled, got #{poll_calls} polls across #{idle_iterations} idle iterations"
+    end
+  end
+
   describe 'BatchSubmitter streaming-crawl exhaustion race' do
     # Regression: queue_exhausted? read @queue.empty? BEFORE
     # @source_thread.alive?. A crawler that pushed its final URL and exited
