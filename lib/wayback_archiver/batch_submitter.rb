@@ -328,7 +328,7 @@ module WaybackArchiver
 
         sleep(WaybackMachine::POLL_INTERVAL)
         poll_pending
-        log_progress unless @pending.empty?
+        log_progress
       end
     end
 

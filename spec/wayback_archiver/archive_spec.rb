@@ -385,6 +385,46 @@ RSpec.describe WaybackArchiver::Archive do
       expect(WaybackArchiver::WaybackMachine).not_to have_received(:poll_statuses)
     end
 
+    it 'emits a final on_progress with pending: 0 once poll_until_done drains the last jobs' do
+      progress_events = []
+      listener = {
+        on_batch_start: ->(**) {},
+        on_progress: ->(captured:, failed:, pending:) { progress_events << pending },
+        on_submitted: ->(**) {},
+        on_completed: ->(**) {}
+      }
+      WaybackArchiver.config.listener = WaybackArchiver::ListenerProxy.new(listener)
+
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit) do |url|
+        { 'url' => url, 'job_id' => "job-#{url.hash.abs}" }
+      end
+
+      # Force the work to land in poll_until_done: the inter-chunk poll sees
+      # all jobs still pending, only the next poll (run by poll_until_done)
+      # resolves them.
+      poll_call = 0
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses) do |ids|
+        poll_call += 1
+        if poll_call == 1
+          ids.each_with_object({}) { |jid, h| h[jid] = { 'status' => 'pending', 'job_id' => jid } }
+        else
+          ids.each_with_object({}) do |jid, h|
+            h[jid] = { 'status' => 'success', 'job_id' => jid, 'timestamp' => '20260326120000', 'original_url' => 'http://example.com' }
+          end
+        end
+      end
+
+      # Avoid the 3s POLL_INTERVAL sleep inside poll_until_done
+      stub_const('WaybackArchiver::WaybackMachine::POLL_INTERVAL', 0)
+
+      described_class.post(%w[http://a.com http://b.com])
+
+      # The last reported pending count must be 0 so the renderer's footer
+      # doesn't display a stale non-zero pending value at end-of-run.
+      expect(progress_events.last).to eq(0),
+        "expected final on_progress pending to be 0, got #{progress_events.inspect}"
+    end
+
     it 'polls between chunks and logs progress' do
       jobs = (1..14).map { |i| ["job-#{i}", "http://example.com/page-#{i}"] }
       jobs.each do |job_id, url|
