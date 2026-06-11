@@ -38,6 +38,29 @@ RSpec.describe 'CLI --check flag' do
     end
   end
 
+  describe '--check with --report' do
+    # Regression: Report.write only knew .csv/.json while ReportWriter also
+    # accepted .jsonl — so '--check --report=out.jsonl' completed the entire
+    # CDX scan, then crashed, and the report was never written.
+    it 'writes a .jsonl check report' do
+      report_path = File.join(@tmpdir, 'check.jsonl')
+      results = [
+        WaybackArchiver::CheckResult.new('https://example.com/a', archived: true, timestamp: '20260101000000'),
+        WaybackArchiver::CheckResult.new('https://example.com/b', archived: false)
+      ]
+      allow(WaybackArchiver).to receive(:check).and_return(results)
+
+      _stdout, _stderr, status = run_cli(
+        'https://example.com/a', 'https://example.com/b', '--check', '--urls', "--report=#{report_path}"
+      )
+
+      expect(status).to be_success
+      lines = File.readlines(report_path)
+      expect(lines.length).to eq(2)
+      expect(JSON.parse(lines.first)['url']).to eq('https://example.com/a')
+    end
+  end
+
   describe 'check result output' do
     # Regression: a failed CDX lookup (web.archive.org down/rate-limiting)
     # was printed as '✗ (not archived)' with exit 0 — indistinguishable from

@@ -17,8 +17,9 @@ module WaybackArchiver
       case File.extname(path).downcase
       when '.csv'  then check_mode ? write_check_csv(results, path) : write_csv(results, path)
       when '.json' then check_mode ? write_check_json(results, path) : write_json(results, path)
+      when '.jsonl' then write_jsonl(results, path, check_mode: check_mode)
       else
-        raise ArgumentError, "Unsupported report format: #{File.extname(path)}. Use .csv or .json"
+        raise ArgumentError, "Unsupported report format: #{File.extname(path)}. Use .csv, .json, or .jsonl"
       end
     end
 
@@ -49,6 +50,15 @@ module WaybackArchiver
       File.write(path, JSON.pretty_generate(data))
     end
     private_class_method :write_check_json
+
+    def self.write_jsonl(results, path, check_mode:)
+      File.open(path, 'w') do |file|
+        results.each do |r|
+          file.puts(JSON.generate(check_mode ? check_to_hash(r) : result_hash(r)))
+        end
+      end
+    end
+    private_class_method :write_jsonl
 
     def self.result_row(result)
       [

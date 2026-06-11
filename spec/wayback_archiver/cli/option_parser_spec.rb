@@ -124,6 +124,22 @@ RSpec.describe WaybackArchiver::CLI::OptionParser do
       expect(opts.skip_patterns).to all(be_a(Regexp))
     end
 
+    # Regression: an unsupported --report extension wasn't validated until
+    # the report was constructed (archive mode) or written (check mode, AFTER
+    # the full CDX scan) — surfacing as a raw backtrace instead of a clean
+    # usage error.
+    it 'rejects unsupported --report extensions at parse time' do
+      expect { parse('--report=out.txt', 'http://example.com') }
+        .to raise_error(ArgumentError, /Unsupported report format.*\.csv, \.json, or \.jsonl/)
+    end
+
+    it 'accepts .csv, .json, and .jsonl report extensions' do
+      %w[out.csv out.json out.jsonl].each do |path|
+        opts = parse("--report=#{path}", 'http://example.com')
+        expect(opts.report_path).to eq(path)
+      end
+    end
+
     # Regression: OptionParser's Array type split blindly on commas, so a
     # regex quantifier like {2,4} was silently split into two broken patterns
     # and the URLs the user asked to skip were archived anyway.

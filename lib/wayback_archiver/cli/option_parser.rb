@@ -241,7 +241,12 @@ module WaybackArchiver
             opts.skip_duplicates = value
           end
 
-          parser.on('--report=PATH', String, 'Write report to file (CSV or JSON, detected from extension)') do |value|
+          parser.on('--report=PATH', String, 'Write report to file (.csv, .json, or .jsonl)') do |value|
+            ext = File.extname(value).downcase
+            unless %w[.csv .json .jsonl].include?(ext)
+              raise ArgumentError, "Unsupported report format: '#{value}'. Use .csv, .json, or .jsonl"
+            end
+
             opts.report_path = value
           end
 
