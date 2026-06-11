@@ -124,6 +124,37 @@ RSpec.describe WaybackArchiver::CLI::OptionParser do
       expect(opts.skip_patterns).to all(be_a(Regexp))
     end
 
+    # Regression: OptionParser's Array type split blindly on commas, so a
+    # regex quantifier like {2,4} was silently split into two broken patterns
+    # and the URLs the user asked to skip were archived anyway.
+    it 'keeps commas inside braces when splitting --skip-patterns' do
+      opts = parse('--skip-patterns=page\d{2,4}', 'http://example.com')
+
+      expect(opts.skip_patterns.length).to eq(1)
+      expect(opts.skip_patterns.first).to match('page1234')
+    end
+
+    it 'keeps commas inside character classes when splitting --hosts' do
+      opts = parse('--hosts=host[a,b]\.com', 'http://example.com')
+
+      expect(opts.hosts.length).to eq(1)
+    end
+
+    # Regression: repeated flags overwrote instead of appending, so the
+    # printed resume command (one --hosts per host) silently crawled only
+    # the last host when re-run.
+    it 'appends across repeated --hosts flags' do
+      opts = parse('--hosts=a\.com', '--hosts=b\.com', 'http://example.com')
+
+      expect(opts.hosts.map(&:source)).to eq(['a\.com', 'b\.com'])
+    end
+
+    it 'appends across repeated --skip-patterns flags' do
+      opts = parse('--skip-patterns=foo', '--skip-patterns=bar', 'http://example.com')
+
+      expect(opts.skip_patterns.map(&:source)).to eq(%w[foo bar])
+    end
+
     it 'rejects invalid --skip-patterns regex' do
       expect { parse('--skip-patterns=[invalid', 'http://example.com') }
         .to raise_error(ArgumentError, /Invalid skip pattern/)

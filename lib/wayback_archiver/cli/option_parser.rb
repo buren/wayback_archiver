@@ -37,6 +37,38 @@ module WaybackArchiver
 
       private
 
+      # Split a comma-separated pattern list and compile each part to a Regexp.
+      # Commas inside {} or [] are kept, so quantifiers like {2,4} and
+      # character classes survive — OptionParser's Array type splits blindly.
+      def parse_patterns(value, label)
+        split_outside_groups(value).map do |v|
+          Regexp.new(v)
+        rescue RegexpError => e
+          raise ArgumentError, "Invalid #{label} '#{v}': #{e.message}"
+        end
+      end
+
+      def split_outside_groups(value)
+        parts = []
+        buf = +''
+        depth = 0
+        value.each_char do |ch|
+          case ch
+          when '{', '[' then depth += 1
+          when '}', ']' then depth -= 1 if depth.positive?
+          when ','
+            if depth.zero?
+              parts << buf
+              buf = +''
+              next
+            end
+          end
+          buf << ch
+        end
+        parts << buf
+        parts.reject(&:empty?)
+      end
+
       def default_options
         Options.new(
           strategy: nil,
@@ -76,13 +108,9 @@ module WaybackArchiver
           parser.on('--urls', '--url', 'URL(s)') { opts.strategy = 'urls' }
           parser.on('--rss', 'RSS/Atom feed') { opts.strategy = 'rss' }
 
-          parser.on('--hosts=[example.com]', Array, 'Only spider links on certain hosts') do |value|
+          parser.on('--hosts=[example.com]', String, 'Only spider links on certain hosts (comma-separated, repeatable)') do |value|
             if value
-              opts.hosts = value.map do |v|
-                Regexp.new(v)
-              rescue RegexpError => e
-                raise ArgumentError, "Invalid host pattern '#{v}': #{e.message}"
-              end
+              opts.hosts.concat(parse_patterns(value, 'host pattern'))
             end
           end
 
@@ -168,12 +196,8 @@ module WaybackArchiver
             opts.spn2_options[:exclude_ext] = value
           end
 
-          parser.on('--skip-patterns=PATTERN', Array, 'Skip URLs matching regex pattern(s)') do |value|
-            opts.skip_patterns = value.map do |v|
-              Regexp.new(v)
-            rescue RegexpError => e
-              raise ArgumentError, "Invalid skip pattern '#{v}': #{e.message}"
-            end
+          parser.on('--skip-patterns=PATTERN', String, 'Skip URLs matching regex pattern(s) (comma-separated, repeatable)') do |value|
+            opts.skip_patterns = (opts.skip_patterns || []) + parse_patterns(value, 'skip pattern')
           end
 
           parser.separator ''

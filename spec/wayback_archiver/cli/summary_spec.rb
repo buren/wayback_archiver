@@ -188,15 +188,16 @@ RSpec.describe WaybackArchiver::CLI::Summary do
       expect(cmd).to include('--report=/tmp/out.csv')
     end
 
-    it 'round-trips skip patterns by source' do
-      opts = build_options(strategy: 'urls', skip_patterns: [/hs_amp=true/, %r{/tag/}])
+    it 'round-trips skip patterns by source, one flag per pattern' do
+      # One flag per pattern: a comma-joined list would corrupt patterns that
+      # themselves contain commas (e.g. {2,4} quantifiers) on re-parse.
+      opts = build_options(strategy: 'urls', skip_patterns: [/hs_amp=true/, /page\d{2,4}/])
       session = instance_double(WaybackArchiver::SessionFile, path: '/tmp/session.jsonl')
 
       cmd = summary.build_resume_command(opts, session)
 
-      # The value is shell-escaped so the command is safe to copy-paste; the
-      # shell unescapes it back to hs_amp=true,/tag/ before the program sees it.
-      expect(cmd).to include('--skip-patterns=hs_amp\=true,/tag/')
+      expect(cmd).to include('--skip-patterns=hs_amp\=true')
+      expect(cmd).to include('--skip-patterns=page\\\\d\{2,4\}')
     end
 
     it 'emits --no-skip-duplicates only when explicitly disabled' do

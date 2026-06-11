@@ -77,9 +77,10 @@ module WaybackArchiver
         # shape the run — drop any of these and the resumed run behaves
         # differently (e.g. stops writing the report, re-archives filtered URLs).
         parts << "--report=#{Shellwords.shellescape(options.report_path)}" if options.report_path
-        if options.skip_patterns&.any?
-          sources = options.skip_patterns.map(&:source).join(',')
-          parts << "--skip-patterns=#{Shellwords.shellescape(sources)}"
+        # One flag per pattern: a comma-joined list would corrupt patterns
+        # that contain top-level commas on re-parse.
+        options.skip_patterns&.each do |pat|
+          parts << "--skip-patterns=#{Shellwords.shellescape(pat.source)}"
         end
         parts << '--no-skip-duplicates' if options.skip_duplicates == false
         if options.skip_archived
