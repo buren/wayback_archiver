@@ -63,4 +63,60 @@ RSpec.describe 'CLI integration', :integration do
       expect(stderr).not_to include('[<url>] or --file is required')
     end
   end
+
+  it 'prints the resume command and exits 130 on SIGINT' do
+    Dir.mktmpdir do |dir|
+      session_path = File.join(dir, 'session.jsonl')
+      lib_path = File.expand_path('../../lib', __dir__)
+      # Hermetic child: WaybackMachine is stubbed so no network happens, and
+      # the in-flight submit sleeps so SIGINT lands mid-archive (after the
+      # trap is installed). The MARKER line tells the parent when to signal.
+      script = <<~RUBY
+        $LOAD_PATH.unshift(#{lib_path.inspect})
+        require 'wayback_archiver/cli'
+
+        class WaybackArchiver::WaybackMachine
+          def self.check_user_status
+            { 'available' => 1, 'processing' => 0 }
+          end
+
+          def self.submit(_url, **)
+            puts 'MARKER_SUBMITTING'
+            $stdout.flush
+            sleep 60
+            {}
+          end
+        end
+
+        WaybackArchiver::CLI.run(
+          ['--urls', '--no-summary', '--session=#{session_path}', 'http://example.com']
+        )
+      RUBY
+
+      env = { 'WAYBACK_ACCESS_KEY' => 'test', 'WAYBACK_SECRET_KEY' => 'test' }
+      Open3.popen3(env, RbConfig.ruby, '-e', script) do |_stdin, out, err, wait_thr|
+        buffer = +''
+        deadline = Time.now + 15
+        until buffer.include?('MARKER_SUBMITTING')
+          raise "child never reached submit; output so far: #{buffer.inspect}" if Time.now > deadline
+
+          begin
+            buffer << out.read_nonblock(4096)
+          rescue IO::WaitReadable
+            sleep 0.05
+          rescue EOFError
+            raise "child exited early; output: #{buffer.inspect}, stderr: #{err.read.inspect}"
+          end
+        end
+
+        Process.kill('INT', wait_thr.pid)
+        status = wait_thr.value
+        stderr_out = err.read
+
+        expect(status.exitstatus).to eq(130)
+        expect(stderr_out).to include('Resume with:')
+        expect(stderr_out).to include(session_path)
+      end
+    end
+  end
 end
