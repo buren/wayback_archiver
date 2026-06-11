@@ -362,6 +362,34 @@ RSpec.describe WaybackArchiver::CLI do
         expect(data['url']).to eq('http://example.com')
       end
     end
+
+    # Regression: in TTY mode, the sticky progress footer was cleared in the
+    # ensure block AFTER print_summary had already written below it. The
+    # CURSOR_UP/CLEAR_LINE escapes that clear_footer emits would then erase the
+    # bottom of the summary instead of the footer.
+    it 'clears the progress footer before printing the summary (TTY mode)' do
+      allow(stdout).to receive(:tty?).and_return(true)
+
+      result = WaybackArchiver::ArchiveResult.new('http://example.com', timestamp: '20240101000000')
+      allow(WaybackArchiver).to receive(:archive) do |*, **|
+        listener = WaybackArchiver.listener
+        listener.on_batch_start(total: 1)
+        listener.on_progress(captured: 0, failed: 0, pending: 1)
+        listener.on_completed(result: result)
+        [result]
+      end
+
+      cli = build_cli('--urls', '--no-session', 'http://example.com')
+      cli.run
+
+      out = stdout_output
+      summary_idx = out.index('--- Summary ---')
+      expect(summary_idx).not_to be_nil, 'summary header should appear in output'
+      # After the summary header, no CURSOR_UP escapes should follow — they
+      # would mean we are about to clobber the summary we just printed.
+      expect(out[summary_idx..]).not_to match(/\e\[A/),
+        "found CURSOR_UP escape after summary — clear_footer is erasing summary lines.\nTail:\n#{out[summary_idx..].inspect}"
+    end
   end
 
   describe WaybackArchiver::CLI::FooterAwareOutput do

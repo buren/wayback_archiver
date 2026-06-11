@@ -153,11 +153,18 @@ module WaybackArchiver
       install_signal_handler
 
       results = run_archive
+      # Tear down the sticky footer BEFORE any post-archive output. clear_footer
+      # emits CURSOR_UP/CLEAR_LINE escapes relative to the cursor, so it must
+      # run while the footer is still the last thing drawn — otherwise it
+      # erases whatever was written below it (e.g. the summary).
+      @cli_listener&.finish unless @interrupted
+      @log_output&.renderer = nil
       cleanup_session(results)
       @summary.print_summary(results, @archive_start_time, duplicates_skipped: @cli_listener&.duplicates_skipped || 0) if @options.show_summary
       results.any?(&:errored?) ? 1 : 0
     ensure
-      @cli_listener&.finish unless @interrupted
+      # Only needed on the exception path; the happy path cleared it above.
+      @cli_listener&.finish if $! && !@interrupted
       @log_output&.renderer = nil
       @report_writer&.close
       WaybackArchiver.logger.info("Report written to #{@report_writer.path}") if @report_writer
