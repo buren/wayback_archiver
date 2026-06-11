@@ -147,7 +147,11 @@ module WaybackArchiver
     def queue_exhausted?
       return false unless @retry_buffer.empty?
       return @queue.empty? unless @source_thread
-      @queue.empty? && !@source_thread.alive?
+      # Read alive? BEFORE empty?: a crawler that pushes its final URL and
+      # exits between the two reads would otherwise look exhausted while the
+      # URL is still queued. A thread observed dead cannot push afterwards,
+      # so this order closes the window.
+      !@source_thread.alive? && @queue.empty?
     end
 
     # Determine how many URLs to submit in the next chunk.

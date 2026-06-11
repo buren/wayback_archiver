@@ -948,6 +948,60 @@ RSpec.describe WaybackArchiver::Archive do
     end
   end
 
+  describe 'BatchSubmitter streaming-crawl exhaustion race' do
+    # Regression: queue_exhausted? read @queue.empty? BEFORE
+    # @source_thread.alive?. A crawler that pushed its final URL and exited
+    # between the two reads made the queue look exhausted while the URL was
+    # still in it — silently dropping it (never submitted, never reported).
+    # Reading alive? first closes the window: a thread observed dead cannot
+    # push afterwards.
+    it 'does not drop a URL pushed just before the crawler exits' do
+      require 'delegate'
+
+      queue = SizedQueue.new(10)
+      gate = Queue.new
+      crawler = Thread.new { gate.pop }
+
+      last_url = 'http://example.com/last-gasp'
+      armed = true
+      fire_last_gasp = lambda do
+        next unless armed
+        armed = false
+        queue.push(last_url)
+        gate.push(:done)
+        crawler.join
+      end
+
+      # Wrap the queue so the racy interleaving fires deterministically right
+      # after empty? is read (where the old code was vulnerable); the sleep
+      # stub below covers the fixed code path, which no longer reads empty?
+      # while the crawler is alive.
+      racy_queue = SimpleDelegator.new(queue)
+      racy_queue.define_singleton_method(:empty?) do
+        result = __getobj__.empty?
+        fire_last_gasp.call if result
+        result
+      end
+
+      allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status)
+        .and_return({ 'available' => 12, 'processing' => 0 })
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit)
+        .and_return({ 'url' => last_url, 'job_id' => 'job-last' })
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses) do |ids|
+        ids.each_with_object({}) do |jid, h|
+          h[jid] = { 'status' => 'success', 'job_id' => jid, 'timestamp' => '20260326120000', 'original_url' => last_url }
+        end
+      end
+
+      submitter = WaybackArchiver::BatchSubmitter.new(racy_queue, concurrency: 1, source_thread: crawler)
+      allow(submitter).to receive(:sleep) { fire_last_gasp.call }
+
+      results = submitter.call
+
+      expect(results.map(&:uri)).to include(last_url)
+    end
+  end
+
   # The rest of the suite forces concurrency=1 (see spec_helper) to keep WebMock
   # and rspec-mocks deterministic. This block deliberately runs the dispatch
   # pipeline under multiple real threads to catch orchestration-layer races.
