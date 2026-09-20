@@ -988,6 +988,31 @@ RSpec.describe WaybackArchiver::Archive do
       expect(crawl_complete_event).to eq(2)
     end
 
+    # Regression: the crawler's exception was re-raised after the submission
+    # loop finished, discarding every result already archived. A late network
+    # blip on a long crawl lost the summary and the resume hint.
+    it 'carries the results archived before a crawler failure' do
+      allow(WaybackArchiver::URLCollector).to receive(:crawl) do |*, **, &blk|
+        blk.call('http://example.com/a')
+        blk.call('http://example.com/b')
+        raise WaybackArchiver::Request::ServerError, 'network hiccup'
+      end
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit) do |url|
+        { 'url' => url, 'job_id' => "job-#{url.hash.abs}" }
+      end
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses) do |ids|
+        ids.each_with_object({}) { |jid, h| h[jid] = { 'status' => 'success', 'job_id' => jid, 'timestamp' => '20260326120000' } }
+      end
+
+      expect { described_class.crawl('http://example.com') }
+        .to raise_error(WaybackArchiver::CrawlError) { |e|
+          expect(e.message).to eq('network hiccup')
+          expect(e.original_error).to be_a(WaybackArchiver::Request::ServerError)
+          expect(e.results.map(&:uri)).to contain_exactly('http://example.com/a', 'http://example.com/b')
+          expect(e.results).to all(be_success)
+        }
+    end
+
     it 'surfaces crawler thread errors after draining the queue' do
       allow(WaybackArchiver::URLCollector).to receive(:crawl) do |*, &blk|
         blk.call('http://a.com')

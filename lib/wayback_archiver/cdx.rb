@@ -13,14 +13,21 @@ module WaybackArchiver
   class CDX
     URL = 'https://web.archive.org/cdx/search/cdx'.freeze
 
+    # Guards lazy rate-limiter construction: the first calls come from
+    # concurrent pool workers, and a bare ||= could build two limiters,
+    # briefly doubling the requests/sec cap.
+    RATE_LIMITER_MUTEX = Mutex.new
+
     # @return [RateLimiter] CDX rate limiter (15 req/s)
     def self.rate_limiter
-      @rate_limiter ||= RateLimiter.new(max_requests: 15, window: 1.0)
+      RATE_LIMITER_MUTEX.synchronize do
+        @rate_limiter ||= RateLimiter.new(max_requests: 15, window: 1.0)
+      end
     end
 
     # Reset the rate limiter (useful in tests).
     def self.reset_rate_limiter!
-      @rate_limiter = nil
+      RATE_LIMITER_MUTEX.synchronize { @rate_limiter = nil }
     end
 
     # Check a single URL against the CDX API.
@@ -52,7 +59,15 @@ module WaybackArchiver
 
       urls.each do |url|
         pool.post do
-          result = check(url, from: from)
+          result = begin
+            check(url, from: from)
+          rescue StandardError => e
+            # Anything escaping a pool worker is swallowed by concurrent-ruby
+            # and the URL would silently vanish from the results — a failed
+            # lookup must surface as "unknown", never as "not archived".
+            WaybackArchiver.logger.error("CDX check raised for #{url}: #{e.class}, #{e.message}")
+            CheckResult.new(url, archived: false, error: e)
+          end
           results << result
           block&.call(result)
         end

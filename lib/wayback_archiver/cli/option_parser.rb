@@ -38,6 +38,30 @@ module WaybackArchiver
 
       private
 
+      # A bare DNS name: letters, digits, hyphens and dots, no regex
+      # metacharacters beyond the dots that separate labels.
+      PLAIN_HOSTNAME = /\A[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\z/i.freeze
+
+      # Split a comma-separated host list, keeping plain hostnames as literal
+      # strings and compiling only genuine patterns to Regexp.
+      #
+      # Compiling everything made --hosts=example.com an unanchored regex, so
+      # the crawler would happily follow links to example.com.attacker.net,
+      # notexample.com or exampleXcom — the opposite of "only spider links on
+      # certain hosts". Spidr matches String rules with ==, so a literal host
+      # confines the crawl exactly.
+      def parse_hosts(value)
+        split_outside_groups(value).map do |v|
+          next v if v.match?(PLAIN_HOSTNAME)
+
+          begin
+            Regexp.new(v)
+          rescue RegexpError => e
+            raise ArgumentError, "Invalid host pattern '#{v}': #{e.message}"
+          end
+        end
+      end
+
       # Split a comma-separated pattern list and compile each part to a Regexp.
       # Commas inside {} or [] are kept, so quantifiers like {2,4} and
       # character classes survive — OptionParser's Array type splits blindly.
@@ -109,9 +133,9 @@ module WaybackArchiver
           parser.on('--urls', '--url', 'URL(s)') { opts.strategy = 'urls' }
           parser.on('--rss', 'RSS/Atom feed') { opts.strategy = 'rss' }
 
-          parser.on('--hosts=[example.com]', String, 'Only spider links on certain hosts (comma-separated, repeatable)') do |value|
+          parser.on('--hosts=[example.com]', String, 'Only spider links on certain hosts (comma-separated, repeatable).', 'Plain hostnames match exactly; anything else is a regex') do |value|
             if value
-              opts.hosts.concat(parse_patterns(value, 'host pattern'))
+              opts.hosts.concat(parse_hosts(value))
             end
           end
 

@@ -166,4 +166,45 @@ RSpec.describe WaybackArchiver::Sitemapper do
         .to raise_error(WaybackArchiver::Request::Error)
     end
   end
+
+  describe 'unreachable sitemaps' do
+    # Regression: a 404 body was parsed as empty XML and reported as
+    # "0 URLs found", so a typo in --sitemap looked like a successful run.
+    it 'raises when the sitemap URL returns an HTTP error' do
+      stub_request(:get, 'http://example.com/sitemap.xml').to_return(status: 404, body: 'not found')
+
+      expect { described_class.urls(url: 'http://example.com/sitemap.xml') }
+        .to raise_error(WaybackArchiver::Request::ResponseError)
+    end
+
+    it 'skips an unreachable child of a sitemap index instead of failing the lot' do
+      index = <<~XML
+        <?xml version="1.0" encoding="UTF-8"?>
+        <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <sitemap><loc>http://example.com/good.xml</loc></sitemap>
+          <sitemap><loc>http://example.com/dead.xml</loc></sitemap>
+        </sitemapindex>
+      XML
+      good = <<~XML
+        <?xml version="1.0" encoding="UTF-8"?>
+        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <url><loc>http://example.com/page</loc></url>
+        </urlset>
+      XML
+      stub_request(:get, 'http://example.com/sitemap_index.xml').to_return(status: 200, body: index)
+      stub_request(:get, 'http://example.com/good.xml').to_return(status: 200, body: good)
+      stub_request(:get, 'http://example.com/dead.xml').to_return(status: 500, body: 'oops')
+
+      expect(described_class.urls(url: 'http://example.com/sitemap_index.xml'))
+        .to eq(%w[http://example.com/page])
+    end
+
+    it 'falls back to crawling when autodiscovery hits an unreachable sitemap' do
+      stub_request(:get, 'http://example.com/robots.txt').to_return(status: 404, body: '')
+      stub_request(:get, %r{http://example\.com/sitemap}).to_return(status: 404, body: '')
+      stub_request(:get, 'http://example.com').to_return(status: 404, body: '')
+
+      expect(described_class.autodiscover('http://example.com')).to eq([])
+    end
+  end
 end

@@ -13,6 +13,8 @@
 - **`ArchiveResult` pruned** — the vestigial v1 readers `code` (always `'200'`), `request_url` (never set), and `archived_url` (alias of `uri`) are removed. Use `uri` for the archived URL and `wayback_url` for the snapshot link.
 - **Positional strategy argument removed** — `WaybackArchiver.archive('example.com', :crawl)` now raises `ArgumentError`. Use the keyword form: `WaybackArchiver.archive('example.com', strategy: :crawl)`.
 - **Module-level setters removed** — settings now live on `WaybackArchiver.config`. The following no longer exist and raise `NoMethodError`: `WaybackArchiver.logger=`, `.default_logger!`, `.user_agent`/`.user_agent=`, `.concurrency=`, `.max_limit=`, `.respect_robots_txt`/`.respect_robots_txt=`, and `.adapter`/`.adapter=` (the swappable adapter extension point is gone; archiving always uses SPN2). See the migration table below.
+- **`--hosts` matches plain hostnames exactly** — every value used to be compiled to an unanchored regex, so `--hosts=example.com` also matched `example.com.attacker.net`, `notexample.com` and `exampleXcom`, letting the crawler wander off-site. A bare DNS name is now a literal; anything else is still a regex (`--hosts='.*\.example\.com'`).
+- **Unreachable sitemaps raise** — a sitemap URL returning 404/5xx used to parse as empty and report "0 URLs found", so a typo in `--sitemap` looked like a successful run. A dead child inside a sitemap index is still skipped with a warning rather than failing the whole index.
 - Default concurrency changed from 1 to 4
 - Ruby >= 3.1 required
 - SSL certificate verification enabled by default
@@ -89,6 +91,9 @@ CLI exit codes: `0` success, `1` finished with one or more failed URLs, `2` inva
 - Fixed `--include-ext`/`--exclude-ext` starving a crawl: the filters were passed to the crawler, which applies them to traversal, so `--include-ext pdf --crawl` refused to visit the HTML pages linking to the PDFs and archived nothing
 - Stopped polling the SPN2 user-status endpoint ~5x/second while a streaming crawl was still discovering URLs
 - CDX timestamps are formatted in UTC; `--skip-archived=TIMEDELTA` was shifting its window by the local UTC offset
+- A crawler failure part-way through a streaming crawl no longer discards the URLs already archived — `Archive.crawl` raises `CrawlError`, which carries the completed results, and the CLI prints the summary and a resume command before exiting 4
+- Listener callbacks are isolated: an exception from a listener is logged instead of silently dropping a URL (pool workers) or aborting the run (poll loop)
+- `CDX.rate_limiter` construction is serialised behind a mutex, and an unexpected exception in a CDX worker now records an errored `CheckResult` instead of dropping the URL from the results
 - Fixed CLI typo: `Verboes` → `Verbose`
 - Removed duplicate `-h` flag in CLI
 - Fixed `:auto` strategy not passing `limit:` to all code paths

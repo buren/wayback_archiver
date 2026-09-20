@@ -104,6 +104,14 @@ module WaybackArchiver
         elsif @listener.is_a?(Hash) && @listener[method]
           @listener[method].call(**kwargs)
         end
+      rescue StandardError => e
+        # A listener is an observer, not a participant. Events fire from pool
+        # workers (where a raise is swallowed and the URL vanishes from the
+        # results) and from the poll loop (where it would abort the whole
+        # run), so a broken listener must never take the archive down.
+        WaybackArchiver.logger.error(
+          "Listener #{@listener.class}##{method} raised #{e.class}: #{e.message}"
+        )
       end
     end
 

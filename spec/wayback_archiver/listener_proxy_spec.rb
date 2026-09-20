@@ -113,4 +113,38 @@ RSpec.describe WaybackArchiver::ListenerProxy do
       }.not_to raise_error
     end
   end
+
+  describe 'exception isolation' do
+    # A listener is an observer, not a participant. Events fire from pool
+    # workers (a raise there is swallowed and the URL vanishes from the
+    # results) and from the poll loop (a raise there aborts the whole run).
+    it 'logs and swallows an exception from a listener object' do
+      boom = Class.new(WaybackArchiver::NullListener) do
+        def on_completed(result:)
+          raise 'listener exploded'
+        end
+      end.new
+
+      expect { described_class.new(boom).on_completed(result: nil) }.not_to raise_error
+    end
+
+    it 'logs and swallows an exception from a proc listener' do
+      proxy = described_class.new(on_progress: ->(**) { raise 'proc exploded' })
+
+      expect { proxy.on_progress(captured: 1, failed: 0, pending: 0) }.not_to raise_error
+    end
+
+    it 'keeps dispatching to later events after one raises' do
+      seen = []
+      proxy = described_class.new(
+        on_submitted: ->(**) { raise 'nope' },
+        on_completed: ->(result:) { seen << result }
+      )
+
+      proxy.on_submitted(url: 'http://a.com', job_id: 'j1')
+      proxy.on_completed(result: :ok)
+
+      expect(seen).to eq([:ok])
+    end
+  end
 end

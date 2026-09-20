@@ -163,7 +163,15 @@ module WaybackArchiver
       @archive_results = []
       install_signal_handler
 
-      results = run_archive
+      results = begin
+                  run_archive
+                rescue CrawlError => e
+                  # The crawl died partway, but everything already archived is
+                  # real work: report it and point at the resume command
+                  # rather than exiting with nothing to show.
+                  @crawl_error = e
+                  @archive_results
+                end
       # Tear down the sticky footer BEFORE any post-archive output. clear_footer
       # emits CURSOR_UP/CLEAR_LINE escapes relative to the cursor, so it must
       # run while the footer is still the last thing drawn — otherwise it
@@ -172,6 +180,12 @@ module WaybackArchiver
       @log_output&.renderer = nil
       cleanup_session(results)
       @summary.print_summary(results, @archive_start_time, duplicates_skipped: @cli_listener&.duplicates_skipped || 0) if @options.show_summary
+
+      if @crawl_error
+        @stderr.puts "wayback_archiver: crawl failed: #{@crawl_error.message}"
+        return 4
+      end
+
       results.any?(&:errored?) ? 1 : 0
     ensure
       # Only needed on the exception path; the happy path cleared it above.
@@ -435,7 +449,9 @@ module WaybackArchiver
     def cleanup_session(results)
       return unless @session
 
-      if results.any?(&:errored?)
+      # A failed crawl leaves the site half-archived, so keep the session even
+      # when every result that did complete succeeded.
+      if @crawl_error || results.any?(&:errored?)
         @summary.print_resume_message(resume_command)
       elsif @auto_generated_session
         @session.delete!

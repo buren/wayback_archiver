@@ -153,4 +153,40 @@ RSpec.describe WaybackArchiver::CDX do
       expect(results.first.archived?).to eq(true)
     end
   end
+
+  describe 'concurrency safety' do
+    # Regression: a bare ||= built one limiter per racing worker, briefly
+    # multiplying the requests/sec cap.
+    it 'builds the rate limiter exactly once under concurrency' do
+      described_class.reset_rate_limiter!
+      built = Concurrent::AtomicFixnum.new(0)
+      allow(WaybackArchiver::RateLimiter).to receive(:new) do |**|
+        sleep 0.02 # widen the window so an unsynchronised ||= interleaves
+        built.increment
+        instance_double(WaybackArchiver::RateLimiter, acquire: nil)
+      end
+
+      12.times.map { Thread.new { described_class.rate_limiter } }.each(&:join)
+
+      expect(built.value).to eq(1)
+    ensure
+      described_class.reset_rate_limiter!
+    end
+
+    # Regression: an exception escaping a pool worker is swallowed by
+    # concurrent-ruby, so the URL silently vanished from the results — and a
+    # failed lookup must read as "unknown", never as "not archived".
+    it 'records a result even when a check raises unexpectedly' do
+      allow(described_class).to receive(:check) do |url, **|
+        raise 'boom' if url.end_with?('b')
+
+        WaybackArchiver::CheckResult.new(url, archived: true, timestamp: '20260101000000')
+      end
+
+      results = described_class.check_urls(%w[http://a.com/a http://a.com/b], concurrency: 2)
+
+      expect(results.length).to eq(2)
+      expect(results.find { |r| r.url.end_with?('b') }).to be_errored
+    end
+  end
 end

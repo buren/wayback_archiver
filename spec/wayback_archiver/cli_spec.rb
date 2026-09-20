@@ -662,4 +662,29 @@ RSpec.describe WaybackArchiver::CLI do
       end
     end
   end
+
+  describe 'crawl failure' do
+    # Regression: a crawler exception discarded every result already archived,
+    # so a late network blip exited with no summary and no resume hint even
+    # though the session file held the work.
+    it 'reports the completed results, keeps the session and exits 4' do
+      session_path = File.join(Dir.mktmpdir, 'session.jsonl')
+      done = WaybackArchiver::ArchiveResult.new('http://example.com/a', timestamp: '20260326120000')
+
+      allow(WaybackArchiver).to receive(:archive) do |*, **, &blk|
+        blk&.call(done)
+        raise WaybackArchiver::CrawlError.new(
+          WaybackArchiver::Request::ServerError.new('network hiccup'), [done]
+        )
+      end
+
+      cli = build_cli('--crawl', "--session=#{session_path}", 'http://example.com')
+      expect(cli.run).to eq(4)
+
+      expect(stdout_output).to include('Total: 1')
+      expect(stderr_output).to include('crawl failed: network hiccup')
+      expect(stderr_output).to include('Resume with:')
+      expect(File.exist?(session_path)).to eq(true)
+    end
+  end
 end

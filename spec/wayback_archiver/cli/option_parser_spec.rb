@@ -329,4 +329,40 @@ RSpec.describe WaybackArchiver::CLI::OptionParser do
       expect(opts.log).to eq('/tmp/test.log')
     end
   end
+
+  describe '--hosts confinement' do
+    # Regression: every --hosts value was compiled to an unanchored Regexp,
+    # so --hosts=example.com also matched example.com.attacker.net,
+    # notexample.com and exampleXcom — the crawler could wander off-site.
+    it 'keeps a plain hostname as a literal that matches exactly' do
+      opts = parse('--hosts=example.com', 'http://example.com')
+      rules = Spidr::Rules.new(accept: opts.hosts)
+
+      expect(opts.hosts).to eq(['example.com'])
+      expect(rules.accept?('example.com')).to eq(true)
+      expect(rules.accept?('example.com.attacker.net')).to eq(false)
+      expect(rules.accept?('notexample.com')).to eq(false)
+      expect(rules.accept?('exampleXcom')).to eq(false)
+    end
+
+    it 'keeps each host in a comma-separated list literal' do
+      opts = parse('--hosts=www.example.com,blog.example.com', 'http://example.com')
+
+      expect(opts.hosts).to eq(%w[www.example.com blog.example.com])
+    end
+
+    it 'still compiles genuine patterns to regexes' do
+      opts = parse('--hosts=.*\\.example\\.com', 'http://example.com')
+      rules = Spidr::Rules.new(accept: opts.hosts)
+
+      expect(opts.hosts.first).to be_a(Regexp)
+      expect(rules.accept?('blog.example.com')).to eq(true)
+      expect(rules.accept?('example.com.attacker.net')).to eq(false)
+    end
+
+    it 'raises a clean error for an invalid host pattern' do
+      expect { parse('--hosts=[unclosed', 'http://example.com') }
+        .to raise_error(ArgumentError, /Invalid host pattern/)
+    end
+  end
 end

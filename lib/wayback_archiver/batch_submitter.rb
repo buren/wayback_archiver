@@ -7,6 +7,24 @@ require 'wayback_archiver/request'
 require 'wayback_archiver/error_codes'
 
 module WaybackArchiver
+  # Raised when the crawler thread fails partway through a streaming crawl.
+  #
+  # Carries the results collected before the failure, so a late network blip
+  # doesn't throw away work that was already archived — callers can still
+  # report a summary and point the user at a resume command.
+  class CrawlError < StandardError
+    # @return [Array<ArchiveResult>] results completed before the failure
+    attr_reader :results
+    # @return [Exception] the error the crawler thread raised
+    attr_reader :original_error
+
+    def initialize(original_error, results)
+      @original_error = original_error
+      @results = results
+      super(original_error.message)
+    end
+  end
+
   # Batch mode: submit URLs in chunks with intermediate polling.
   #
   # Manages concurrent submission to SPN2, slot waiting, polling,
@@ -65,13 +83,22 @@ module WaybackArchiver
 
         # Surface any exception raised by the crawler thread. value joins first,
         # so this also waits out a crawler still tearing down on the abort path.
-        @source_thread&.value
+        crawler_error = nil
+        begin
+          @source_thread&.value
+        rescue StandardError => e
+          crawler_error = e
+        end
 
         # Any URLs still pending after final poll were submitted but unconfirmed
         @pending.each do |job_id, url|
           result = ArchiveResult.new(url, job_id: job_id, status_ext: 'submitted')
           @results << result
         end
+
+        # Still raise — a failed crawl is not a successful run — but hand the
+        # completed results over rather than discarding them with the stack.
+        raise CrawlError.new(crawler_error, @results.to_a) if crawler_error
 
         WaybackArchiver.logger.info "#{@counts[:success]} of #{@results.length} URL(s) posted to Wayback Machine"
         @results
@@ -81,7 +108,15 @@ module WaybackArchiver
         # which it rescues); join then guarantees it has exited.
         if @source_thread
           @queue.close if @queue.respond_to?(:close) && !@queue.closed?
-          @source_thread.join
+          begin
+            @source_thread.join
+          rescue StandardError
+            # join re-raises the thread's exception. On the normal path we
+            # already captured it above and are raising CrawlError; letting it
+            # escape from here would clobber that with the bare error and lose
+            # the partial results.
+            nil
+          end
         end
       end
     end

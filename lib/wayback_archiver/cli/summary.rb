@@ -62,7 +62,11 @@ module WaybackArchiver
         parts << "--#{options.strategy}"
         parts << "--concurrency=#{options.concurrency}" if options.concurrency != DEFAULT_CONCURRENCY
         parts << "--limit=#{options.limit}" if options.limit != DEFAULT_MAX_LIMIT
-        options.hosts.each { |h| parts << "--hosts=#{Shellwords.shellescape(h.source)}" } if options.hosts.any?
+        # Hosts are literal Strings or Regexp patterns; Regexp#source gives
+        # back the text the user typed, a String is already that text.
+        options.hosts.each do |h|
+          parts << "--hosts=#{Shellwords.shellescape(h.is_a?(Regexp) ? h.source : h.to_s)}"
+        end
         options.spn2_options.each do |key, value|
           flag = key.to_s.tr('_', '-')
           if value == true

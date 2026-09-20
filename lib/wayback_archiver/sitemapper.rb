@@ -76,12 +76,19 @@ module WaybackArchiver
 
       visited << url if url
 
-      xml = Request.get(url).body unless xml
+      # raise_on_http_error: a 404 sitemap used to be parsed as empty XML and
+      # reported as "0 URLs found", so a typo in --sitemap looked like a
+      # successful run that archived nothing.
+      xml = Request.get(url, raise_on_http_error: true).body unless xml
       sitemap = Sitemap.new(xml)
 
       if sitemap.sitemap_index?
         sitemap.sitemaps.flat_map do |sitemap_url|
           urls(url: sitemap_url, visited: visited)
+        rescue Request::Error => e
+          # One dead child shouldn't sink an otherwise good index.
+          WaybackArchiver.logger.warn "Skipping unreachable sitemap #{sitemap_url}: #{e.message}"
+          []
         end
       else
         sitemap.urls.map { |url| url&.strip }
