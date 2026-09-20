@@ -19,10 +19,27 @@ module WaybackArchiver
     # briefly doubling the requests/sec cap.
     RATE_LIMITER_MUTEX = Mutex.new
 
-    # @return [RateLimiter] CDX rate limiter (15 req/s)
+    # Internet Archive's current ceiling for CDX. The reference Python client
+    # (edgi-govdata-archiving/wayback) dropped its default to 24/min in v0.5.1
+    # (2026-06-19) "in order to match the actual hard limits now set on Wayback
+    # Machine servers"; its source derives that from 0.8 * 30/60. The 60/min
+    # figure IA staff gave in wayback#137 dates from 2023 and is superseded.
+    #
+    # Going over earns 429s, and per that same thread: "If 429s are ignored for
+    # more than a minute we block the IP at the firewall (no connection) for
+    # 1 hour" — doubling on repeat offences.
+    RATE_LIMIT_PER_MINUTE = 30
+    # Run at 80% of it, the margin IA asked the reference Python client to
+    # adopt. This limiter is process-wide, so it also caps the total rate
+    # across --concurrency workers: IA specifically asks callers not to fire
+    # concurrent CDX requests from one IP.
+    RATE_LIMIT = (RATE_LIMIT_PER_MINUTE * 0.8).to_i
+    RATE_WINDOW = 60.0
+
+    # @return [RateLimiter] CDX rate limiter (24 req/min)
     def self.rate_limiter
       RATE_LIMITER_MUTEX.synchronize do
-        @rate_limiter ||= RateLimiter.new(max_requests: 15, window: 1.0)
+        @rate_limiter ||= RateLimiter.new(max_requests: RATE_LIMIT, window: RATE_WINDOW)
       end
     end
 

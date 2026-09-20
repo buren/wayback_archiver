@@ -9,6 +9,8 @@ RSpec.describe WaybackArchiver::CDX do
       :@rate_limiter,
       WaybackArchiver::RateLimiter.new(max_requests: 999, enabled: false)
     )
+    # Transient failures are retried with backoff — never sleep for real.
+    allow(WaybackArchiver::Retry).to receive(:sleep)
   end
 
   def cdx_json_response(timestamp: '20260326120000', url: 'http://example.com')
@@ -219,8 +221,6 @@ RSpec.describe WaybackArchiver::CDX do
     # --skip-archived re-archived URLs that were already in the archive.
     let(:rows) { '[["urlkey","timestamp"],["com,example)/","20260101000000"]]' }
 
-    before { allow(WaybackArchiver::Retry).to receive(:sleep) }
-
     it 'retries a 503 and succeeds' do
       stub_request(:get, /#{Regexp.escape(cdx_url)}/)
         .to_return({ status: 503, body: 'busy' }, { status: 200, body: rows })
@@ -271,6 +271,43 @@ RSpec.describe WaybackArchiver::CDX do
 
       expect(described_class.check('http://example.com').errored?).to eq(true)
       expect(WebMock).to have_requested(:get, /#{Regexp.escape(cdx_url)}/).once
+    end
+  end
+
+  describe '.rate_limiter' do
+    # Internet Archive halved the CDX hard limit to 30/min: the reference
+    # Python client dropped its default to 24/min in v0.5.1 (2026-06-19)
+    # "in order to match the actual hard limits now set on Wayback Machine
+    # servers". The older 60/min figure quoted in wayback#137 is superseded.
+    # Exceeding it earns 429s, then an hour-long IP firewall block that
+    # doubles on repeat. This was 15/s — thirty times the current ceiling.
+    it 'stays inside the current 30 requests/minute hard limit' do
+      described_class.reset_rate_limiter!
+      limiter = described_class.rate_limiter
+
+      expect(limiter.window).to eq(60.0)
+      expect(limiter.max_requests).to be <= 30
+    ensure
+      described_class.reset_rate_limiter!
+    end
+
+    it 'leaves the headroom the reference client uses' do
+      described_class.reset_rate_limiter!
+
+      # 80% of the hard limit — the margin IA asked the Python client to adopt.
+      expect(described_class.rate_limiter.max_requests).to eq(24)
+    ensure
+      described_class.reset_rate_limiter!
+    end
+
+    it 'caps the whole process regardless of --concurrency' do
+      # One shared limiter, so N worker threads cannot multiply the rate.
+      described_class.reset_rate_limiter!
+      limiters = 4.times.map { Thread.new { described_class.rate_limiter } }.map(&:value)
+
+      expect(limiters.uniq.length).to eq(1)
+    ensure
+      described_class.reset_rate_limiter!
     end
   end
 end
