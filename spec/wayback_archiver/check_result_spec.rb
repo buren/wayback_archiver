@@ -24,6 +24,18 @@ RSpec.describe WaybackArchiver::CheckResult do
       result = described_class.new('http://example.com', archived: false)
       expect(result.wayback_url).to be_nil
     end
+
+    it 'uses the exact original URL returned by CDX' do
+      result = described_class.new(
+        'https://example.com',
+        archived: true,
+        original_url: 'http://www.example.com/',
+        timestamp: '20260326120000'
+      )
+
+      expect(result.wayback_url)
+        .to eq('https://web.archive.org/web/20260326120000/http://www.example.com/')
+    end
   end
 
   describe '#captured_at' do
@@ -55,6 +67,28 @@ RSpec.describe WaybackArchiver::CheckResult do
       error = StandardError.new('timeout')
       result = described_class.new('http://example.com', archived: false, error: error)
       expect(result.error).to eq(error)
+    end
+  end
+
+  describe 'error classification' do
+    it 'identifies policy-blocked checks' do
+      result = described_class.new(
+        'http://example.com', archived: false, error: StandardError.new,
+        error_category: :blocked_site
+      )
+
+      expect(result).to be_blocked
+      expect(result).not_to be_malformed_response
+    end
+
+    it 'identifies malformed CDX responses' do
+      result = described_class.new(
+        'http://example.com', archived: false, error: StandardError.new,
+        error_category: :malformed_response
+      )
+
+      expect(result).to be_malformed_response
+      expect(result).not_to be_blocked
     end
   end
 end

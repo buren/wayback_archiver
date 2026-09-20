@@ -121,7 +121,10 @@ RSpec.describe WaybackArchiver::Report do
 
     context 'with CheckResult (check mode)' do
       let(:archived_check) do
-        WaybackArchiver::CheckResult.new('http://example.com', archived: true, timestamp: '20260326120000')
+        WaybackArchiver::CheckResult.new(
+          'https://example.com', archived: true, original_url: 'http://www.example.com/',
+          timestamp: '20260326120000'
+        )
       end
 
       let(:not_archived_check) do
@@ -130,7 +133,8 @@ RSpec.describe WaybackArchiver::Report do
 
       let(:errored_check) do
         WaybackArchiver::CheckResult.new('http://down.com', archived: false,
-                                         error: WaybackArchiver::Request::ServerError.new('503'))
+                                         error: WaybackArchiver::Request::ServerError.new('503'),
+                                         error_category: :request_failed)
       end
 
       # Regression: failed CDX lookups were written as archived=false with no
@@ -141,11 +145,13 @@ RSpec.describe WaybackArchiver::Report do
         header, row = CSV.read(csv_path)
         expect(header).to include('error')
         expect(row[header.index('error')]).to include('503')
+        expect(row[header.index('error_category')]).to eq('request_failed')
 
         json_path = File.join(@tmpdir, 'check.json')
         described_class.write([errored_check], json_path)
         data = JSON.parse(File.read(json_path))
         expect(data[0]['error']).to include('503')
+        expect(data[0]['error_category']).to eq('request_failed')
       end
 
       it 'writes check CSV with correct columns' do
@@ -162,10 +168,13 @@ RSpec.describe WaybackArchiver::Report do
         described_class.write([archived_check], path)
 
         row = CSV.read(path)[1]
-        expect(row[0]).to eq('http://example.com')
-        expect(row[1]).to eq('true')
-        expect(row[2]).to eq('20260326120000')
-        expect(row[3]).to eq('https://web.archive.org/web/20260326120000/http://example.com')
+        header = described_class::CHECK_COLUMNS
+        expect(row[header.index('url')]).to eq('https://example.com')
+        expect(row[header.index('original_url')]).to eq('http://www.example.com/')
+        expect(row[header.index('archived')]).to eq('true')
+        expect(row[header.index('timestamp')]).to eq('20260326120000')
+        expect(row[header.index('wayback_url')])
+          .to eq('https://web.archive.org/web/20260326120000/http://www.example.com/')
       end
 
       it 'writes correct check JSON values' do
@@ -175,10 +184,12 @@ RSpec.describe WaybackArchiver::Report do
         data = JSON.parse(File.read(path))
         expect(data.length).to eq(2)
 
-        expect(data[0]['url']).to eq('http://example.com')
+        expect(data[0]['url']).to eq('https://example.com')
+        expect(data[0]['original_url']).to eq('http://www.example.com/')
         expect(data[0]['archived']).to eq(true)
         expect(data[0]['timestamp']).to eq('20260326120000')
-        expect(data[0]['wayback_url']).to eq('https://web.archive.org/web/20260326120000/http://example.com')
+        expect(data[0]['wayback_url'])
+          .to eq('https://web.archive.org/web/20260326120000/http://www.example.com/')
 
         expect(data[1]['url']).to eq('http://other.com')
         expect(data[1]['archived']).to eq(false)

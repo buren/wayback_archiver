@@ -4,6 +4,10 @@ require 'wayback_archiver/cdx'
 RSpec.describe WaybackArchiver::CDX do
   let(:cdx_url) { 'https://web.archive.org/cdx/search/cdx' }
 
+  def fixture(name)
+    File.read(File.expand_path("../data/cdx/#{name}", __dir__))
+  end
+
   before do
     described_class.instance_variable_set(
       :@rate_limiter,
@@ -43,6 +47,18 @@ RSpec.describe WaybackArchiver::CDX do
       expect(result.url).to eq('http://example.com')
     end
 
+    it 'preserves the exact original URL from a recorded CDX response' do
+      stub_request(:get, /#{Regexp.escape(cdx_url)}/)
+        .to_return(status: 200, body: fixture('success.json'))
+
+      result = described_class.check('https://cnn.com')
+
+      expect(result.original_url).to eq('http://www.cnn.com/')
+      expect(result.timestamp).to eq('20100215131836')
+      expect(result.wayback_url)
+        .to eq('https://web.archive.org/web/20100215131836/http://www.cnn.com/')
+    end
+
     it 'returns not-archived CheckResult when CDX returns empty' do
       stub_request(:get, /#{Regexp.escape(cdx_url)}/)
         .to_return(status: 200, body: '[]')
@@ -61,6 +77,7 @@ RSpec.describe WaybackArchiver::CDX do
 
       expect(result.archived?).to eq(false)
       expect(result.errored?).to eq(true)
+      expect(result.error_category).to eq(:malformed_response)
     end
 
     it 'returns an errored CheckResult on an HTTP failure' do
@@ -71,17 +88,43 @@ RSpec.describe WaybackArchiver::CDX do
 
       expect(result.archived?).to eq(false)
       expect(result.errored?).to eq(true)
+      expect(result.error_category).to eq(:request_failed)
       expect(result.error).to be_a(WaybackArchiver::Request::ResponseError)
     end
 
     it 'returns an errored CheckResult for an unexpected JSON object' do
       stub_request(:get, /#{Regexp.escape(cdx_url)}/)
-        .to_return(status: 200, body: '{"message":"rate limited"}')
+        .to_return(status: 200, body: fixture('malformed.json'))
 
       result = described_class.check('http://example.com')
 
       expect(result.errored?).to eq(true)
-      expect(result.error).to be_a(WaybackArchiver::Request::ServerError)
+      expect(result).to be_malformed_response
+      expect(result.error).to be_a(described_class::UnexpectedResponseError)
+    end
+
+    it 'classifies a recorded administrative block without retrying it' do
+      stub_request(:get, /#{Regexp.escape(cdx_url)}/)
+        .to_return(status: 403, body: fixture('blocked_site.txt'))
+
+      result = described_class.check('https://nationalpost.com/health')
+
+      expect(result.error_category).to eq(:blocked_site)
+      expect(result).to be_blocked
+      expect(result.error).to be_a(described_class::BlockedSiteError)
+      expect(WebMock).to have_requested(:get, /#{Regexp.escape(cdx_url)}/).once
+    end
+
+    it 'classifies a robots-policy block without retrying it' do
+      stub_request(:get, /#{Regexp.escape(cdx_url)}/)
+        .to_return(status: 403, body: fixture('blocked_by_robots.txt'))
+
+      result = described_class.check('http://example.com/private')
+
+      expect(result.error_category).to eq(:blocked_by_robots)
+      expect(result).to be_blocked
+      expect(result.error).to be_a(described_class::BlockedByRobotsError)
+      expect(WebMock).to have_requested(:get, /#{Regexp.escape(cdx_url)}/).once
     end
 
     it 'returns not-archived CheckResult on CDX error' do
@@ -91,6 +134,7 @@ RSpec.describe WaybackArchiver::CDX do
       result = described_class.check('http://example.com')
 
       expect(result.archived?).to eq(false)
+      expect(result.error_category).to eq(:request_failed)
       expect(result.error).to be_a(WaybackArchiver::Request::ServerError)
     end
 
@@ -111,12 +155,22 @@ RSpec.describe WaybackArchiver::CDX do
       described_class.check('http://example.com')
     end
 
-    it 'escapes URL in query parameter' do
+    it 'encodes every query value without allowing parameter injection' do
       stub_request(:get, /#{Regexp.escape(cdx_url)}/)
-        .with { |req| req.uri.to_s.include?('url=http') }
+        .with do |req|
+          pairs = URI.decode_www_form(req.uri.query)
+          params = pairs.to_h
+          params['url'] == 'http://example.com/path?q=1&from=attacker' &&
+            params['from'] == '20260301000000&filter=attacker' &&
+            pairs.count { |key, _| key == 'filter' } == 1 &&
+            params['filter'] == 'statuscode:200'
+        end
         .to_return(status: 200, body: '[]')
 
-      result = described_class.check('http://example.com/path?q=1')
+      result = described_class.check(
+        'http://example.com/path?q=1&from=attacker',
+        from: '20260301000000&filter=attacker'
+      )
       expect(result).to be_a(WaybackArchiver::CheckResult)
     end
 

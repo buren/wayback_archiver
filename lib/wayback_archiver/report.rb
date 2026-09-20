@@ -6,7 +6,7 @@ module WaybackArchiver
   # @api private
   class Report
     COLUMNS = %w[url success wayback_url job_id timestamp duration_sec screenshot_url status_ext error_category error].freeze
-    CHECK_COLUMNS = %w[url archived timestamp wayback_url error].freeze
+    CHECK_COLUMNS = %w[url original_url archived timestamp wayback_url error_category error].freeze
 
     # Write results to a file. Format is detected from the file extension.
     # Accepts either Array<ArchiveResult> or Array<CheckResult>.
@@ -92,17 +92,27 @@ module WaybackArchiver
     end
 
     def self.check_to_row(result)
-      [result.url, result.archived?, result.timestamp, result.wayback_url, result.error&.to_s]
+      [
+        result.url,
+        result.original_url,
+        result.archived?,
+        result.timestamp,
+        result.wayback_url,
+        result.error_category&.to_s,
+        result.error&.to_s
+      ]
     end
     private_class_method :check_to_row
 
     def self.check_to_hash(result)
       {
-        'url'        => result.url,
-        'archived'   => result.archived?,
-        'timestamp'  => result.timestamp,
-        'wayback_url' => result.wayback_url,
-        'error'      => result.error&.to_s
+        'url'            => result.url,
+        'original_url'   => result.original_url,
+        'archived'       => result.archived?,
+        'timestamp'      => result.timestamp,
+        'wayback_url'    => result.wayback_url,
+        'error_category' => result.error_category&.to_s,
+        'error'          => result.error&.to_s
       }
     end
     private_class_method :check_to_hash

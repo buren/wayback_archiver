@@ -58,6 +58,7 @@ CLI exit codes: `0` success, `1` finished with one or more failed URLs, `2` inva
 - **Smart crawl filtering** — crawler only yields archivable content types (HTML, PDF, XML, RSS, JSON, plain text, Word docs), automatically skipping images, CSS, JS, and fonts. SPN2 captures embedded assets as part of page snapshots.
 - **Batch status polling** — efficient bulk archiving via `POST /save/status` with multiple job IDs
 - **CDX API integration** — `--check` queries the Wayback Machine CDX API to see if URLs are already archived; `--skip-archived[=TIMEDELTA]` skips URLs already in the archive (optionally within a time window)
+- **Accurate CDX results** — checks retain the exact original URL returned by CDX for playback links, expose blocked/malformed/request failure categories, and safely encode all query parameters
 - **Resumable sessions** — `--session=PATH` writes a progressive JSONL state file during archiving; `--resume=PATH` picks up where a previous run left off, skipping already-completed URLs
 - **File input** — `--file=PATH` (or `-f`) reads URLs from a file (one per line, `#` comments supported, `-` for stdin)
 - **RSS/Atom feed strategy** — `strategy: :rss` for archiving URLs from RSS and Atom feeds (not included in `:auto` since feeds typically contain only recent posts)

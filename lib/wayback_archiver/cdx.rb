@@ -1,5 +1,5 @@
-require 'cgi'
 require 'json'
+require 'uri'
 
 require 'wayback_archiver/check_result'
 require 'wayback_archiver/rate_limiter'
@@ -12,6 +12,14 @@ module WaybackArchiver
   # Used to check if URLs are already archived.
   # @api private
   class CDX
+    # The CDX endpoint uses these two errors for policy denials. Keeping them
+    # distinct from transport errors lets callers explain why a lookup is
+    # unknown instead of reporting every 403 as a generic server failure.
+    class BlockedError < Request::ServerError; end
+    class BlockedByRobotsError < BlockedError; end
+    class BlockedSiteError < BlockedError; end
+    class UnexpectedResponseError < Request::ServerError; end
+
     URL = 'https://web.archive.org/cdx/search/cdx'.freeze
 
     # Guards lazy rate-limiter construction: the first calls come from
@@ -75,31 +83,67 @@ module WaybackArchiver
         retry_on: [Request::Error], retry_if: method(:retryable_error?)
       ) do
         rate_limiter.acquire
-        Request.get(
+        result = Request.get(
           "#{URL}?#{query(url, from)}",
-          raise_on_http_error: true,
           open_timeout: OPEN_TIMEOUT,
           read_timeout: READ_TIMEOUT
         )
+        raise response_error(url, result) unless result.success?
+
+        result
       end
 
       parse_response(url, response.body)
     rescue Request::Error => e
       WaybackArchiver.logger.warn("CDX check failed for #{url}: #{e.message}")
-      CheckResult.new(url, archived: false, error: e)
+      CheckResult.new(url, archived: false, error: e, error_category: error_category(e))
     end
 
     def self.query(url, from)
-      params = "url=#{CGI.escape(url)}&output=json&limit=-1&filter=statuscode:200"
-      params << "&from=#{from}" if from
-      params
+      params = {
+        url: url,
+        output: 'json',
+        limit: -1,
+        filter: 'statuscode:200'
+      }
+      params[:from] = from if from
+      URI.encode_www_form(params)
     end
     private_class_method :query
+
+    def self.response_error(url, response)
+      blocked_error(url, response.body) || Request::ResponseError.new(
+        "Failed with response code: #{response.code} when requesting CDX for #{url}",
+        code: response.code
+      )
+    end
+    private_class_method :response_error
+
+    def self.blocked_error(url, body)
+      text = body.to_s
+      if text.include?('RobotAccessControlException')
+        BlockedByRobotsError.new("Wayback Machine access to #{url} is blocked by robots.txt")
+      elsif text.include?('AdministrativeAccessControlException') || text.include?('Blocked Site Error')
+        BlockedSiteError.new("Wayback Machine access to #{url} is administratively blocked")
+      end
+    end
+    private_class_method :blocked_error
+
+    def self.error_category(error)
+      case error
+      when BlockedByRobotsError then :blocked_by_robots
+      when BlockedSiteError then :blocked_site
+      when UnexpectedResponseError then :malformed_response
+      else :request_failed
+      end
+    end
+    private_class_method :error_category
 
     # A response that came back with a status tells us whether retrying is
     # worth it; a connection-level failure (timeout, reset, DNS) has no status
     # and is always worth one more go.
     def self.retryable_error?(error)
+      return false if error.is_a?(BlockedError)
       return RETRYABLE_HTTP_CODES.include?(error.code) if error.is_a?(Request::ResponseError) && error.code
 
       true
@@ -125,7 +169,7 @@ module WaybackArchiver
             # and the URL would silently vanish from the results — a failed
             # lookup must surface as "unknown", never as "not archived".
             WaybackArchiver.logger.error("CDX check raised for #{url}: #{e.class}, #{e.message}")
-            CheckResult.new(url, archived: false, error: e)
+            CheckResult.new(url, archived: false, error: e, error_category: :request_failed)
           end
           results << result
           block&.call(result)
@@ -138,25 +182,38 @@ module WaybackArchiver
     end
 
     def self.parse_response(url, body)
+      if (error = blocked_error(url, body))
+        raise error
+      end
+
       data = JSON.parse(body)
       # CDX JSON output: first row is header names, subsequent rows are values.
       # A JSON object is an API/proxy error, not evidence that the URL is absent.
       unless data.is_a?(Array)
-        raise Request::ServerError, "Unexpected CDX response type: #{data.class}"
+        raise UnexpectedResponseError, "Unexpected CDX response type: #{data.class}"
       end
 
       return CheckResult.new(url, archived: false) if data.length <= 1
 
       unless data[0].is_a?(Array) && data[1].is_a?(Array)
-        raise Request::ServerError, "Unexpected CDX row format: #{data.inspect}"
+        raise UnexpectedResponseError, "Unexpected CDX row format: #{data.inspect}"
       end
 
       headers = data[0]
       row = data[1]
       record = headers.zip(row).to_h
-      CheckResult.new(url, archived: true, timestamp: record['timestamp'])
+      unless record['timestamp'].is_a?(String) && !record['timestamp'].empty?
+        raise UnexpectedResponseError, "CDX response is missing a capture timestamp: #{data.inspect}"
+      end
+
+      CheckResult.new(
+        url,
+        archived: true,
+        original_url: record['original'],
+        timestamp: record['timestamp']
+      )
     rescue JSON::ParserError => e
-      raise Request::ServerError, "Invalid JSON in CDX response: #{e.message}"
+      raise UnexpectedResponseError, "Invalid JSON in CDX response: #{e.message}"
     end
     private_class_method :parse_response
   end
