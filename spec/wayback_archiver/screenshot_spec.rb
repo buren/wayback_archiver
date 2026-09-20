@@ -51,6 +51,42 @@ RSpec.describe WaybackArchiver::Screenshot do
         end
       end
 
+      # Regression: a smoke test caught a 404 HTML error page being written
+      # to disk as a .png and logged as "Screenshot saved to ...", with the
+      # bogus path recorded in the report's screenshot_path.
+      it 'raises instead of saving an HTTP error body as a PNG' do
+        Dir.mktmpdir do |dir|
+          stub_request(:get, screenshot_url)
+            .to_return(status: 404, body: '<!doctype html><title>404 Not Found</title>')
+
+          expect { described_class.download(screenshot_url, original_url, directory: dir) }
+            .to raise_error(WaybackArchiver::Request::ResponseError)
+          expect(Dir.children(dir)).to be_empty
+        end
+      end
+
+      it 'raises instead of saving a 200 response that is not a PNG' do
+        Dir.mktmpdir do |dir|
+          stub_request(:get, screenshot_url)
+            .to_return(status: 200, body: '<!doctype html><title>Login</title>')
+
+          expect { described_class.download(screenshot_url, original_url, directory: dir) }
+            .to raise_error(WaybackArchiver::Request::ServerError, /not a PNG/i)
+          expect(Dir.children(dir)).to be_empty
+        end
+      end
+
+      it 'sends the Internet Archive credentials it insists on having' do
+        Dir.mktmpdir do |dir|
+          stub_request(:get, screenshot_url).to_return(status: 200, body: png_data)
+
+          described_class.download(screenshot_url, original_url, directory: dir)
+
+          expect(WebMock).to have_requested(:get, screenshot_url)
+            .with(headers: { 'Authorization' => 'LOW key:secret' })
+        end
+      end
+
       it 'raises ArgumentError if directory does not exist' do
         expect do
           described_class.download(screenshot_url, original_url, directory: '/nonexistent/path')
@@ -88,6 +124,19 @@ RSpec.describe WaybackArchiver::Screenshot do
       expect(result).to eq('/tmp/screenshot.png')
       expect(described_class).to have_received(:download)
         .with(screenshot_url, original_url, directory: '/tmp')
+    end
+
+    it 'returns nil and writes nothing when the screenshot 404s' do
+      Dir.mktmpdir do |dir|
+        WaybackArchiver.config.access_key = 'key'
+        WaybackArchiver.config.secret_key = 'secret'
+        stub_request(:get, screenshot_url).to_return(status: 404, body: 'nope')
+
+        result = described_class.maybe_download(screenshot_url, original_url, screenshot_dir: dir)
+
+        expect(result).to be_nil
+        expect(Dir.children(dir)).to be_empty
+      end
     end
 
     it 'returns nil and logs error when download raises' do

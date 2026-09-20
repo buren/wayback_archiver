@@ -11,6 +11,12 @@ module WaybackArchiver
     # @param directory [String] local directory to save the screenshot.
     # @raise [AuthenticationError] if credentials are not configured.
     # @raise [ArgumentError] if the directory does not exist.
+    # PNG magic number. SPN2 hands back a screenshot URL that can 404 (or
+    # serve a login page), and writing that body to a .png produced a file
+    # that looked saved, logged as saved, and was recorded in the report —
+    # but was an HTML error page on disk.
+    PNG_SIGNATURE = "\x89PNG\r\n\x1a\n".b.freeze
+
     def self.download(screenshot_url, original_url, directory:)
       unless WaybackArchiver.config.credentials?
         raise AuthenticationError, 'Credentials required for screenshot download'
@@ -20,11 +26,23 @@ module WaybackArchiver
         raise ArgumentError, "Directory does not exist: #{directory}"
       end
 
-      response = Request.get(screenshot_url, follow_redirects: true)
+      response = Request.get(
+        screenshot_url,
+        follow_redirects: true,
+        raise_on_http_error: true,
+        headers: auth_headers
+      )
+
+      body = response.body.to_s
+      unless body.b.start_with?(PNG_SIGNATURE)
+        raise Request::ServerError,
+              "Screenshot response is not a PNG (#{body.bytesize} bytes) for #{original_url}"
+      end
+
       filename = sanitize_filename(original_url)
       path = File.join(directory, "#{filename}.png")
 
-      File.binwrite(path, response.body)
+      File.binwrite(path, body)
       WaybackArchiver.logger.info("Screenshot saved to #{path}")
 
       path
@@ -41,6 +59,15 @@ module WaybackArchiver
       WaybackArchiver.logger.error("Failed to download screenshot: #{e.message}")
       nil
     end
+
+    # The method already refuses to run without credentials; send them rather
+    # than demanding they exist and then fetching anonymously.
+    def self.auth_headers
+      {
+        'Authorization' => "LOW #{WaybackArchiver.config.access_key}:#{WaybackArchiver.config.secret_key}"
+      }
+    end
+    private_class_method :auth_headers
 
     def self.sanitize_filename(url)
       url.to_s
