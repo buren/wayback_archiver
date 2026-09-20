@@ -1,14 +1,5 @@
 # Change Log
 
-## HEAD
-
-- **List URLs mode** — `--list-urls` discovers URLs using any strategy (crawl, sitemap, RSS, auto) and prints them one per line without archiving. Useful for auditing site contents, previewing before archiving, or piping to other tools. Supports all filter options (`--skip-patterns`, `--include-ext`, `--exclude-ext`, `--limit`). Logging is suppressed by default for clean pipe-friendly output.
-- **Crawl deduplication** — pages with the same URL path and identical body content are automatically skipped during crawl, preventing infinite pagination from flooding SPN2 with duplicate submissions. Opt out with `--no-skip-duplicates` or `skip_duplicates: false`. New `on_duplicate_skipped` listener event and duplicate count in CLI summary.
-- **Crawl HTTP filtering** — non-success pages (404, 500, etc.) discovered during crawl are now filtered out before archiving instead of being submitted to SPN2 and failing predictably.
-- **Quieter retry logging** — intermediate retry attempts (connection errors, transient SPN2 errors, poll failures) now log at debug level instead of WARN. Only final failures (retry limit exceeded) log at ERROR.
-- **Increased retry limit** — per-URL retry cap for transient errors increased from 3 to 5, improving tolerance for intermittent SPN2 gateway timeouts and connection refused errors.
-- **Skip patterns** — `--skip-patterns=PATTERN` accepts comma-separated regex patterns to exclude matching URLs from archiving. Works for all strategies. Ruby API: `skip_patterns: [/pattern/]`.
-
 ## v2.0.0
 
 **Breaking changes:**
@@ -78,6 +69,10 @@ CLI exit codes: `0` success, `1` finished with one or more failed URLs, `2` inva
 - **Connection error retry** — transient connection errors (timeouts, refused, reset) retried with exponential backoff (up to 5 attempts)
 - **Ctrl+C handling** — graceful interrupt shows summary of progress so far and a `--resume` command to continue
 - **Dynamic chunk sizing** — batch submissions adapt chunk size based on `check_user_status` response and available capture slots
+- **List URLs mode** — `--list-urls` discovers URLs using any strategy (crawl, sitemap, RSS, auto) and prints them one per line without archiving. Useful for auditing site contents, previewing before archiving, or piping to other tools. Supports all filter options (`--skip-patterns`, `--include-ext`, `--exclude-ext`, `--limit`). Logging is suppressed by default for clean pipe-friendly output.
+- **Crawl deduplication** — pages with the same URL path and identical body content are automatically skipped during crawl, preventing infinite pagination from flooding SPN2 with duplicate submissions. Opt out with `--no-skip-duplicates` or `skip_duplicates: false`. New `on_duplicate_skipped` listener event and duplicate count in CLI summary.
+- **Crawl HTTP filtering** — non-success pages (404, 500, etc.) discovered during crawl are now filtered out before archiving instead of being submitted to SPN2 and failing predictably.
+- **Skip patterns** — `--skip-patterns=PATTERN` accepts comma-separated regex patterns to exclude matching URLs from archiving. Works for all strategies. Ruby API: `skip_patterns: [/pattern/]`.
 - **CLI improvements** — summary after archiving (`--[no-]summary`), `--quiet` mode, `--rss` flag, input validation for concurrency/limit/timeout/host patterns, startup banner showing limit/hosts/skip-archived, human-readable duration in summary (h/m/s)
 - **`Request.post`** — new HTTP POST support in the request layer
 - **GitHub Actions CI** — replaced Travis CI, testing Ruby 3.1–3.4
@@ -86,6 +81,8 @@ CLI exit codes: `0` success, `1` finished with one or more failed URLs, `2` inva
 
 **Bug fixes / internal:**
 
+- **Quieter retry logging** — intermediate retry attempts (connection errors, transient SPN2 errors, poll failures) now log at debug level instead of WARN. Only final failures (retry limit exceeded) log at ERROR.
+- **Increased retry limit** — per-URL retry cap for transient errors increased from 3 to 5, improving tolerance for intermittent SPN2 gateway timeouts and connection refused errors.
 - Fixed CLI typo: `Verboes` → `Verbose`
 - Removed duplicate `-h` flag in CLI
 - Fixed `:auto` strategy not passing `limit:` to all code paths

@@ -31,12 +31,13 @@ module WaybackArchiver
     end
 
     # Convert a timedelta string to a CDX API timestamp (YYYYMMDDHHMMSS).
-    # Returns the timestamp for (now - timedelta).
+    # Returns the timestamp for (now - timedelta). CDX timestamps are UTC, so
+    # the local zone must not leak into the formatted value.
     # @param str [String] timedelta string
-    # @return [String] 14-digit timestamp
+    # @return [String] 14-digit UTC timestamp
     def self.to_cdx_timestamp(str)
       seconds = parse(str)
-      (Time.now - seconds).strftime('%Y%m%d%H%M%S')
+      (Time.now - seconds).utc.strftime('%Y%m%d%H%M%S')
     end
   end
 end

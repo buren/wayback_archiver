@@ -39,17 +39,14 @@ module WaybackArchiver
   #    WaybackArchiver.archive('example.com', strategy: :auto)
   #    WaybackArchiver.archive('example.com', strategy: :auto, concurrency: 10)
   #    WaybackArchiver.archive('example.com', strategy: :auto, limit: 100) # send max 100 URLs
-  #    WaybackArchiver.archive('example.com', :auto)
   # @example Crawl example.com and send all URLs of the same domain
   #    WaybackArchiver.archive('example.com', strategy: :crawl)
   #    WaybackArchiver.archive('example.com', strategy: :crawl, concurrency: 10)
   #    WaybackArchiver.archive('example.com', strategy: :crawl, limit: 100) # send max 100 URLs
-  #    WaybackArchiver.archive('example.com', :crawl)
   # @example Send example.com Sitemap URLs
   #    WaybackArchiver.archive('example.com', strategy: :sitemap)
   #    WaybackArchiver.archive('example.com', strategy: :sitemap, concurrency: 10)
   #    WaybackArchiver.archive('example.com', strategy: :sitemap, limit: 100) # send max 100 URLs
-  #    WaybackArchiver.archive('example.com', :sitemap)
   # @example Send only example.com
   #    WaybackArchiver.archive('example.com', strategy: :url)
   #    WaybackArchiver.archive('example.com', strategy: :url, concurrency: 10)

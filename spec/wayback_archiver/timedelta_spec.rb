@@ -52,9 +52,24 @@ RSpec.describe WaybackArchiver::Timedelta do
 
     it 'returns a timestamp in the past' do
       ts = described_class.to_cdx_timestamp('1d')
-      parsed = Time.strptime(ts, '%Y%m%d%H%M%S')
+      parsed = Time.strptime("#{ts} UTC", '%Y%m%d%H%M%S %Z')
       expect(parsed).to be < Time.now
       expect(parsed).to be > Time.now - 90_000 # ~25 hours tolerance
+    end
+
+    # Regression: CDX timestamps are UTC, but this used to format Time.now in
+    # the local zone, shifting the --skip-archived window by the UTC offset.
+    it 'formats in UTC regardless of the local timezone' do
+      original_tz = ENV['TZ']
+      ENV['TZ'] = 'Asia/Tokyo' # UTC+9, no DST
+
+      frozen = Time.at(1_774_000_000)
+      allow(Time).to receive(:now).and_return(frozen)
+
+      expect(described_class.to_cdx_timestamp('0'))
+        .to eq(frozen.utc.strftime('%Y%m%d%H%M%S'))
+    ensure
+      ENV['TZ'] = original_tz
     end
   end
 end

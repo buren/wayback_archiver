@@ -45,7 +45,11 @@ module WaybackArchiver
     #        /host[\d]+\.example\.com/
     #      ]
     #    )
-    def self.crawl(url, hosts: [], limit: WaybackArchiver.config.max_limit, exts: nil, ignore_exts: nil, skip_duplicates: true, capture_all: false)
+    # Extension filtering is deliberately absent here. Spidr's exts/ignore_exts
+    # gate *traversal*, not output: constraining them to, say, "pdf" makes
+    # Spidr refuse to visit the HTML pages that link to the PDFs, and the crawl
+    # finds nothing. Callers filter the yielded URLs with {URLFilter} instead.
+    def self.crawl(url, hosts: [], limit: WaybackArchiver.config.max_limit, skip_duplicates: true, capture_all: false)
       urls = []
       seen_pages = {} # path (without query) => MD5 digest of body
       start_at_url = resolve_start_url(Request.build_uri(url).to_s)
@@ -55,8 +59,6 @@ module WaybackArchiver
         user_agent: WaybackArchiver.config.user_agent
       }
       options[:limit] = limit unless limit == -1
-      options[:exts] = exts if exts
-      options[:ignore_exts] = ignore_exts if ignore_exts
 
       Spidr.site(start_at_url, **options) do |spider|
         spider.every_page do |page|

@@ -406,16 +406,31 @@ RSpec.describe WaybackArchiver::URLCollector do
       end
     end
 
-    it 'passes exts and ignore_exts through to Spidr' do
+    # Regression: extension filters used to be handed to Spidr as exts/
+    # ignore_exts, which gate *traversal*, not output. An HTML seed page has
+    # no matching extension, so Spidr refused to visit it and the crawl
+    # discovered nothing at all. Extension filtering belongs to URLFilter,
+    # applied to the URLs the crawl yields.
+    it 'does not accept extension filters' do
       stub_request(:get, 'http://example.com')
         .to_return(status: 200, body: '', headers: {})
 
-      expect(Spidr).to receive(:site).with(
-        'http://example.com',
-        hash_including(exts: %w[html], ignore_exts: %w[pdf])
-      ).and_yield(double(every_page: nil))
+      expect { described_class.crawl('http://example.com', exts: %w[pdf]) }
+        .to raise_error(ArgumentError, /unknown keyword: :exts/)
+      expect { described_class.crawl('http://example.com', ignore_exts: %w[pdf]) }
+        .to raise_error(ArgumentError, /unknown keyword: :ignore_exts/)
+    end
 
-      described_class.crawl('http://example.com', exts: %w[html], ignore_exts: %w[pdf])
+    it 'follows HTML pages to reach linked documents' do
+      response_headers = { 'Content-Type' => 'text/html; charset=utf-8' }
+      stub_request(:get, 'http://example.com/')
+        .to_return(status: 200, body: '<a href="/doc.pdf">doc</a>', headers: response_headers)
+      stub_request(:get, 'http://example.com/doc.pdf')
+        .to_return(status: 200, body: '%PDF-1.4', headers: { 'Content-Type' => 'application/pdf' })
+
+      found_urls = described_class.crawl('http://example.com')
+
+      expect(found_urls).to include('http://example.com/doc.pdf')
     end
   end
 end

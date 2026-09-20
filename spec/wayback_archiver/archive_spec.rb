@@ -910,17 +910,39 @@ RSpec.describe WaybackArchiver::Archive do
       expect(call_count).to eq(2)
     end
 
-    it 'passes extension filters through to URLCollector.crawl' do
+    # Regression: extension filters were forwarded to Spidr, which applies
+    # them to traversal. --include-ext pdf then stopped the crawler from
+    # visiting the HTML pages that link to the PDFs, so it archived nothing.
+    it 'does not constrain crawl traversal by extension' do
       allow(WaybackArchiver::URLCollector).to receive(:crawl).and_return([])
       allow(WaybackArchiver::WaybackMachine).to receive(:submit)
       allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses).and_return({})
 
       described_class.crawl('http://example.com', include_ext: %w[html], exclude_ext: %w[pdf])
 
-      expect(WaybackArchiver::URLCollector).to have_received(:crawl).with(
-        'http://example.com',
-        hash_including(exts: %w[html], ignore_exts: %w[pdf])
+      expect(WaybackArchiver::URLCollector).to have_received(:crawl) do |_source, **options|
+        expect(options).not_to have_key(:exts)
+        expect(options).not_to have_key(:ignore_exts)
+      end
+    end
+
+    it 'crawls HTML pages and archives only the matching extension' do
+      html_headers = { 'Content-Type' => 'text/html; charset=utf-8' }
+      stub_request(:get, 'http://example.com/')
+        .to_return(status: 200, body: '<a href="/doc.pdf">doc</a>', headers: html_headers)
+      stub_request(:get, 'http://example.com/doc.pdf')
+        .to_return(status: 200, body: '%PDF-1.4', headers: { 'Content-Type' => 'application/pdf' })
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit) do |url|
+        { 'url' => url, 'job_id' => 'job-1' }
+      end
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses).and_return(
+        'job-1' => { 'status' => 'success', 'job_id' => 'job-1', 'timestamp' => '20260326120000', 'original_url' => 'http://example.com/doc.pdf' }
       )
+
+      described_class.crawl('http://example.com', include_ext: %w[pdf])
+
+      expect(WaybackArchiver::WaybackMachine).to have_received(:submit).once
+      expect(WaybackArchiver::WaybackMachine).to have_received(:submit).with('http://example.com/doc.pdf')
     end
 
     it 'passes capture_all through to URLCollector.crawl so error pages are discovered' do

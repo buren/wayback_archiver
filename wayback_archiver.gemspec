@@ -16,7 +16,9 @@ Gem::Specification.new do |spec|
   spec.license       = 'MIT'
 
   spec.files         = Dir.glob('{bin,lib}/**/*')
-  spec.executables   = spec.files.grep(%r{^bin/}) { |f| File.basename(f) }
+  # Explicit: a bin/ glob would also install bin/console, putting a generic
+  # `console` binary on the user's PATH.
+  spec.executables   = ['wayback_archiver']
   spec.require_paths = ['lib']
 
   spec.required_ruby_version = '>= 3.1.0'

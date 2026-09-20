@@ -115,7 +115,10 @@ module WaybackArchiver
         Thread.current.report_on_exception = false # we re-raise via thread.value
         # capture_all stays in options (it's an SPN2 body param) but the
         # crawler also needs it, to let 4xx/5xx pages through to submission.
-        URLCollector.crawl(source, hosts: hosts, limit: limit, exts: include_ext, ignore_exts: exclude_ext, skip_duplicates: skip_duplicates, capture_all: !!options[:capture_all]) do |url|
+        # include_ext/exclude_ext are applied to the yielded URLs below, never
+        # handed to the crawler: they would gate traversal and starve the
+        # crawl of the HTML pages that link to the matching documents.
+        URLCollector.crawl(source, hosts: hosts, limit: limit, skip_duplicates: skip_duplicates, capture_all: !!options[:capture_all]) do |url|
           next if skip_urls&.include?(url)
           next if skip_patterns&.any? { |pat| pat.match?(url) }
           next unless url_filter.match?(url)

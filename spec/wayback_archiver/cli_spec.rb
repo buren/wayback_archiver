@@ -237,7 +237,8 @@ RSpec.describe WaybackArchiver::CLI do
       expect(WaybackArchiver).to have_received(:check) do |urls, concurrency:, from:|
         expect(urls).to eq(%w[http://example.com/page])
         expect(from).to match(/\A\d{14}\z/)
-        cutoff = Time.strptime(from, '%Y%m%d%H%M%S')
+        # CDX timestamps are UTC, not local time.
+        cutoff = Time.strptime("#{from} UTC", '%Y%m%d%H%M%S %Z')
         expect(cutoff).to be_within(60).of(Time.now - (7 * 86_400))
       end
     end
