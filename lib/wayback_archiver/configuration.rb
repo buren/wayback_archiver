@@ -40,8 +40,10 @@ module WaybackArchiver
     end
 
     # Returns whether both access_key and secret_key are configured.
+    # An empty string counts as missing: `export WAYBACK_ACCESS_KEY=` would
+    # otherwise sail past the preflight check and send `Authorization: LOW :`.
     def credentials?
-      !access_key.nil? && !secret_key.nil?
+      !access_key.to_s.empty? && !secret_key.to_s.empty?
     end
 
     # Returns the current logger, defaulting to NullLogger.

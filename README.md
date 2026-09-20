@@ -16,7 +16,7 @@ Or add to your Gemfile:
 gem 'wayback_archiver'
 ```
 
-Requires Ruby >= 3.1.
+Requires Ruby >= 3.3.
 
 ## Usage
 
@@ -173,7 +173,51 @@ wayback_archiver example.com --quiet
 wayback_archiver example.com --concurrency=10 --limit=100 --capture-all --verbose
 ```
 
-Run `wayback_archiver --help` for all options.
+#### All options
+
+| Flag | Description |
+| --- | --- |
+| `--auto` | Sitemap if one is found, otherwise crawl (default) |
+| `--crawl` | Spider the site for URLs |
+| `--sitemap` | Parse sitemap XML (index files and gzip supported) |
+| `--urls`, `--url` | Treat the arguments as the URLs to archive |
+| `--rss` | Extract URLs from an RSS/Atom feed |
+| `--hosts=HOST` | Restrict crawling to these hosts (comma-separated, repeatable). Plain hostnames match exactly; anything else is a regex |
+| `--concurrency=N` | Parallel submissions (default: 4) |
+| `--limit=N` | Max URLs to archive (-1 for unlimited) |
+| `--access-key=KEY`, `--secret-key=KEY` | Internet Archive S3 credentials (prefer the env vars) |
+| `--capture-all` | Capture error pages (HTTP 4xx/5xx) |
+| `--capture-outlinks` | Auto-capture linked pages, up to 100 |
+| `--capture-screenshot` | Generate a full-page PNG screenshot |
+| `--screenshot-dir=PATH` | Save screenshots locally (needs `--capture-screenshot`) |
+| `--force-get` | Force HTTP GET instead of HEAD + browser |
+| `--skip-first-archive` | Skip SPN2's initial duplicate check (faster) |
+| `--delay-wb-availability` | Delay public availability by ~12h |
+| `--if-not-archived-within=TIMEDELTA` | Server-side skip if a recent snapshot exists, e.g. `7d`, `3d 5h 20m` |
+| `--js-behavior-timeout=N` | Run JS for N seconds after page load (0–30) |
+| `--use-user-agent=AGENT` | User-Agent SPN2 sends to the target page |
+| `--outlinks-availability` | Return last-capture timestamps for outlinks |
+| `--check` | Report which URLs are already archived, then exit |
+| `--list-urls` | Print discovered URLs, then exit |
+| `--skip-archived[=TIMEDELTA]` | Skip URLs already archived (optionally only within a window) |
+| `--include-ext=pdf,doc` | Only archive URLs with these extensions |
+| `--exclude-ext=zip,png` | Skip URLs with these extensions |
+| `--skip-patterns=PATTERN` | Skip URLs matching regex(es), comma-separated, repeatable |
+| `-f`, `--file=PATH` | Read URLs from a file (`-` for stdin) |
+| `--session=PATH` | Write the session file here (default: auto-generated in /tmp) |
+| `--no-session` | Disable the session file |
+| `--resume=PATH` | Resume from a previous session file |
+| `--log=PATH` | Write logs to a file instead of STDOUT |
+| `--[no-]verbose` | Verbose (debug) logging |
+| `--quiet` | Suppress all log output |
+| `--[no-]summary` | Print the summary after archiving (default: on) |
+| `--[no-]skip-duplicates` | Skip crawled pages with duplicate content (default: on) |
+| `--report=PATH` | Write a report (`.csv`, `.json` or `.jsonl`) |
+| `--status` | Show SPN2 system and user status, then exit |
+| `-h`, `--help`, `--version` | Help and version |
+
+Exit codes: `0` success, `1` one or more URLs failed, `2` invalid arguments,
+`3` credentials missing, `4` discovery or crawl failed, `130` interrupted.
 
 **View your archives:** [web.archive.org/web/*/http://example.com](https://web.archive.org/web/*/http://example.com)
 

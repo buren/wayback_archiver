@@ -62,7 +62,9 @@ module WaybackArchiver
     def call
       @results = Concurrent::Array.new
       @pending = Concurrent::Hash.new
-      @counts = Concurrent::Hash.new(0) # :success, :error — incremental counters
+      # AtomicFixnum, not a Hash: record_result runs on pool workers and
+      # `hash[k] += 1` is a non-atomic read-modify-write.
+      @counts = { success: Concurrent::AtomicFixnum.new, error: Concurrent::AtomicFixnum.new }
       @retries = Hash.new(0)
       # Separate buffer for URLs to retry. Never push retries into the SizedQueue
       # — that would deadlock when both the main thread and crawler thread block
@@ -100,7 +102,7 @@ module WaybackArchiver
         # completed results over rather than discarding them with the stack.
         raise CrawlError.new(crawler_error, @results.to_a) if crawler_error
 
-        WaybackArchiver.logger.info "#{@counts[:success]} of #{@results.length} URL(s) posted to Wayback Machine"
+        WaybackArchiver.logger.info "#{@counts[:success].value} of #{@results.length} URL(s) posted to Wayback Machine"
         @results
       ensure
         # Never leak the crawler thread. Closing the queue unblocks a crawler
@@ -219,7 +221,7 @@ module WaybackArchiver
         status = begin
           WaybackMachine.check_user_status
         rescue Request::Error => e
-          if @counts[:success] == 0 && @pending.empty? && e.is_a?(Request::ClientError)
+          if @counts[:success].value.zero? && @pending.empty? && e.is_a?(Request::ClientError)
             WaybackArchiver.logger.error("Connection refused by web.archive.org — your IP may be temporarily blocked. Try again later.")
             return :abort
           end
@@ -352,6 +354,7 @@ module WaybackArchiver
         return
       end
 
+      completed = []
       statuses.each do |job_id, status|
         next if status.nil? || status['status'] == 'pending'
 
@@ -371,14 +374,43 @@ module WaybackArchiver
           WaybackArchiver.logger.error("Retry limit exceeded (#{MAX_RETRIES}) for #{url}: #{status_ext}")
         end
 
-        result = ArchiveResult.from_status(url, job_id, status, **@options)
-        if result.success?
-          WaybackArchiver.logger.debug("Captured #{url} [#{result.formatted_timestamp}]")
-        elsif result.errored?
-          WaybackArchiver.logger.debug("Capture failed for #{url}: #{result.status_ext}")
-        end
-        record_result(result)
+        completed << [url, job_id, status]
       end
+
+      finalize_completed(completed)
+    end
+
+    # Turn completed statuses into results.
+    #
+    # ArchiveResult.from_status downloads the screenshot when screenshot_dir
+    # is set — an HTTP fetch per URL. Done serially that stalls the whole
+    # poll loop for the length of the batch, so fan the batch out when
+    # screenshots are in play. Without them this is pure CPU and stays serial.
+    def finalize_completed(completed)
+      return if completed.empty?
+
+      if @options[:screenshot_dir] && completed.length > 1 && @concurrency > 1
+        pool = ThreadPool.build([@concurrency, completed.length].min)
+        completed.each { |url, job_id, status| pool.post { finalize_one(url, job_id, status) } }
+        pool.shutdown
+        pool.wait_for_termination
+      else
+        completed.each { |url, job_id, status| finalize_one(url, job_id, status) }
+      end
+    end
+
+    def finalize_one(url, job_id, status)
+      result = ArchiveResult.from_status(url, job_id, status, **@options)
+      if result.success?
+        WaybackArchiver.logger.debug("Captured #{url} [#{result.formatted_timestamp}]")
+      elsif result.errored?
+        WaybackArchiver.logger.debug("Capture failed for #{url}: #{result.status_ext}")
+      end
+      record_result(result)
+    rescue StandardError => e
+      # Same contract as the submit path: never let a URL vanish silently.
+      WaybackArchiver.logger.error("Failed to build result for #{url}: #{e.class}, #{e.message}")
+      record_result(ArchiveResult.new(url, error: e))
     end
 
     # Poll in a loop until all pending jobs complete or timeout.
@@ -425,8 +457,8 @@ module WaybackArchiver
     end
 
     def log_progress
-      WaybackArchiver.logger.debug("  Polling... #{@counts[:success]} captured, #{@counts[:error]} failed, #{@pending.size} pending")
-      WaybackArchiver.listener.on_progress(captured: @counts[:success], failed: @counts[:error], pending: @pending.size)
+      WaybackArchiver.logger.debug("  Polling... #{@counts[:success].value} captured, #{@counts[:error].value} failed, #{@pending.size} pending")
+      WaybackArchiver.listener.on_progress(captured: @counts[:success].value, failed: @counts[:error].value, pending: @pending.size)
     end
 
     # Single funnel for final per-URL results: counts, callbacks, collection.
@@ -434,9 +466,9 @@ module WaybackArchiver
     # the progress totals can't drift from the recorded results.
     def record_result(result)
       if result.errored?
-        @counts[:error] += 1
+        @counts[:error].increment
       elsif result.success?
-        @counts[:success] += 1
+        @counts[:success].increment
       end
       @block&.call(result)
       WaybackArchiver.listener.on_completed(result: result)

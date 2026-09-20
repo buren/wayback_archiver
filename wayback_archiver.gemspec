@@ -15,13 +15,15 @@ Gem::Specification.new do |spec|
   spec.homepage      = 'https://github.com/buren/wayback_archiver'
   spec.license       = 'MIT'
 
-  spec.files         = Dir.glob('{bin,lib}/**/*')
+  spec.files         = Dir.glob('{bin,lib}/**/*') + %w[README.md CHANGELOG.md LICENSE]
   # Explicit: a bin/ glob would also install bin/console, putting a generic
   # `console` binary on the user's PATH.
   spec.executables   = ['wayback_archiver']
   spec.require_paths = ['lib']
 
-  spec.required_ruby_version = '>= 3.1.0'
+  # Matches the CI matrix. 3.1 and 3.2 are both past end-of-life and were
+  # never exercised by CI, so don't claim them.
+  spec.required_ruby_version = '>= 3.3.0'
 
   spec.post_install_message = <<~MSG
     [wayback_archiver] BREAKING CHANGE in v2.0:

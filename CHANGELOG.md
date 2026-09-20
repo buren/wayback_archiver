@@ -16,7 +16,7 @@
 - **`--hosts` matches plain hostnames exactly** — every value used to be compiled to an unanchored regex, so `--hosts=example.com` also matched `example.com.attacker.net`, `notexample.com` and `exampleXcom`, letting the crawler wander off-site. A bare DNS name is now a literal; anything else is still a regex (`--hosts='.*\.example\.com'`).
 - **Unreachable sitemaps raise** — a sitemap URL returning 404/5xx used to parse as empty and report "0 URLs found", so a typo in `--sitemap` looked like a successful run. A dead child inside a sitemap index is still skipped with a warning rather than failing the whole index.
 - Default concurrency changed from 1 to 4
-- Ruby >= 3.1 required
+- Ruby >= 3.3 required (3.1 and 3.2 are end-of-life)
 - SSL certificate verification enabled by default
 - Removed deprecated development dependencies (`coveralls`, `redcarpet`, `byebug`)
 
@@ -42,7 +42,7 @@ WaybackArchiver.configure do |config|
 end
 ```
 
-CLI exit codes: `0` success, `1` finished with one or more failed URLs, `2` invalid arguments, `3` credentials missing, `130` interrupted (Ctrl+C).
+CLI exit codes: `0` success, `1` finished with one or more failed URLs, `2` invalid arguments, `3` credentials missing, `4` discovery or crawl failed, `130` interrupted (Ctrl+C).
 
 **New features:**
 
@@ -53,7 +53,7 @@ CLI exit codes: `0` success, `1` finished with one or more failed URLs, `2` inva
 - **Cached capture detection** — when `if_not_archived_within` matches a recent snapshot, SPN2 returns immediately; these are tagged with `status_ext: 'cached'` and reported separately in the CLI summary
 - **Retry with backoff** — transient SPN2 errors (rate limits, service unavailable) are retried automatically with exponential backoff
 - **Expanded error classification** — 38 SPN2 error codes mapped to `:transient`, `:daily_limit`, and `:permanent` categories for smarter retry decisions
-- **Proactive rate limiter** — token bucket rate limiting to stay within SPN2 limits proactively
+- **Proactive rate limiter** — sliding-window rate limiting to stay within the SPN2 cap of 12 captures/min proactively
 - **Streaming crawl** — crawl strategy streams discovered URLs to SPN2 as they are found, instead of waiting for the crawl to finish. New listener events `on_url_discovered` and `on_crawl_complete` track progress.
 - **Smart crawl filtering** — crawler only yields archivable content types (HTML, PDF, XML, RSS, JSON, plain text, Word docs), automatically skipping images, CSS, JS, and fonts. SPN2 captures embedded assets as part of page snapshots.
 - **Batch status polling** — efficient bulk archiving via `POST /save/status` with multiple job IDs
@@ -77,7 +77,7 @@ CLI exit codes: `0` success, `1` finished with one or more failed URLs, `2` inva
 - **Skip patterns** — `--skip-patterns=PATTERN` accepts comma-separated regex patterns to exclude matching URLs from archiving. Works for all strategies. Ruby API: `skip_patterns: [/pattern/]`.
 - **CLI improvements** — summary after archiving (`--[no-]summary`), `--quiet` mode, `--rss` flag, input validation for concurrency/limit/timeout/host patterns, startup banner showing limit/hosts/skip-archived, human-readable duration in summary (h/m/s)
 - **`Request.post`** — new HTTP POST support in the request layer
-- **GitHub Actions CI** — replaced Travis CI, testing Ruby 3.1–3.4
+- **GitHub Actions CI** — replaced Travis CI, testing Ruby 3.3, 3.4 and 4.0
 - **Examples directory** — runnable scripts for all common use cases
 - **`bin/console`** — IRB console with the gem pre-loaded for local development
 
@@ -94,6 +94,12 @@ CLI exit codes: `0` success, `1` finished with one or more failed URLs, `2` inva
 - A crawler failure part-way through a streaming crawl no longer discards the URLs already archived — `Archive.crawl` raises `CrawlError`, which carries the completed results, and the CLI prints the summary and a resume command before exiting 4
 - Listener callbacks are isolated: an exception from a listener is logged instead of silently dropping a URL (pool workers) or aborting the run (poll loop)
 - `CDX.rate_limiter` construction is serialised behind a mutex, and an unexpected exception in a CDX worker now records an errored `CheckResult` instead of dropping the URL from the results
+- Screenshot downloads no longer stall the poll loop: `--screenshot-dir` fans the batch out instead of fetching one PNG at a time on the main thread
+- Blank credentials (`export WAYBACK_ACCESS_KEY=`) count as missing instead of sending `Authorization: LOW :`
+- The progress footer clears every physical row it occupies, so a progress line wider than the terminal no longer leaves debris or erases output above it
+- Batch success/error counters use atomic integers rather than a non-atomic `hash[k] += 1` from pool workers
+- `Request.perform_request`/`build_request_error` are actually private (`private` has no effect on `def self.` methods)
+- The gem packages its README, changelog and license
 - Fixed CLI typo: `Verboes` → `Verbose`
 - Removed duplicate `-h` flag in CLI
 - Fixed `:auto` strategy not passing `limit:` to all code paths

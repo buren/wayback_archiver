@@ -1,5 +1,8 @@
 require 'simplecov'
-SimpleCov.start
+SimpleCov.start do
+  # Without this the specs count themselves and inflate the figure.
+  add_filter '/spec/'
+end
 
 Dir['./spec/support/**/*.rb'].each { |file| require file }
 

@@ -479,7 +479,7 @@ module WaybackArchiver
         # screen — before the batch starts (discovery, CDX checks) the
         # cursor-up escapes would erase real output above the cursor.
         renderer = cli_ref.instance_variable_get(:@cli_listener)&.renderer
-        stdout.write(CLI::ProgressRenderer::CLEAR_FOOTER) if renderer&.footer_drawn?
+        stdout.write(renderer.clear_footer_sequence) if renderer&.footer_drawn?
         cli_ref.instance_variable_set(:@interrupted, true)
         results = cli_ref.instance_variable_get(:@archive_results)
         start_time = cli_ref.instance_variable_get(:@archive_start_time)

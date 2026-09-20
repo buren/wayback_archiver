@@ -211,8 +211,6 @@ module WaybackArchiver
       build_response(uri, result.response)
     end
 
-    private
-
     def self.perform_request(uri, http, request)
       # TODO: Consider retrying on certain HTTP response codes, i.e 429, 503
       response = http.request(request)
@@ -230,5 +228,9 @@ module WaybackArchiver
         error_wrapper_klass.new("#{error.class}, #{error.message}")
       )
     end
+
+    # `private` has no effect on `def self.` methods — these were public
+    # despite sitting under one.
+    private_class_method :perform_request, :build_request_error
   end
 end

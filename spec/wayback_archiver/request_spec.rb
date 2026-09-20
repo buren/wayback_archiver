@@ -342,4 +342,12 @@ RSpec.describe WaybackArchiver::Request do
     end
   end
 
+
+  describe 'encapsulation' do
+    # `private` has no effect on `def self.` methods, so these were public.
+    it 'keeps request internals private' do
+      expect(described_class).not_to respond_to(:perform_request)
+      expect(described_class).not_to respond_to(:build_request_error)
+    end
+  end
 end

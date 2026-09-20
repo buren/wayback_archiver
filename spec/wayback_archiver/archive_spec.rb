@@ -797,6 +797,69 @@ RSpec.describe WaybackArchiver::Archive do
     end
   end
 
+  describe '::post with screenshots' do
+    before do
+      allow_any_instance_of(WaybackArchiver::BatchSubmitter).to receive(:sleep)
+      allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status).and_return({ 'available' => 12, 'processing' => 0 })
+      WaybackArchiver.config.access_key = 'k'
+      WaybackArchiver.config.secret_key = 's'
+    end
+
+    # Regression: ArchiveResult.from_status downloads the screenshot inline,
+    # and poll_pending built every result serially on the main thread — one
+    # slow download stalled the whole batch.
+    it 'downloads screenshots concurrently rather than stalling the poll loop' do
+      urls = %w[http://example.com/a http://example.com/b http://example.com/c]
+      latch = Concurrent::CountDownLatch.new(urls.length)
+      overlapped = Concurrent::AtomicFixnum.new(0)
+
+      allow(WaybackArchiver::Screenshot).to receive(:download) do |_shot, original, **|
+        latch.count_down
+        # Each download blocks until all of them have started. Run
+        # concurrently every one sees the latch reach zero; run serially only
+        # the final one does, because the earlier ones time out waiting for
+        # successors that cannot start until they return.
+        overlapped.increment if latch.wait(1)
+        "/tmp/#{File.basename(original)}.png"
+      end
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit) do |url, **|
+        { 'url' => url, 'job_id' => "job-#{url[-1]}" }
+      end
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses) do |ids|
+        ids.each_with_object({}) do |jid, h|
+          h[jid] = {
+            'status' => 'success', 'job_id' => jid, 'timestamp' => '20260326120000',
+            'screenshot' => "http://web.archive.org/shot/#{jid}.png",
+            'original_url' => "http://example.com/#{jid[-1]}"
+          }
+        end
+      end
+
+      results = described_class.post(
+        urls, concurrency: 3, capture_screenshot: true, screenshot_dir: '/tmp'
+      )
+
+      expect(overlapped.value).to eq(urls.length)
+      expect(results.length).to eq(3)
+      expect(results.map(&:screenshot_path).compact.length).to eq(3)
+    end
+
+    it 'still records the URL when building a result raises' do
+      allow(WaybackArchiver::Screenshot).to receive(:maybe_download).and_raise('disk full')
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit) do |url, **|
+        { 'url' => url, 'job_id' => 'job-1' }
+      end
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses).and_return(
+        'job-1' => { 'status' => 'success', 'job_id' => 'job-1', 'timestamp' => '20260326120000' }
+      )
+
+      results = described_class.post(%w[http://example.com/a], capture_screenshot: true, screenshot_dir: '/tmp')
+
+      expect(results.length).to eq(1)
+      expect(results.first).to be_errored
+    end
+  end
+
   describe '::crawl' do
     before do
       allow_any_instance_of(WaybackArchiver::BatchSubmitter).to receive(:sleep)

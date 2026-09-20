@@ -345,4 +345,47 @@ RSpec.describe WaybackArchiver::CLI::ProgressRenderer do
       end
     end
   end
+
+  describe 'footer wrapping' do
+    # Regression: clear_footer always emitted three cursor-up/clear-line
+    # pairs. A progress line longer than the terminal wraps onto extra rows,
+    # so the overflow stayed on screen and a real line of output above the
+    # footer got erased instead.
+    it 'clears every physical row the footer occupies' do
+      out = StringIO.new
+      renderer = described_class.new(out, terminal_width: 20)
+      renderer.start
+      renderer.set_total(100)
+      renderer.record_completion(errored: false)
+      renderer.repaint
+      out.truncate(0)
+      out.rewind
+
+      renderer.finish
+
+      cursor_ups = out.string.scan(described_class::CURSOR_UP).length
+      expect(cursor_ups).to be > described_class::FOOTER_LINES
+    end
+
+    it 'clears exactly three rows when nothing wraps' do
+      out = StringIO.new
+      renderer = described_class.new(out, terminal_width: 200)
+      renderer.start
+      renderer.set_total(100)
+      renderer.repaint
+      out.truncate(0)
+      out.rewind
+
+      renderer.finish
+
+      expect(out.string.scan(described_class::CURSOR_UP).length)
+        .to eq(described_class::FOOTER_LINES)
+    end
+
+    it 'does not crash when a completion is recorded before start' do
+      renderer = described_class.new(StringIO.new, terminal_width: 80)
+
+      expect { renderer.record_completion(errored: false) }.not_to raise_error
+    end
+  end
 end

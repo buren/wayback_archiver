@@ -141,6 +141,24 @@ RSpec.describe WaybackArchiver::Configuration do
     end
   end
 
+  describe '#credentials? with blank values' do
+    # `export WAYBACK_ACCESS_KEY=` would otherwise pass the preflight check
+    # and send `Authorization: LOW :` to SPN2.
+    it 'treats empty strings as missing' do
+      config.access_key = ''
+      config.secret_key = ''
+
+      expect(config.credentials?).to eq(false)
+    end
+
+    it 'requires both keys to be present' do
+      config.access_key = 'key'
+      config.secret_key = ''
+
+      expect(config.credentials?).to eq(false)
+    end
+  end
+
 end
 
 RSpec.describe WaybackArchiver do

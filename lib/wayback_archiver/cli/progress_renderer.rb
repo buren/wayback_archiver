@@ -26,7 +26,7 @@ module WaybackArchiver
 
       CURSOR_UP = "\e[A"
       CLEAR_LINE = "\e[2K"
-      FOOTER_LINES = 3 # blank line + progress bar + state
+      FOOTER_LINES = 3 # blank line + progress bar + state, before any wrapping
       CLEAR_FOOTER = ("#{CURSOR_UP}#{CLEAR_LINE}" * FOOTER_LINES + "\r").freeze
 
       def initialize(stdout, terminal_width: nil)
@@ -46,6 +46,7 @@ module WaybackArchiver
         @burst_count = 0
         @ema_seconds_per_url = nil
         @footer_drawn = false
+        @footer_rows = FOOTER_LINES
         @cached_terminal_width = nil
         @terminal_width_checked_at = nil
       end
@@ -55,6 +56,13 @@ module WaybackArchiver
       # render mutex could deadlock against an interrupted render.
       def footer_drawn?
         @footer_drawn
+      end
+
+      # Escape sequence that erases the footer as currently drawn, including
+      # any rows it wrapped onto. Lock-free for the same reason as
+      # {#footer_drawn?}: the SIGINT trap reads it.
+      def clear_footer_sequence
+        "#{CURSOR_UP}#{CLEAR_LINE}" * @footer_rows + "\r"
       end
 
       # Mark the start of a new batch. Completions accumulate across batches
@@ -162,7 +170,9 @@ module WaybackArchiver
       def update_ema
         now = monotonic_now
         @burst_count += 1
-        @last_ema_time ||= @start_time
+        # start is always called before the first completion in the CLI, but
+        # don't crash on Float - nil if a caller orders it differently.
+        @last_ema_time ||= @start_time || now
         interval = now - @last_ema_time
 
         if interval >= BURST_THRESHOLD
@@ -180,7 +190,7 @@ module WaybackArchiver
       def clear_footer
         return unless @footer_drawn
 
-        @stdout.write(CLEAR_FOOTER)
+        @stdout.write(clear_footer_sequence)
         @footer_drawn = false
       end
 
@@ -188,7 +198,19 @@ module WaybackArchiver
         line1 = build_progress_line
         line2 = @state
         @stdout.write("\n#{line1}\n#{line2}\n")
+        # A line longer than the terminal wraps onto extra physical rows.
+        # Clearing a fixed three would leave the overflow on screen and eat
+        # a real line of output above it.
+        @footer_rows = 1 + rows_for(line1) + rows_for(line2)
         @footer_drawn = true
+      end
+
+      # Physical rows a logical line occupies at the current terminal width.
+      def rows_for(line)
+        width = terminal_width
+        return 1 if width.nil? || width <= 0 || line.nil? || line.empty?
+
+        [(line.length.to_f / width).ceil, 1].max
       end
 
       def repaint_footer
