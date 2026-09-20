@@ -170,7 +170,7 @@ module WaybackArchiver
 
           parser.on('--capture-all', 'Capture error pages (HTTP 4xx/5xx)') { opts.spn2_options[:capture_all] = true }
           parser.on('--capture-outlinks', 'Auto-capture linked pages (up to 100, requires auth)') { opts.spn2_options[:capture_outlinks] = true }
-          parser.on('--capture-screenshot', 'Generate PNG screenshot of the page') { opts.spn2_options[:capture_screenshot] = true }
+          parser.on('--capture-screenshot', 'Generate full-page screenshot (archive.org serves JPEG)') { opts.spn2_options[:capture_screenshot] = true }
 
           parser.on('--screenshot-dir=PATH', String, 'Save screenshots locally (requires auth + --capture-screenshot)') do |value|
             opts.spn2_options[:screenshot_dir] = value

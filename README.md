@@ -61,7 +61,7 @@ WaybackArchiver.archive('example.com', strategy: :crawl,
 # Common options
 WaybackArchiver.archive('example.com',
   capture_all: true,            # capture error pages (4xx/5xx)
-  capture_screenshot: true,     # generate full-page PNG screenshot
+  capture_screenshot: true,     # generate full-page screenshot (served as JPEG)
   skip_first_archive: true,     # skip duplicate check (faster)
   if_not_archived_within: '3d'  # skip if archived within 3 days
 )
@@ -188,7 +188,7 @@ wayback_archiver example.com --concurrency=10 --limit=100 --capture-all --verbos
 | `--access-key=KEY`, `--secret-key=KEY` | Internet Archive S3 credentials (prefer the env vars) |
 | `--capture-all` | Capture error pages (HTTP 4xx/5xx) |
 | `--capture-outlinks` | Auto-capture linked pages, up to 100 |
-| `--capture-screenshot` | Generate a full-page PNG screenshot |
+| `--capture-screenshot` | Generate a full-page screenshot (archive.org serves JPEG) |
 | `--screenshot-dir=PATH` | Save screenshots locally (needs `--capture-screenshot`) |
 | `--force-get` | Force HTTP GET instead of HEAD + browser |
 | `--skip-first-archive` | Skip SPN2's initial duplicate check (faster) |

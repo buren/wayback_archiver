@@ -5,6 +5,7 @@ RSpec.describe WaybackArchiver::Screenshot do
   let(:screenshot_url) { 'http://web.archive.org/screenshot/http://example.com/' }
   let(:original_url) { 'http://example.com/' }
   let(:png_data) { "\x89PNG\r\n\x1a\nfake_png_data" }
+  let(:jpeg_data) { "\xFF\xD8\xFF\xE0fake_jpeg_data".b }
 
   describe '.download' do
     context 'with credentials' do
@@ -65,13 +66,13 @@ RSpec.describe WaybackArchiver::Screenshot do
         end
       end
 
-      it 'raises instead of saving a 200 response that is not a PNG' do
+      it 'raises instead of saving a 200 response that is not an image' do
         Dir.mktmpdir do |dir|
           stub_request(:get, screenshot_url)
             .to_return(status: 200, body: '<!doctype html><title>Login</title>')
 
           expect { described_class.download(screenshot_url, original_url, directory: dir) }
-            .to raise_error(WaybackArchiver::Request::ServerError, /not a PNG/i)
+            .to raise_error(WaybackArchiver::Request::ServerError, /not an image/i)
           expect(Dir.children(dir)).to be_empty
         end
       end
@@ -84,6 +85,49 @@ RSpec.describe WaybackArchiver::Screenshot do
 
           expect(WebMock).to have_requested(:get, screenshot_url)
             .with(headers: { 'Authorization' => 'LOW key:secret' })
+        end
+      end
+
+      # SPN2's `screenshot` field is the URL the image was archived *under*,
+      # not a live endpoint: fetching it directly 404s, including the example
+      # in the official SPN2 docs. The image is a separate Wayback capture and
+      # only resolves through the replay path for that capture's timestamp.
+      it 'fetches the screenshot through the Wayback replay path' do
+        Dir.mktmpdir do |dir|
+          replay = "https://web.archive.org/web/20260920202839/#{screenshot_url}"
+          stub_request(:get, replay).to_return(status: 200, body: jpeg_data,
+                                               headers: { 'Content-Type' => 'image/jpg' })
+
+          described_class.download(screenshot_url, original_url,
+                                   directory: dir, timestamp: '20260920202839')
+
+          expect(WebMock).to have_requested(:get, replay)
+        end
+      end
+
+      # Despite the docs saying PNG, archive.org serves image/jpg.
+      it 'accepts a JPEG and names the file accordingly' do
+        Dir.mktmpdir do |dir|
+          stub_request(:get, %r{web\.archive\.org/web/}).to_return(
+            status: 200, body: jpeg_data, headers: { 'Content-Type' => 'image/jpg' }
+          )
+
+          path = described_class.download(screenshot_url, original_url,
+                                          directory: dir, timestamp: '20260920202839')
+
+          expect(path).to end_with('.jpg')
+          expect(File.binread(path)).to eq(jpeg_data)
+        end
+      end
+
+      it 'still accepts a PNG' do
+        Dir.mktmpdir do |dir|
+          stub_request(:get, %r{web\.archive\.org/web/}).to_return(status: 200, body: png_data)
+
+          path = described_class.download(screenshot_url, original_url,
+                                          directory: dir, timestamp: '20260920202839')
+
+          expect(path).to end_with('.png')
         end
       end
 
@@ -123,7 +167,7 @@ RSpec.describe WaybackArchiver::Screenshot do
 
       expect(result).to eq('/tmp/screenshot.png')
       expect(described_class).to have_received(:download)
-        .with(screenshot_url, original_url, directory: '/tmp')
+        .with(screenshot_url, original_url, directory: '/tmp', timestamp: nil)
     end
 
     it 'returns nil and writes nothing when the screenshot 404s' do
@@ -132,7 +176,7 @@ RSpec.describe WaybackArchiver::Screenshot do
         WaybackArchiver.config.secret_key = 'secret'
         stub_request(:get, screenshot_url).to_return(status: 404, body: 'nope')
 
-        result = described_class.maybe_download(screenshot_url, original_url, screenshot_dir: dir)
+        result = described_class.maybe_download(screenshot_url, original_url, { screenshot_dir: dir })
 
         expect(result).to be_nil
         expect(Dir.children(dir)).to be_empty

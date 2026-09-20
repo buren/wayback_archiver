@@ -513,7 +513,8 @@ RSpec.describe WaybackArchiver::WaybackMachine do
 
           stub_submit
           stub_status(success_status(screenshot: screenshot_remote_url, original_url: url))
-          stub_request(:get, screenshot_remote_url).to_return(status: 200, body: png_data)
+          # Screenshots resolve only through the Wayback replay path.
+          stub_request(:get, %r{web\.archive\.org/web/\d+/}).to_return(status: 200, body: png_data)
 
           result = described_class.call(url, capture_screenshot: true, screenshot_dir: dir)
 

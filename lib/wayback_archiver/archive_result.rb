@@ -106,7 +106,8 @@ module WaybackArchiver
         )
       else
         screenshot_path = Screenshot.maybe_download(
-          status['screenshot'], status['original_url'] || url, options
+          status['screenshot'], status['original_url'] || url, options,
+          timestamp: status['timestamp']
         )
 
         new(

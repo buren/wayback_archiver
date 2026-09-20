@@ -362,7 +362,8 @@ RSpec.describe WaybackArchiver::Archive do
           }
         )
 
-        stub_request(:get, screenshot_url)
+        # Screenshots resolve only through the Wayback replay path.
+        stub_request(:get, "https://web.archive.org/web/20260326120000/#{screenshot_url}")
           .to_return(status: 200, body: png_data)
 
         results = described_class.post(
