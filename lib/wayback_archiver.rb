@@ -180,20 +180,26 @@ module WaybackArchiver
   # @param [Array<String, Regexp>] hosts to crawl (crawl strategy only).
   # @param [Integer] limit max number of URLs.
   def self.discover_urls(source, strategy: 'auto', hosts: [], limit: config.max_limit)
-    case strategy.to_s
-    when 'urls', 'url'
-      Array(source)
-    when 'sitemap'
-      URLCollector.sitemap(source)
-    when 'rss'
-      URLCollector.feed(source)
-    when 'crawl'
-      URLCollector.crawl(source, hosts: hosts, limit: limit)
-    when 'auto'
-      discover_urls_auto(source, hosts: hosts, limit: limit)
-    else
-      raise ArgumentError, "Unknown strategy: '#{strategy}'"
-    end
+    discovered = case strategy.to_s
+                 when 'urls', 'url'
+                   Array(source)
+                 when 'sitemap'
+                   URLCollector.sitemap(source)
+                 when 'rss'
+                   URLCollector.feed(source)
+                 when 'crawl'
+                   URLCollector.crawl(source, hosts: hosts, limit: limit)
+                 when 'auto'
+                   discover_urls_auto(source, hosts: hosts, limit: limit)
+                 else
+                   raise ArgumentError, "Unknown strategy: '#{strategy}'"
+                 end
+
+    # The crawl strategies stop at the limit themselves; sitemap/rss/urls
+    # return everything, so cap here too — otherwise --list-urls --limit and
+    # --check --limit are silent no-ops for those strategies.
+    discovered = discovered.first(limit) unless limit == -1
+    discovered
   end
 
   # Check which URLs are already archived in the Wayback Machine.

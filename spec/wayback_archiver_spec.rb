@@ -397,6 +397,35 @@ RSpec.describe WaybackArchiver do
         .with('http://example.com', hosts: hosts, limit: 10)
     end
 
+    # Regression: limit was only forwarded to the crawl strategy, so
+    # `--list-urls --limit N` and `--check --limit N` were silent no-ops for
+    # sitemap/rss/urls.
+    describe 'limit' do
+      it 'caps the URLs returned for the :urls strategy' do
+        urls = (1..10).map { |i| "http://example.com/#{i}" }
+        expect(described_class.discover_urls(urls, strategy: :urls, limit: 3).length).to eq(3)
+      end
+
+      it 'caps the URLs returned for the :sitemap strategy' do
+        urls = (1..10).map { |i| "http://example.com/#{i}" }
+        allow(described_class::URLCollector).to receive(:sitemap).and_return(urls)
+
+        expect(described_class.discover_urls('http://example.com', strategy: :sitemap, limit: 3).length).to eq(3)
+      end
+
+      it 'caps the URLs returned for the :rss strategy' do
+        urls = (1..10).map { |i| "http://example.com/#{i}" }
+        allow(described_class::URLCollector).to receive(:feed).and_return(urls)
+
+        expect(described_class.discover_urls('http://example.com/feed.xml', strategy: :rss, limit: 3).length).to eq(3)
+      end
+
+      it 'returns everything when unlimited' do
+        urls = (1..10).map { |i| "http://example.com/#{i}" }
+        expect(described_class.discover_urls(urls, strategy: :urls, limit: -1).length).to eq(10)
+      end
+    end
+
     it 'uses auto discovery cascade for :auto strategy' do
       allow(described_class::Sitemapper).to receive(:autodiscover).and_return(%w[http://a.com http://b.com])
 

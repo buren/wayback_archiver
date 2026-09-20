@@ -101,6 +101,44 @@ RSpec.describe WaybackArchiver::Archive do
       expect(WaybackArchiver::WaybackMachine).to have_received(:submit).twice
     end
 
+    # Regression: duplicate URLs were submitted once each. Sitemap indexes
+    # with overlapping children routinely contain repeats, and at 12
+    # captures/min each duplicate is a wasted slot.
+    it 'submits each distinct URL only once' do
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit) do |url|
+        { 'url' => url, 'job_id' => "job-#{url.hash.abs}" }
+      end
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses) do |ids|
+        ids.each_with_object({}) do |jid, h|
+          h[jid] = { 'status' => 'success', 'job_id' => jid, 'timestamp' => '20260326120000' }
+        end
+      end
+
+      urls = %w[http://example.com/a http://example.com/a http://example.com/b]
+      results = described_class.post(urls)
+
+      expect(WaybackArchiver::WaybackMachine).to have_received(:submit).twice
+      expect(results.map(&:uri).sort).to eq(%w[http://example.com/a http://example.com/b])
+    end
+
+    it 'counts a duplicate only once against the limit' do
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit) do |url|
+        { 'url' => url, 'job_id' => "job-#{url.hash.abs}" }
+      end
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses) do |ids|
+        ids.each_with_object({}) do |jid, h|
+          h[jid] = { 'status' => 'success', 'job_id' => jid, 'timestamp' => '20260326120000' }
+        end
+      end
+
+      urls = %w[http://example.com/a http://example.com/a http://example.com/b]
+      described_class.post(urls, limit: 2)
+
+      expect(WaybackArchiver::WaybackMachine).to have_received(:submit).twice
+      expect(WaybackArchiver::WaybackMachine).to have_received(:submit).with('http://example.com/a')
+      expect(WaybackArchiver::WaybackMachine).to have_received(:submit).with('http://example.com/b')
+    end
+
     describe 'skip_patterns filtering' do
       before do
         allow(WaybackArchiver::WaybackMachine).to receive(:submit) do |url, **_opts|
@@ -837,6 +875,85 @@ RSpec.describe WaybackArchiver::Archive do
 
       expect(WaybackArchiver::WaybackMachine).to have_received(:submit).once
       expect(WaybackArchiver::WaybackMachine).to have_received(:submit).with('http://example.com/doc.pdf')
+    end
+
+    # Regression: limit was handed to Spidr, which counts *pages visited*.
+    # A link to a .zip and a dead link each burned a slot, so --limit N
+    # archived fewer than N URLs on any site with downloads or 404s.
+    it 'counts the limit in archived URLs, not pages visited' do
+      h = { 'Content-Type' => 'text/html; charset=utf-8' }
+      body = <<~HTML
+        <a href="/manual.zip">download</a>
+        <a href="/gone.html">dead</a>
+        <a href="/page1.html">p1</a>
+        <a href="/page2.html">p2</a>
+      HTML
+      stub_request(:get, 'http://example.com/').to_return(status: 200, body: body, headers: h)
+      stub_request(:get, 'http://example.com/manual.zip')
+        .to_return(status: 200, body: 'zip', headers: { 'Content-Type' => 'application/zip' })
+      stub_request(:get, 'http://example.com/gone.html').to_return(status: 404, body: 'nope', headers: h)
+      stub_request(:get, 'http://example.com/page1.html').to_return(status: 200, body: 'p1', headers: h)
+      stub_request(:get, 'http://example.com/page2.html').to_return(status: 200, body: 'p2', headers: h)
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit) do |url|
+        { 'url' => url, 'job_id' => "job-#{url.hash.abs}" }
+      end
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses) do |ids|
+        ids.each_with_object({}) { |jid, hh| hh[jid] = { 'status' => 'success', 'job_id' => jid, 'timestamp' => '20260326120000' } }
+      end
+
+      described_class.crawl('http://example.com', limit: 3)
+
+      expect(WaybackArchiver::WaybackMachine).to have_received(:submit).exactly(3).times
+    end
+
+    it 'applies the limit after the skip filters' do
+      yielded = %w[
+        http://example.com/skip1 http://example.com/a http://example.com/skip2
+        http://example.com/b http://example.com/c http://example.com/d
+      ]
+      allow(WaybackArchiver::URLCollector).to receive(:crawl) do |*, **, &blk|
+        yielded.each(&blk)
+      end
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit) do |url|
+        { 'url' => url, 'job_id' => "job-#{url.hash.abs}" }
+      end
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses) do |ids|
+        ids.each_with_object({}) { |jid, h| h[jid] = { 'status' => 'success', 'job_id' => jid, 'timestamp' => '20260326120000' } }
+      end
+
+      described_class.crawl('http://example.com', limit: 2, skip_patterns: [/skip/])
+
+      expect(WaybackArchiver::WaybackMachine).to have_received(:submit).twice
+      expect(WaybackArchiver::WaybackMachine).to have_received(:submit).with('http://example.com/a')
+      expect(WaybackArchiver::WaybackMachine).to have_received(:submit).with('http://example.com/b')
+    end
+
+    # Regression: available_slots (an HTTP call) ran on every iteration of the
+    # 0.2s idle loop, firing ~5 status requests/second for the whole crawl —
+    # exactly the traffic that gets an IP temporarily blocked.
+    it 'does not poll the status endpoint while waiting for the crawler' do
+      status_calls = Concurrent::AtomicFixnum.new(0)
+      allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status) do
+        status_calls.increment
+        { 'available' => 5, 'processing' => 0 }
+      end
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit) do |url|
+        { 'url' => url, 'job_id' => "job-#{url.hash.abs}" }
+      end
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses) do |ids|
+        ids.each_with_object({}) { |jid, h| h[jid] = { 'status' => 'success', 'job_id' => jid, 'timestamp' => '20260326120000' } }
+      end
+      allow(WaybackArchiver::URLCollector).to receive(:crawl) do |*, **, &blk|
+        2.times do |i|
+          sleep 0.5 # slow crawler: ~1s of idle waiting
+          blk.call("http://example.com/#{i}")
+        end
+      end
+
+      described_class.crawl('http://example.com')
+
+      # One per non-empty chunk, not one per idle tick.
+      expect(status_calls.value).to be <= 4
     end
 
     it 'fires on_url_discovered and on_crawl_complete events' do

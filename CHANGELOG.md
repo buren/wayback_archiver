@@ -83,6 +83,12 @@ CLI exit codes: `0` success, `1` finished with one or more failed URLs, `2` inva
 
 - **Quieter retry logging** — intermediate retry attempts (connection errors, transient SPN2 errors, poll failures) now log at debug level instead of WARN. Only final failures (retry limit exceeded) log at ERROR.
 - **Increased retry limit** — per-URL retry cap for transient errors increased from 3 to 5, improving tolerance for intermittent SPN2 gateway timeouts and connection refused errors.
+- `--limit` now counts URLs actually archived for every strategy. During crawl it was handed to the crawler, which counts *pages visited* — a link to a .zip or a dead link burned a slot, so `--limit 100` archived fewer than 100. It is also applied after the skip/extension filters, matching `Archive.post`.
+- `--limit` is now honoured by `--list-urls` and `--check` for the sitemap, rss and urls strategies (previously only crawl)
+- Duplicate URLs are collapsed before submission — a sitemap index with overlapping children no longer spends capture slots on repeats
+- Fixed `--include-ext`/`--exclude-ext` starving a crawl: the filters were passed to the crawler, which applies them to traversal, so `--include-ext pdf --crawl` refused to visit the HTML pages linking to the PDFs and archived nothing
+- Stopped polling the SPN2 user-status endpoint ~5x/second while a streaming crawl was still discovering URLs
+- CDX timestamps are formatted in UTC; `--skip-archived=TIMEDELTA` was shifting its window by the local UTC offset
 - Fixed CLI typo: `Verboes` → `Verbose`
 - Removed duplicate `-h` flag in CLI
 - Fixed `:auto` strategy not passing `limit:` to all code paths

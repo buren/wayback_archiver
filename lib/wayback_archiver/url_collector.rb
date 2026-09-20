@@ -9,6 +9,11 @@ module WaybackArchiver
   # Retrive URLs from different sources
   # @api private
   class URLCollector
+    # Thrown to unwind a crawl early. A crawl block that has collected
+    # everything it needs throws this instead of letting Spidr keep walking
+    # the site; {.crawl} catches it and returns normally.
+    HALT = :wayback_archiver_halt_crawl
+
     # Retrieve URLs from Sitemap.
     # @return [Array<String>] of URLs defined in Sitemap.
     # @param [String] url domain to retrieve Sitemap from.
@@ -31,11 +36,13 @@ module WaybackArchiver
     # @return [Array<String>] of URLs defined found during crawl.
     # @param [String] url domain to crawl URLs from.
     # @param [Array<String, Regexp>] hosts to crawl.
+    # @param limit [Integer] max number of archivable URLs to yield (-1 for
+    #   unlimited). Counts yielded URLs, not pages visited.
     # @example Crawl URLs defined on example.com
     #    URLCollector.crawl('http://example.com')
-    # @example Crawl URLs defined on example.com and limit the number of visited pages to 100
+    # @example Crawl example.com and stop after 100 archivable URLs
     #    URLCollector.crawl('http://example.com', limit: 100)
-    # @example Crawl URLs defined on example.com and explicitly set no upper limit on the number of visited pages to 100
+    # @example Crawl example.com with no upper limit
     #    URLCollector.crawl('http://example.com', limit: -1)
     # @example Crawl multiple hosts
     #    URLCollector.crawl(
@@ -45,10 +52,15 @@ module WaybackArchiver
     #        /host[\d]+\.example\.com/
     #      ]
     #    )
+    #
     # Extension filtering is deliberately absent here. Spidr's exts/ignore_exts
     # gate *traversal*, not output: constraining them to, say, "pdf" makes
     # Spidr refuse to visit the HTML pages that link to the PDFs, and the crawl
     # finds nothing. Callers filter the yielded URLs with {URLFilter} instead.
+    #
+    # The limit is enforced here rather than through Spidr's own :limit, which
+    # counts pages visited — a link to a .zip or a dead link burns a slot
+    # without producing an archivable URL, so --limit N delivered fewer than N.
     def self.crawl(url, hosts: [], limit: WaybackArchiver.config.max_limit, skip_duplicates: true, capture_all: false)
       urls = []
       seen_pages = {} # path (without query) => MD5 digest of body
@@ -58,30 +70,32 @@ module WaybackArchiver
         hosts: hosts,
         user_agent: WaybackArchiver.config.user_agent
       }
-      options[:limit] = limit unless limit == -1
 
-      Spidr.site(start_at_url, **options) do |spider|
-        spider.every_page do |page|
-          # Non-success pages would fail predictably at SPN2 — except under
-          # capture_all, whose purpose is archiving 4xx/5xx error pages.
-          next unless page.ok? || (capture_all && page.code.to_i >= 400)
-          next unless archivable_page?(page)
+      catch(HALT) do
+        Spidr.site(start_at_url, **options) do |spider|
+          spider.every_page do |page|
+            # Non-success pages would fail predictably at SPN2 — except under
+            # capture_all, whose purpose is archiving 4xx/5xx error pages.
+            next unless page.ok? || (capture_all && page.code.to_i >= 400)
+            next unless archivable_page?(page)
 
-          if skip_duplicates
-            path = page.url.path
-            digest = Digest::MD5.hexdigest(page.body.to_s)
-            if seen_pages[path] == digest
-              WaybackArchiver.logger.debug "Skipping duplicate content: #{page.url}"
-              WaybackArchiver.listener.on_duplicate_skipped(url: page.url.to_s)
-              next
+            if skip_duplicates
+              path = page.url.path
+              digest = Digest::MD5.hexdigest(page.body.to_s)
+              if seen_pages[path] == digest
+                WaybackArchiver.logger.debug "Skipping duplicate content: #{page.url}"
+                WaybackArchiver.listener.on_duplicate_skipped(url: page.url.to_s)
+                next
+              end
+              seen_pages[path] ||= digest
             end
-            seen_pages[path] ||= digest
-          end
 
-          page_url = page.url.to_s
-          urls << page_url
-          WaybackArchiver.logger.debug "Found: #{page_url}"
-          yield(page_url) if block_given?
+            page_url = page.url.to_s
+            urls << page_url
+            WaybackArchiver.logger.debug "Found: #{page_url}"
+            yield(page_url) if block_given?
+            throw HALT if limit != -1 && urls.length >= limit
+          end
         end
       end
       urls

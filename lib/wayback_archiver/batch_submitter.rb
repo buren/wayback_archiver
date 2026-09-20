@@ -29,6 +29,7 @@ module WaybackArchiver
     MAX_RETRIES         = 5   # per-URL retry cap for transient errors (session limits, connection errors)
     MAX_SLOT_WAIT       = 180 # max seconds to wait for available slots
     SLOT_WAIT_INTERVAL  = 10  # seconds between status checks when waiting for slots
+    IDLE_SLEEP          = 0.2 # seconds between checks while the crawler catches up
 
     def initialize(queue, concurrency:, source_thread: nil, **options, &block)
       @queue = queue
@@ -90,6 +91,19 @@ module WaybackArchiver
     def run_submission_loop
       loop do
         until queue_exhausted?
+          # In streaming mode the queue may be temporarily empty while the
+          # crawler is still discovering URLs. Do useful work (poll pending
+          # jobs) while waiting for more — but ask SPN2 for slot availability
+          # only when there is something to submit. available_slots is an HTTP
+          # call, and this branch loops every IDLE_SLEEP seconds: checking it
+          # here would fire ~5 status requests/second for the whole crawl.
+          if nothing_to_submit?
+            idle_poll
+            log_progress
+            sleep(IDLE_SLEEP)
+            next
+          end
+
           chunk_size = available_slots
           if chunk_size == :abort
             # Close the queue to stop the crawler thread via ClosedQueueError
@@ -99,18 +113,7 @@ module WaybackArchiver
           end
 
           chunk = drain_queue(chunk_size)
-
-          # In streaming mode the queue may be temporarily empty while the
-          # crawler is still discovering URLs. Do useful work (poll pending
-          # jobs) while waiting for more URLs to arrive — but at most once per
-          # POLL_INTERVAL: this branch loops every 0.2s, and polling each
-          # iteration would hammer the status endpoint 3-5 times per second.
-          if chunk.empty?
-            idle_poll
-            log_progress
-            sleep(0.2)
-            next
-          end
+          next if chunk.empty? # nothing_to_submit? already ruled this out; belt and braces
 
           pool = ThreadPool.build(@concurrency)
           retry_urls = Concurrent::Array.new
@@ -148,6 +151,13 @@ module WaybackArchiver
         break if queue_exhausted? # no transient errors re-queued
         WaybackArchiver.logger.info("Re-submitting #{@retry_buffer.size + @queue.size} URL(s) after transient poll errors")
       end
+    end
+
+    # Whether there is nothing to hand to SPN2 right now. Distinct from
+    # {#queue_exhausted?}: in streaming mode the queue can be momentarily
+    # empty while the crawler is still running, which is not exhaustion.
+    def nothing_to_submit?
+      @retry_buffer.empty? && @queue.empty?
     end
 
     # Check if the queue has been fully consumed.

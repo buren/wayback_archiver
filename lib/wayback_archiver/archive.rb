@@ -48,7 +48,13 @@ module WaybackArchiver
       WaybackArchiver.logger.debug "Total URLs to be sent: #{urls.length}"
       WaybackArchiver.logger.debug "Request are sent with up to #{concurrency} parallel threads"
 
-      urls_queue = urls
+      # Sitemap indexes with overlapping children (and hand-assembled URL
+      # lists) routinely repeat URLs. At 12 captures/min each duplicate is a
+      # wasted slot, so collapse them before anything else counts them.
+      urls_queue = urls.uniq
+      if (dupes = urls.length - urls_queue.length) > 0
+        WaybackArchiver.logger.info "Skipped #{dupes} duplicate URL(s)"
+      end
 
       if skip_urls && !skip_urls.empty?
         before = urls_queue.length
@@ -118,13 +124,23 @@ module WaybackArchiver
         # include_ext/exclude_ext are applied to the yielded URLs below, never
         # handed to the crawler: they would gate traversal and starve the
         # crawl of the HTML pages that link to the matching documents.
-        URLCollector.crawl(source, hosts: hosts, limit: limit, skip_duplicates: skip_duplicates, capture_all: !!options[:capture_all]) do |url|
-          next if skip_urls&.include?(url)
-          next if skip_patterns&.any? { |pat| pat.match?(url) }
-          next unless url_filter.match?(url)
-          count = discovered.increment
-          queue.push(url) # blocks when queue is full (backpressure)
-          WaybackArchiver.listener.on_url_discovered(url: url, count: count)
+        #
+        # limit is enforced here, not by the crawler, so that (as in .post)
+        # it caps URLs actually submitted — URLs dropped by the filters below
+        # must not consume the budget.
+        # Catch here rather than relying on URLCollector's own catch: this
+        # block is what throws, so it owns the unwind and works no matter who
+        # drives it.
+        catch(URLCollector::HALT) do
+          URLCollector.crawl(source, hosts: hosts, skip_duplicates: skip_duplicates, capture_all: !!options[:capture_all]) do |url|
+            next if skip_urls&.include?(url)
+            next if skip_patterns&.any? { |pat| pat.match?(url) }
+            next unless url_filter.match?(url)
+            count = discovered.increment
+            queue.push(url) # blocks when queue is full (backpressure)
+            WaybackArchiver.listener.on_url_discovered(url: url, count: count)
+            throw URLCollector::HALT if limit != -1 && count >= limit
+          end
         end
       rescue ClosedQueueError
         # BatchSubmitter closed the queue to signal early termination (e.g. IP blocked)
