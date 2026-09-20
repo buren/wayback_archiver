@@ -77,6 +77,14 @@ WaybackArchiver.archive('example.com',
 )
 ```
 
+**Screenshots are best-effort.** SPN2 returns a `screenshot` URL whenever you
+ask for one, but does not always store the image behind it — the download then
+fails, the error is logged, and the capture itself still counts as a success
+with `screenshot_path` left `nil`. In testing this happened more often when
+capturing several URLs concurrently, so use `concurrency: 1` if you need the
+screenshots specifically. Despite the SPN2 docs saying PNG, archive.org serves
+JPEG; files are named after the format that actually arrives.
+
 **Processing results:**
 
 Each strategy returns an array of results and accepts a block. The block is
