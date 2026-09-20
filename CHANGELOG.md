@@ -100,6 +100,7 @@ CLI exit codes: `0` success, `1` finished with one or more failed URLs, `2` inva
 - Batch success/error counters use atomic integers rather than a non-atomic `hash[k] += 1` from pool workers
 - `Request.perform_request`/`build_request_error` are actually private (`private` has no effect on `def self.` methods)
 - The gem packages its README, changelog and license
+- `--sitemap` verifies the fetched document actually is a sitemap. A 200 response that isn't one (a homepage, an SPA catch-all route) parsed as an empty document and reported "0 URL(s) discovered" with exit 0; it now fails with a clear message and exit 4. Autodiscovery keeps probing the remaining common locations instead of stopping at the first 200, and a non-sitemap child of a sitemap index is skipped with a warning.
 - Fixed CLI typo: `Verboes` → `Verbose`
 - Removed duplicate `-h` flag in CLI
 - Fixed `:auto` strategy not passing `limit:` to all code paths

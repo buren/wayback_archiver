@@ -8,6 +8,15 @@ module WaybackArchiver
   # Fetch and parse sitemaps recursively
   # @api private
   class Sitemapper
+    # Raised when a fetched document parses but isn't a sitemap at all.
+    #
+    # A Request::ServerError because it means the same thing as the other
+    # payload-validity errors in this gem (bad JSON from SPN2, an unexpected
+    # CDX shape): the server answered, but with something unusable. Callers
+    # that already rescue Request::Error therefore handle it — the CLI maps
+    # it to exit 4, and autodiscovery falls back to crawling.
+    class InvalidSitemapError < Request::ServerError; end
+
     # Common locations for Sitemap(s)
     COMMON_SITEMAP_LOCATIONS = %w[
       sitemap_index.xml.gz
@@ -42,11 +51,19 @@ module WaybackArchiver
         WaybackArchiver.logger.info "Looking for Sitemap at #{path}"
         sitemap_url = [url, path].join(url.end_with?('/') ? '' : '/')
         response = Request.get(sitemap_url, raise_on_http_error: false)
+        next unless response.success?
 
-        if response.success?
-          WaybackArchiver.logger.info "Sitemap found at #{sitemap_url}"
-          return urls(xml: response.body)
+        begin
+          found = urls(xml: response.body)
+        rescue InvalidSitemapError => e
+          # A 200 that isn't a sitemap — catch-all routes on SPAs answer every
+          # path with the homepage. Keep probing the remaining locations.
+          WaybackArchiver.logger.debug "Not a Sitemap at #{sitemap_url}: #{e.message}"
+          next
         end
+
+        WaybackArchiver.logger.info "Sitemap found at #{sitemap_url}"
+        return found
       end
 
       WaybackArchiver.logger.info "Looking for Sitemap at #{url}"
@@ -82,17 +99,32 @@ module WaybackArchiver
       xml = Request.get(url, raise_on_http_error: true).body unless xml
       sitemap = Sitemap.new(xml)
 
+      unless sitemap.valid?
+        raise InvalidSitemapError,
+              "Response is not a sitemap#{" (#{url})" if url}: expected a <urlset>, " \
+              "<sitemapindex> or plain-text URL list, got #{describe_document(sitemap)}"
+      end
+
       if sitemap.sitemap_index?
         sitemap.sitemaps.flat_map do |sitemap_url|
           urls(url: sitemap_url, visited: visited)
         rescue Request::Error => e
-          # One dead child shouldn't sink an otherwise good index.
-          WaybackArchiver.logger.warn "Skipping unreachable sitemap #{sitemap_url}: #{e.message}"
+          # One bad child shouldn't sink an otherwise good index.
+          WaybackArchiver.logger.warn "Skipping sitemap #{sitemap_url}: #{e.message}"
           []
         end
       else
         sitemap.urls.map { |url| url&.strip }
       end
     end
+
+    # Short description of what we got instead, for the error message.
+    def self.describe_document(sitemap)
+      root = sitemap.root_name
+      return "<#{root}>" if root
+
+      sitemap.plain_document? ? 'a non-XML document' : 'an unrecognised document'
+    end
+    private_class_method :describe_document
   end
 end

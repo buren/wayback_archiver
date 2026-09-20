@@ -207,4 +207,61 @@ RSpec.describe WaybackArchiver::Sitemapper do
       expect(described_class.autodiscover('http://example.com')).to eq([])
     end
   end
+
+  describe 'sitemap validation' do
+    let(:urlset) do
+      <<~XML
+        <?xml version="1.0" encoding="UTF-8"?>
+        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <url><loc>http://example.com/page</loc></url>
+        </urlset>
+      XML
+    end
+    let(:html) { "<!DOCTYPE html>\n<html><body>homepage</body></html>" }
+
+    # Regression: a 200 that isn't a sitemap parsed as an empty document and
+    # reported "0 URL(s) discovered" with exit 0, so a mistyped --sitemap
+    # target looked like a successful run that archived nothing.
+    it 'raises when the fetched document is not a sitemap' do
+      stub_request(:get, 'http://example.com/').to_return(status: 200, body: html)
+
+      expect { described_class.urls(url: 'http://example.com/') }
+        .to raise_error(WaybackArchiver::Sitemapper::InvalidSitemapError, /not a sitemap/i)
+    end
+
+    it 'keeps probing common locations past a 200 that is not a sitemap' do
+      stub_request(:get, 'http://example.com/robots.txt').to_return(status: 404, body: '')
+      stub_request(:get, %r{http://example\.com/sitemap[_-]index\.xml(\.gz)?$})
+        .to_return(status: 200, body: html) # SPA catch-all returns the homepage
+      stub_request(:get, 'http://example.com/sitemap.xml.gz').to_return(status: 404, body: '')
+      stub_request(:get, 'http://example.com/sitemap.xml').to_return(status: 200, body: urlset)
+
+      expect(described_class.autodiscover('http://example.com'))
+        .to eq(%w[http://example.com/page])
+    end
+
+    it 'falls back to crawling when no candidate is a real sitemap' do
+      stub_request(:get, 'http://example.com/robots.txt').to_return(status: 404, body: '')
+      stub_request(:get, %r{http://example\.com/sitemap}).to_return(status: 200, body: html)
+      stub_request(:get, 'http://example.com').to_return(status: 200, body: html)
+
+      expect(described_class.autodiscover('http://example.com')).to eq([])
+    end
+
+    it 'skips an index child that is not a sitemap' do
+      index = <<~XML
+        <?xml version="1.0" encoding="UTF-8"?>
+        <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <sitemap><loc>http://example.com/good.xml</loc></sitemap>
+          <sitemap><loc>http://example.com/bogus.xml</loc></sitemap>
+        </sitemapindex>
+      XML
+      stub_request(:get, 'http://example.com/index.xml').to_return(status: 200, body: index)
+      stub_request(:get, 'http://example.com/good.xml').to_return(status: 200, body: urlset)
+      stub_request(:get, 'http://example.com/bogus.xml').to_return(status: 200, body: html)
+
+      expect(described_class.urls(url: 'http://example.com/index.xml'))
+        .to eq(%w[http://example.com/page])
+    end
+  end
 end
