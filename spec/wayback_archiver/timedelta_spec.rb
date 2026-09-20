@@ -42,6 +42,10 @@ RSpec.describe WaybackArchiver::Timedelta do
     it 'raises on invalid format' do
       expect { described_class.parse('abc') }.to raise_error(ArgumentError, /Invalid timedelta/)
     end
+
+    it 'rejects trailing garbage after a valid component' do
+      expect { described_class.parse('7d garbage') }.to raise_error(ArgumentError, /Invalid timedelta/)
+    end
   end
 
   describe '.to_cdx_timestamp' do

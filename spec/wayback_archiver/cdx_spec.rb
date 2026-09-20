@@ -51,13 +51,35 @@ RSpec.describe WaybackArchiver::CDX do
       expect(result.timestamp).to be_nil
     end
 
-    it 'returns not-archived CheckResult on empty body' do
+    it 'returns an errored CheckResult on an invalid empty response' do
       stub_request(:get, /#{Regexp.escape(cdx_url)}/)
         .to_return(status: 200, body: '')
 
       result = described_class.check('http://nonexistent.com')
 
       expect(result.archived?).to eq(false)
+      expect(result.errored?).to eq(true)
+    end
+
+    it 'returns an errored CheckResult on an HTTP failure' do
+      stub_request(:get, /#{Regexp.escape(cdx_url)}/)
+        .to_return(status: 503, body: '<html>Service Unavailable</html>')
+
+      result = described_class.check('http://example.com')
+
+      expect(result.archived?).to eq(false)
+      expect(result.errored?).to eq(true)
+      expect(result.error).to be_a(WaybackArchiver::Request::ResponseError)
+    end
+
+    it 'returns an errored CheckResult for an unexpected JSON object' do
+      stub_request(:get, /#{Regexp.escape(cdx_url)}/)
+        .to_return(status: 200, body: '{"message":"rate limited"}')
+
+      result = described_class.check('http://example.com')
+
+      expect(result.errored?).to eq(true)
+      expect(result.error).to be_a(WaybackArchiver::Request::ServerError)
     end
 
     it 'returns not-archived CheckResult on CDX error' do

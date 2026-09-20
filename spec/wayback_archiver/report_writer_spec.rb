@@ -73,33 +73,33 @@ RSpec.describe WaybackArchiver::ReportWriter do
   end
 
   describe 'JSON format' do
-    it 'writes JSONL (one JSON object per line)' do
+    it 'writes a valid JSON array' do
       path = File.join(@tmpdir, 'report.json')
       writer = described_class.new(path)
       writer.write_result(success_result)
       writer.write_result(error_result)
       writer.close
 
-      lines = File.readlines(path).map(&:chomp).reject(&:empty?)
-      expect(lines.length).to eq(2)
+      data = JSON.parse(File.read(path))
+      expect(data.length).to eq(2)
 
-      first = JSON.parse(lines[0])
+      first = data[0]
       expect(first['url']).to eq('http://example.com')
       expect(first['success']).to eq(true)
       expect(first['job_id']).to eq('spn2-abc123')
 
-      second = JSON.parse(lines[1])
+      second = data[1]
       expect(second['url']).to eq('http://example.com/broken')
       expect(second['success']).to eq(false)
       expect(second['error']).to eq('connection failed')
     end
 
-    it 'produces an empty file when no results are written' do
+    it 'produces an empty JSON array when no results are written' do
       path = File.join(@tmpdir, 'report.json')
       writer = described_class.new(path)
       writer.close
 
-      expect(File.read(path)).to eq('')
+      expect(JSON.parse(File.read(path))).to eq([])
     end
 
     it 'flushes each result to disk immediately' do
@@ -108,9 +108,8 @@ RSpec.describe WaybackArchiver::ReportWriter do
       writer.write_result(success_result)
 
       # Read without closing
-      line = File.readlines(path).first
-      entry = JSON.parse(line)
-      expect(entry['url']).to eq('http://example.com')
+      data = JSON.parse(File.read(path))
+      expect(data.first['url']).to eq('http://example.com')
 
       writer.close
     end
@@ -123,6 +122,37 @@ RSpec.describe WaybackArchiver::ReportWriter do
 
       entry = JSON.parse(File.readlines(path).first)
       expect(entry['url']).to eq('http://example.com')
+    end
+
+    it 'keeps existing JSON results when opened in append mode' do
+      path = File.join(@tmpdir, 'report.json')
+      first = described_class.new(path)
+      first.write_result(success_result)
+      first.close
+
+      resumed = described_class.new(path, append: true)
+      resumed.write_result(error_result)
+      resumed.close
+
+      expect(JSON.parse(File.read(path)).map { |entry| entry['url'] })
+        .to eq(%w[http://example.com http://example.com/broken])
+    end
+  end
+
+  describe 'append mode' do
+    it 'keeps the existing CSV header and rows' do
+      path = File.join(@tmpdir, 'report.csv')
+      first = described_class.new(path)
+      first.write_result(success_result)
+      first.close
+
+      resumed = described_class.new(path, append: true)
+      resumed.write_result(error_result)
+      resumed.close
+
+      csv = CSV.read(path)
+      expect(csv.count { |row| row == WaybackArchiver::Report::COLUMNS }).to eq(1)
+      expect(csv.drop(1).map(&:first)).to eq(%w[http://example.com http://example.com/broken])
     end
   end
 

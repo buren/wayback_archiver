@@ -1,4 +1,5 @@
 require 'wayback_archiver'
+require 'set'
 require 'wayback_archiver/report_writer'
 require 'wayback_archiver/session_file'
 require 'wayback_archiver/timedelta'
@@ -131,6 +132,9 @@ module WaybackArchiver
       end
       code = begin
         cli.run
+      rescue AuthenticationError => e
+        stderr.puts "wayback_archiver: #{e.message}"
+        3
       rescue Request::Error => e
         # Discovery failures (unreachable sitemap/feed) raise; per-URL archive
         # failures never do — they come back as errored results.
@@ -256,7 +260,7 @@ module WaybackArchiver
     def setup_report_writer
       return unless @options.report_path
 
-      @report_writer = ReportWriter.new(@options.report_path)
+      @report_writer = ReportWriter.new(@options.report_path, append: !!@options.resume_path)
     end
 
     def run_status
@@ -286,11 +290,7 @@ module WaybackArchiver
     end
 
     def run_check
-      all_urls = @options.urls.flat_map do |url|
-        WaybackArchiver.discover_urls(url, strategy: @options.strategy, hosts: @options.hosts, limit: @options.limit)
-      end
-
-      all_urls = apply_url_filters(all_urls)
+      all_urls = discover_all_urls
 
       WaybackArchiver.logger.info("Checking #{all_urls.length} URL(s) against the Wayback Machine")
       check_results = WaybackArchiver.check(all_urls, concurrency: @options.concurrency)
@@ -332,11 +332,7 @@ module WaybackArchiver
       end
       setup_logger
 
-      all_urls = @options.urls.flat_map do |url|
-        WaybackArchiver.discover_urls(url, strategy: @options.strategy, hosts: @options.hosts, limit: @options.limit)
-      end
-
-      all_urls = apply_url_filters(all_urls)
+      all_urls = discover_all_urls
 
       all_urls.each { |url| @stdout.puts url }
 
@@ -401,9 +397,7 @@ module WaybackArchiver
                 elsif %w[urls url].include?(@options.strategy)
                   WaybackArchiver.archive(@options.urls, **archive_opts, &archive_block)
                 else
-                  @options.urls.flat_map do |url|
-                    WaybackArchiver.archive(url, **archive_opts, &archive_block)
-                  end
+                  archive_multiple_sources(archive_opts, &archive_block)
                 end
       all_results.concat(results)
 
@@ -414,14 +408,7 @@ module WaybackArchiver
     # @return [Array(Array<ArchiveResult>, Array<String>)] results for the
     #   already-archived URLs (skipped) and the remaining URLs to archive.
     def skip_archived_urls
-      urls_to_check = @options.urls.flat_map do |url|
-        WaybackArchiver.discover_urls(url, strategy: @options.strategy, hosts: @options.hosts, limit: @options.limit)
-      end
-
-      # Apply local filters before burning CDX requests on URLs the archive
-      # step would drop anyway.
-      urls_to_check = apply_url_filters(urls_to_check)
-      urls_to_check = urls_to_check.reject { |u| @skip_urls&.include?(u) } if @skip_urls
+      urls_to_check = discover_all_urls(skip_urls: @skip_urls, apply_limit: false)
 
       from = @options.skip_archived_within && Timedelta.to_cdx_timestamp(@options.skip_archived_within)
       WaybackArchiver.logger.info("Checking #{urls_to_check.length} URL(s) against the Wayback Machine#{" (archived within #{@options.skip_archived_within})" if from}")
@@ -443,7 +430,60 @@ module WaybackArchiver
 
       # Errored checks (archived? unknown) stay in the to-archive list — when
       # in doubt, archive.
-      [skipped_results, urls_to_check.reject { |u| archived_urls.include?(u) }]
+      urls_to_archive = urls_to_check.reject { |u| archived_urls.include?(u) }
+      urls_to_archive = urls_to_archive.first(@options.limit) unless @options.limit == -1
+      [skipped_results, urls_to_archive]
+    end
+
+    # Discover all positional sources as one logical input. The CLI documents
+    # --limit as a command-wide cap, so deduplication/filtering must happen
+    # before applying it rather than once per source.
+    def discover_all_urls(skip_urls: nil, apply_limit: true)
+      # Push the budget into discovery only when nothing downstream can reduce
+      # the count — one source, no filters, no resume set. Then discovery can
+      # stop at the limit (a crawl halts instead of walking the whole site)
+      # and still return exactly that many. Otherwise discover everything and
+      # truncate here, or filtering would leave fewer URLs than asked for.
+      pushdown = apply_limit && @options.limit != -1 &&
+                 @options.urls.length == 1 && skip_urls.nil? && !local_filters?
+
+      urls = @options.urls.flat_map do |url|
+        WaybackArchiver.discover_urls(
+          url, strategy: @options.strategy, hosts: @options.hosts,
+               limit: pushdown ? @options.limit : -1
+        )
+      end
+      urls = apply_url_filters(urls).uniq
+      urls = urls.reject { |url| skip_urls.include?(url) } if skip_urls
+      urls = urls.first(@options.limit) if apply_limit && @options.limit != -1
+      urls
+    end
+
+    # Whether any CLI-side filter can drop URLs after discovery.
+    def local_filters?
+      return true if @options.skip_patterns && !@options.skip_patterns.empty?
+
+      !@options.spn2_options[:include_ext].nil? || !@options.spn2_options[:exclude_ext].nil?
+    end
+
+    # Preserve streaming for crawl/auto while enforcing a command-wide limit
+    # and avoiding repeat submissions across multiple positional sources.
+    def archive_multiple_sources(archive_opts, &block)
+      remaining = @options.limit
+      seen = Set.new(@skip_urls || [])
+      all_results = []
+
+      @options.urls.each do |url|
+        break if remaining.zero?
+
+        per_source = archive_opts.merge(limit: remaining, skip_urls: seen)
+        results = WaybackArchiver.archive(url, **per_source, &block)
+        seen.merge(results.map(&:uri))
+        remaining -= results.length unless remaining == -1
+        all_results.concat(results)
+      end
+
+      all_results
     end
 
     def cleanup_session(results)

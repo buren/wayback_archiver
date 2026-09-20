@@ -72,6 +72,14 @@ RSpec.describe WaybackArchiver::FeedParser do
         urls = described_class.urls(url: 'http://example.com/feed.xml')
         expect(urls).to eq(%w[http://example.com/post/1 http://example.com/post/2])
       end
+
+      it 'raises on an HTTP error instead of treating it as an empty feed' do
+        stub_request(:get, 'http://example.com/feed.xml')
+          .to_return(status: 404, body: 'Not Found')
+
+        expect { described_class.urls(url: 'http://example.com/feed.xml') }
+          .to raise_error(WaybackArchiver::Request::ResponseError)
+      end
     end
 
     context 'with neither url nor xml' do

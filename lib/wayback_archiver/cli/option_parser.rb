@@ -1,5 +1,6 @@
 require 'optparse'
 require 'wayback_archiver'
+require 'wayback_archiver/timedelta'
 
 module WaybackArchiver
   class CLI
@@ -306,6 +307,8 @@ module WaybackArchiver
         if @opts.list_mode && @opts.skip_archived
           raise ArgumentError, "--list-urls and --skip-archived are mutually exclusive"
         end
+
+        Timedelta.parse(@opts.skip_archived_within) if @opts.skip_archived_within
 
         @opts.no_session = true if @opts.check_mode
         @opts.no_session = true if @opts.list_mode

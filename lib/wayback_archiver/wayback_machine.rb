@@ -80,7 +80,12 @@ module WaybackArchiver
 
       WaybackArchiver.logger.debug("Submitting #{url} to SPN2")
       response = Request.post(SAVE_URL, body: body, headers: headers)
-      JSON.parse(response.body)
+      data = JSON.parse(response.body)
+      unless data.is_a?(Hash)
+        raise Request::ServerError, "Unexpected SPN2 submit response: #{data.inspect}"
+      end
+
+      data
     rescue JSON::ParserError => e
       # A non-JSON body on an HTTP error status is transient load-shedding
       # (proxy/CDN HTML error pages on 5xx/429) — raise so the retry
@@ -130,7 +135,16 @@ module WaybackArchiver
         body: { 'job_ids' => job_ids.join(',') },
         headers: headers
       )
-      JSON.parse(response.body)
+      ensure_successful_response!(response, 'batch status')
+      data = JSON.parse(response.body)
+      valid_status = lambda do |status|
+        status.nil? || (status.is_a?(Hash) && %w[pending success error].include?(status['status']))
+      end
+      valid = (data.is_a?(Array) && data.all? { |status| valid_status.call(status) }) ||
+              (data.is_a?(Hash) && data.values.all? { |status| valid_status.call(status) })
+      raise Request::ServerError, "Unexpected batch status response: #{data.inspect}" unless valid
+
+      data
     rescue JSON::ParserError => e
       raise Request::ServerError, "Invalid JSON in status response: #{e.message}"
     end
@@ -145,9 +159,21 @@ module WaybackArchiver
       response = Request.get(
         "#{STATUS_URL}/user?_t=#{cache_buster}",
         follow_redirects: false,
+        raise_on_http_error: true,
         headers: build_headers
       )
-      JSON.parse(response.body)
+      data = JSON.parse(response.body)
+      unless data.is_a?(Hash) && data.key?('available') && data.key?('processing')
+        raise Request::ServerError, "Unexpected user status response: #{data.inspect}"
+      end
+
+      data
+    rescue Request::ResponseError => e
+      if [401, 403].include?(e.code)
+        raise AuthenticationError, "Wayback Machine credentials were rejected (HTTP #{e.code})"
+      end
+
+      raise
     rescue JSON::ParserError => e
       raise Request::ServerError, "Invalid JSON in user status response: #{e.message}"
     end
@@ -155,8 +181,13 @@ module WaybackArchiver
     # Check system status (public endpoint, no auth required).
     # @return [Hash] with 'status' key.
     def self.system_status
-      response = Request.get("#{STATUS_URL}/system", follow_redirects: false)
-      JSON.parse(response.body)
+      response = Request.get("#{STATUS_URL}/system", follow_redirects: false, raise_on_http_error: true)
+      data = JSON.parse(response.body)
+      unless data.is_a?(Hash) && data.key?('status')
+        raise Request::ServerError, "Unexpected system status response: #{data.inspect}"
+      end
+
+      data
     rescue JSON::ParserError => e
       raise Request::ServerError, "Invalid JSON in system status response: #{e.message}"
     end
@@ -215,9 +246,13 @@ module WaybackArchiver
         response = Request.get(
           "#{STATUS_URL}/#{job_id}",
           follow_redirects: false,
+          raise_on_http_error: true,
           headers: headers
         )
         status = JSON.parse(response.body)
+        unless status.is_a?(Hash) && %w[pending success error].include?(status['status'])
+          raise Request::ServerError, "Unexpected status response for job #{job_id}: #{status.inspect}"
+        end
 
         WaybackArchiver.logger.debug("Poll #{job_id}: #{status['status']}")
 
@@ -225,6 +260,16 @@ module WaybackArchiver
       end
     end
     private_class_method :poll_until_complete
+
+    def self.ensure_successful_response!(response, endpoint)
+      return if response.success?
+
+      raise Request::ResponseError.new(
+        "SPN2 #{endpoint} returned HTTP #{response.code}: #{response.message}",
+        code: response.code
+      )
+    end
+    private_class_method :ensure_successful_response!
 
 
     def self.build_post_body(url, **options)

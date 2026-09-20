@@ -340,12 +340,12 @@ v2.0 uses the SPN2 API, replacing the old fire-and-forget SPN1 approach. Capture
 - **Default concurrency** changed from 1 to 4
 - **`:auto` strategy enhanced** — now checks for sitemaps before falling back to crawling (use `strategy: :rss` for feed-based archiving)
 - **New CLI features** — `--check`, `--skip-archived`, `--file`, `--session`/`--resume`, `--report`, `--status`, `--include-ext`/`--exclude-ext`
-- **Ruby >= 3.1** required (was >= 2.0)
+- **Ruby >= 3.3** required (was >= 2.0)
 - **CI moved** from Travis CI to GitHub Actions
 - **SSL verification** enabled by default
 - **Configuration moved to `WaybackArchiver.config`** — settings like `concurrency`, `adapter`, `access_key` etc. are now accessed via `WaybackArchiver.config.concurrency` instead of `WaybackArchiver.concurrency`. The `configure` block is unchanged. `WaybackArchiver.logger` and `WaybackArchiver.listener` remain available as convenience getters.
 
-The public API (`archive`, `crawl`, `sitemap`, `urls`) is unchanged. Existing code that calls `WaybackArchiver.archive(url, strategy: :auto)` will continue to work — see [Auto discovery](#auto-discovery) for the updated behavior. See the [CHANGELOG](CHANGELOG.md) for all new features.
+The primary entry points (`archive`, `crawl`, `sitemap`, `urls`) remain available, but v2 intentionally removes several legacy arguments, setters, adapter hooks, and result fields described above. Existing keyword-style calls such as `WaybackArchiver.archive(url, strategy: :auto)` continue to work — see [Auto discovery](#auto-discovery) for the updated behavior and the [CHANGELOG](CHANGELOG.md) for the complete migration list.
 
 ## Docs
 

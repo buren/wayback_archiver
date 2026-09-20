@@ -42,6 +42,18 @@ RSpec.describe WaybackArchiver::CLI do
         described_class.run(['--urls', '--no-session', '--no-summary', 'http://example.com'], stdout: stdout, stderr: stderr)
       end.to raise_error(SystemExit) { |e| expect(e.status).to eq(1) }
     end
+
+    it 'reports rejected credentials cleanly with exit 3' do
+      allow(WaybackArchiver).to receive(:archive)
+        .and_raise(WaybackArchiver::AuthenticationError, 'credentials rejected')
+
+      expect do
+        described_class.run(['--urls', '--no-session', '--no-summary', 'http://example.com'],
+                            stdout: stdout, stderr: stderr)
+      end.to raise_error(SystemExit) { |e| expect(e.status).to eq(3) }
+
+      expect(stderr_output).to include('wayback_archiver: credentials rejected')
+    end
   end
 
   describe 'credentials preflight' do
@@ -180,6 +192,54 @@ RSpec.describe WaybackArchiver::CLI do
       expect(lines).to eq(%w[http://example.com/doc.pdf])
     end
 
+    # Regression: routing every discovery through limit: -1 to make --limit a
+    # command-wide cap also stopped the crawler from halting early, so
+    # `--list-urls --crawl --limit 10` walked an entire site to print 10 URLs.
+    # When nothing downstream can reduce the count, the budget is safe to push
+    # into discovery.
+    it 'stops discovery at the limit for a single unfiltered source' do
+      allow(WaybackArchiver).to receive(:discover_urls).and_return(%w[a b c])
+
+      cli = build_cli('--list-urls', '--no-summary', '--crawl', '--limit=3', 'http://one.example')
+      expect { cli.run }.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
+
+      expect(WaybackArchiver).to have_received(:discover_urls).with(
+        anything, strategy: 'crawl', hosts: [], limit: 3
+      )
+    end
+
+    it 'still discovers everything when a filter could reduce the count' do
+      allow(WaybackArchiver).to receive(:discover_urls).and_return(%w[a b c])
+
+      cli = build_cli('--list-urls', '--no-summary', '--crawl', '--limit=3',
+                      '--exclude-ext=png', 'http://one.example')
+      expect { cli.run }.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
+
+      expect(WaybackArchiver).to have_received(:discover_urls).with(
+        anything, strategy: 'crawl', hosts: [], limit: -1
+      )
+    end
+
+    it 'deduplicates sources and applies --limit globally after filtering' do
+      allow(WaybackArchiver).to receive(:discover_urls) do |source, **|
+        if source.include?('one')
+          %w[http://example.com/a http://example.com/image.png http://example.com/shared]
+        else
+          %w[http://example.com/shared http://example.com/b]
+        end
+      end
+
+      cli = build_cli('--list-urls', '--no-summary', '--sitemap', '--exclude-ext=png',
+                      '--limit=2', 'http://one.example', 'http://two.example')
+      expect { cli.run }.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
+
+      expect(stdout_output.lines.map(&:chomp))
+        .to eq(%w[http://example.com/a http://example.com/shared])
+      expect(WaybackArchiver).to have_received(:discover_urls).twice.with(
+        anything, strategy: 'sitemap', hosts: [], limit: -1
+      )
+    end
+
     it 'suppresses log output by default' do
       allow(WaybackArchiver).to receive(:discover_urls).and_return(%w[http://a.com])
 
@@ -261,6 +321,26 @@ RSpec.describe WaybackArchiver::CLI do
       expect(WaybackArchiver).to have_received(:discover_urls).once
       expect(WaybackArchiver).to have_received(:archive)
         .with(%w[http://example.com/b], hash_including(strategy: 'urls'))
+    end
+
+    it 'applies --limit after removing already-archived URLs' do
+      urls = %w[http://example.com/old http://example.com/new]
+      allow(WaybackArchiver).to receive(:discover_urls).and_return(urls)
+      allow(WaybackArchiver).to receive(:check).and_return([
+        WaybackArchiver::CheckResult.new(urls[0], archived: true, timestamp: '20260101000000'),
+        WaybackArchiver::CheckResult.new(urls[1], archived: false)
+      ])
+      allow(WaybackArchiver).to receive(:archive).and_return([])
+
+      cli = build_cli('--skip-archived', '--limit=1', '--no-session', '--no-summary',
+                      '--sitemap', 'http://example.com')
+      cli.run
+
+      expect(WaybackArchiver).to have_received(:discover_urls).with(
+        'http://example.com', strategy: 'sitemap', hosts: [], limit: -1
+      )
+      expect(WaybackArchiver).to have_received(:archive)
+        .with(%w[http://example.com/new], hash_including(strategy: 'urls', limit: 1))
     end
 
     it 'checks without a window when --skip-archived has no value' do
@@ -375,10 +455,29 @@ RSpec.describe WaybackArchiver::CLI do
         cli.run
 
         expect(File.exist?(report_path)).to eq(true)
-        lines = File.readlines(report_path).map(&:chomp).reject(&:empty?)
-        expect(lines.length).to eq(1)
-        data = JSON.parse(lines.first)
-        expect(data['url']).to eq('http://example.com')
+        data = JSON.parse(File.read(report_path))
+        expect(data.length).to eq(1)
+        expect(data.first['url']).to eq('http://example.com')
+      end
+    end
+
+    it 'preserves existing report entries when resuming' do
+      Dir.mktmpdir do |dir|
+        report_path = File.join(dir, 'report.json')
+        session_path = File.join(dir, 'session.jsonl')
+        old_result = WaybackArchiver::ArchiveResult.new('http://old.example', timestamp: '20240101000000')
+        WaybackArchiver::Report.write([old_result], report_path)
+        File.write(session_path, JSON.generate(url: old_result.uri, success: true, submitted: false) + "\n")
+
+        cli = build_cli('--urls', '--no-summary', "--resume=#{session_path}",
+                        "--report=#{report_path}", 'http://old.example', 'http://new.example')
+        new_result = WaybackArchiver::ArchiveResult.new('http://new.example', timestamp: '20240102000000')
+        allow(WaybackArchiver).to receive(:archive).and_yield(new_result).and_return([new_result])
+
+        cli.run
+
+        expect(JSON.parse(File.read(report_path)).map { |entry| entry['url'] })
+          .to eq(%w[http://old.example http://new.example])
       end
     end
 
@@ -418,6 +517,27 @@ RSpec.describe WaybackArchiver::CLI do
         ['http://a.com', 'http://b.com', 'http://c.com'],
         hash_including(strategy: 'urls')
       )
+    end
+
+    it 'applies the limit across multiple discovery sources' do
+      cli = build_cli('--sitemap', '--no-session', '--no-summary', '--limit=3',
+                      'http://one.example/sitemap.xml', 'http://two.example/sitemap.xml')
+      calls = []
+      allow(WaybackArchiver).to receive(:archive) do |source, **options|
+        calls << [source, options[:limit], options[:skip_urls].dup]
+        if source.include?('one')
+          %w[http://shared.example http://one.example/page].map do |url|
+            WaybackArchiver::ArchiveResult.new(url, timestamp: '20240101000000')
+          end
+        else
+          [WaybackArchiver::ArchiveResult.new('http://two.example/page', timestamp: '20240101000000')]
+        end
+      end
+
+      cli.run
+
+      expect(calls.map { |call| call[1] }).to eq([3, 1])
+      expect(calls.last[2]).to include('http://shared.example', 'http://one.example/page')
     end
 
     it 'yields results to session writer' do

@@ -26,7 +26,7 @@ module WaybackArchiver
     def self.urls(url: nil, xml: nil)
       raise ArgumentError, 'must provide either url: or xml:' unless url || xml
 
-      xml = Request.get(url).body unless xml
+      xml = Request.get(url, raise_on_http_error: true).body unless xml
 
       feed = RSS::Parser.parse(xml, false)
       return [] unless feed

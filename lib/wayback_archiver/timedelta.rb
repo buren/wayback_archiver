@@ -17,15 +17,15 @@ module WaybackArchiver
       # Bare number = seconds
       return Integer(str) if str.match?(/\A\d+\z/)
 
+      unless str.match?(/\A(?:\d+\s*[dhms]\s*)+\z/i)
+        raise ArgumentError, "Invalid timedelta format: #{str.inspect}. Use e.g. \"3d 5h 20m\" or \"120\""
+      end
+
       total = 0
-      matched = false
 
       str.scan(/(\d+)\s*([dhms])/i) do |amount, unit|
         total += amount.to_i * UNITS.fetch(unit.downcase)
-        matched = true
       end
-
-      raise ArgumentError, "Invalid timedelta format: #{str.inspect}. Use e.g. \"3d 5h 20m\" or \"120\"" unless matched
 
       total
     end

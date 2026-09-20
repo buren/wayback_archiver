@@ -40,7 +40,7 @@ module WaybackArchiver
       params = "url=#{CGI.escape(url)}&output=json&limit=-1&filter=statuscode:200"
       params << "&from=#{from}" if from
 
-      response = Request.get("#{URL}?#{params}")
+      response = Request.get("#{URL}?#{params}", raise_on_http_error: true)
       parse_response(url, response.body)
     rescue Request::Error => e
       WaybackArchiver.logger.warn("CDX check failed for #{url}: #{e.message}")
@@ -80,18 +80,24 @@ module WaybackArchiver
 
     def self.parse_response(url, body)
       data = JSON.parse(body)
-      # CDX JSON output: first row is header names, subsequent rows are values
-      if data.is_a?(Array) && data.length > 1
-        headers = data[0]
-        row = data[1]
-        record = headers.zip(row).to_h
-        CheckResult.new(url, archived: true, timestamp: record['timestamp'])
-      else
-        CheckResult.new(url, archived: false)
+      # CDX JSON output: first row is header names, subsequent rows are values.
+      # A JSON object is an API/proxy error, not evidence that the URL is absent.
+      unless data.is_a?(Array)
+        raise Request::ServerError, "Unexpected CDX response type: #{data.class}"
       end
-    rescue JSON::ParserError
-      # Empty or non-JSON response = not archived
-      CheckResult.new(url, archived: false)
+
+      return CheckResult.new(url, archived: false) if data.length <= 1
+
+      unless data[0].is_a?(Array) && data[1].is_a?(Array)
+        raise Request::ServerError, "Unexpected CDX row format: #{data.inspect}"
+      end
+
+      headers = data[0]
+      row = data[1]
+      record = headers.zip(row).to_h
+      CheckResult.new(url, archived: true, timestamp: record['timestamp'])
+    rescue JSON::ParserError => e
+      raise Request::ServerError, "Invalid JSON in CDX response: #{e.message}"
     end
     private_class_method :parse_response
   end

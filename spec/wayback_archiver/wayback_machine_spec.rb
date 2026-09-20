@@ -622,6 +622,14 @@ RSpec.describe WaybackArchiver::WaybackMachine do
       expect { described_class.poll_statuses([job_id]) }
         .to raise_error(WaybackArchiver::Request::ServerError, /Invalid JSON/)
     end
+
+    it 'raises on a JSON HTTP error instead of treating it as job statuses' do
+      stub_request(:post, batch_status_url)
+        .to_return(status: 503, body: '{"message":"Service Unavailable"}')
+
+      expect { described_class.poll_statuses([job_id]) }
+        .to raise_error(WaybackArchiver::Request::ResponseError, /HTTP 503/)
+    end
   end
 
   describe '::check_user_status' do
@@ -662,6 +670,14 @@ RSpec.describe WaybackArchiver::WaybackMachine do
 
       expect { described_class.check_user_status }
         .to raise_error(WaybackArchiver::Request::ServerError, /Invalid JSON/)
+    end
+
+    it 'raises on an HTTP error response' do
+      stub_request(:get, /web\.archive\.org\/save\/status\/user\?_t=/)
+        .to_return(status: 401, body: '{"message":"Unauthorized"}')
+
+      expect { described_class.check_user_status }
+        .to raise_error(WaybackArchiver::AuthenticationError, /rejected/)
     end
   end
 

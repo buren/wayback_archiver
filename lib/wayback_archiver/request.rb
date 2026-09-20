@@ -20,7 +20,14 @@ module WaybackArchiver
     # Remote server responded with a HTTP error
     class HTTPError < ServerError; end
     # Remote server error
-    class ResponseError < ServerError; end
+    class ResponseError < ServerError
+      attr_reader :code
+
+      def initialize(message = nil, code: nil)
+        @code = code&.to_i
+        super(message)
+      end
+    end
     # Max redirects reached error
     class MaxRedirectError < ServerError; end
     # Remote server responded with an invalid redirect
@@ -105,7 +112,10 @@ module WaybackArchiver
           next
         when :error
           if raise_on_http_error
-            raise ResponseError, "Failed with response code: #{code} when requesting #{uri}"
+            raise ResponseError.new(
+              "Failed with response code: #{code} when requesting #{uri}",
+              code: code
+            )
           end
 
           return build_response(uri, response)

@@ -187,6 +187,11 @@ RSpec.describe WaybackArchiver::CLI::OptionParser do
       expect(opts.skip_archived).to eq(true)
       expect(opts.skip_archived_within).to eq('7d')
     end
+
+    it 'rejects an invalid --skip-archived timedelta during parsing' do
+      expect { parse('--skip-archived=banana', 'http://example.com') }
+        .to raise_error(ArgumentError, /Invalid timedelta/)
+    end
   end
 
   describe 'validation' do
