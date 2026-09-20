@@ -350,4 +350,35 @@ RSpec.describe WaybackArchiver::Request do
       expect(described_class).not_to respond_to(:build_request_error)
     end
   end
+
+  describe 'per-call timeouts' do
+    # A CDX lookup is a tiny JSON read; the 60s default let a single hung
+    # request burn a minute, which made retrying transient failures far more
+    # expensive than the failures themselves.
+    it 'defaults to the global timeouts' do
+      http = nil
+      allow(Net::HTTP).to receive(:new).and_wrap_original do |orig, *args|
+        http = orig.call(*args)
+      end
+      stub_request(:get, 'http://example.com/').to_return(status: 200, body: 'ok')
+
+      described_class.get('http://example.com')
+
+      expect(http.open_timeout).to eq(30)
+      expect(http.read_timeout).to eq(60)
+    end
+
+    it 'accepts per-call overrides' do
+      http = nil
+      allow(Net::HTTP).to receive(:new).and_wrap_original do |orig, *args|
+        http = orig.call(*args)
+      end
+      stub_request(:get, 'http://example.com/').to_return(status: 200, body: 'ok')
+
+      described_class.get('http://example.com', open_timeout: 5, read_timeout: 15)
+
+      expect(http.open_timeout).to eq(5)
+      expect(http.read_timeout).to eq(15)
+    end
+  end
 end

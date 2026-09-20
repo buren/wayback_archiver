@@ -12,14 +12,22 @@ module WaybackArchiver
     # @param max_retries [Integer] maximum number of retries.
     # @param base_delay [Numeric] initial delay in seconds.
     # @param max_delay [Numeric] maximum delay in seconds.
+    # @param retry_on [Array<Class>] exception classes to catch.
+    # @param retry_if [#call, nil] optional predicate narrowing +retry_on+ to
+    #   the instances actually worth retrying — for when the class alone
+    #   doesn't say (an HTTP 503 is transient, an HTTP 400 never will be).
+    #   Anything it rejects is re-raised untouched, preserving the original
+    #   exception for the caller to classify.
     # @yield the block to execute.
     # @return the block's return value.
     # @raise [RetryableError] if all retries are exhausted.
-    def self.with_backoff(max_retries: DEFAULT_MAX_RETRIES, base_delay: DEFAULT_BASE_DELAY, max_delay: DEFAULT_MAX_DELAY, retry_on: [RetryableError])
+    def self.with_backoff(max_retries: DEFAULT_MAX_RETRIES, base_delay: DEFAULT_BASE_DELAY, max_delay: DEFAULT_MAX_DELAY, retry_on: [RetryableError], retry_if: nil)
       retries = 0
       begin
         yield
       rescue *retry_on => e
+        raise if retry_if && !retry_if.call(e)
+
         retries += 1
         raise if retries > max_retries
 

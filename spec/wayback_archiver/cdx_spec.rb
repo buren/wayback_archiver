@@ -211,4 +211,66 @@ RSpec.describe WaybackArchiver::CDX do
       expect(results.find { |r| r.url.end_with?('b') }).to be_errored
     end
   end
+
+  describe 'retrying transient CDX failures' do
+    # archive.org's CDX endpoint 503s intermittently — a live smoke test saw
+    # 3 of 5 lookups fail, two of which succeeded on the very next attempt.
+    # One shot per URL meant --check exited 1 most of the time and
+    # --skip-archived re-archived URLs that were already in the archive.
+    let(:rows) { '[["urlkey","timestamp"],["com,example)/","20260101000000"]]' }
+
+    before { allow(WaybackArchiver::Retry).to receive(:sleep) }
+
+    it 'retries a 503 and succeeds' do
+      stub_request(:get, /#{Regexp.escape(cdx_url)}/)
+        .to_return({ status: 503, body: 'busy' }, { status: 200, body: rows })
+
+      result = described_class.check('http://example.com')
+
+      expect(result.archived?).to eq(true)
+      expect(result.errored?).to eq(false)
+      expect(result.timestamp).to eq('20260101000000')
+    end
+
+    it 'retries a connection error and succeeds' do
+      call = 0
+      stub_request(:get, /#{Regexp.escape(cdx_url)}/).to_return do
+        call += 1
+        raise Timeout::Error if call == 1
+
+        { status: 200, body: rows }
+      end
+
+      expect(described_class.check('http://example.com').archived?).to eq(true)
+    end
+
+    it 'gives up after the retry limit and preserves the original error' do
+      stub_request(:get, /#{Regexp.escape(cdx_url)}/).to_return(status: 503, body: 'busy')
+
+      result = described_class.check('http://example.com')
+
+      expect(result.errored?).to eq(true)
+      expect(result.error).to be_a(WaybackArchiver::Request::ResponseError)
+      expect(result.error.code).to eq(503)
+      expect(WebMock).to have_requested(:get, /#{Regexp.escape(cdx_url)}/)
+        .times(described_class::MAX_RETRIES + 1)
+    end
+
+    it 'does not retry a client error that will not fix itself' do
+      stub_request(:get, /#{Regexp.escape(cdx_url)}/).to_return(status: 400, body: 'bad')
+
+      result = described_class.check('http://example.com')
+
+      expect(result.errored?).to eq(true)
+      expect(WebMock).to have_requested(:get, /#{Regexp.escape(cdx_url)}/).once
+    end
+
+    it 'does not retry a malformed but successful response' do
+      stub_request(:get, /#{Regexp.escape(cdx_url)}/)
+        .to_return(status: 200, body: '{"message":"nope"}')
+
+      expect(described_class.check('http://example.com').errored?).to eq(true)
+      expect(WebMock).to have_requested(:get, /#{Regexp.escape(cdx_url)}/).once
+    end
+  end
 end

@@ -4,6 +4,7 @@ require 'json'
 require 'wayback_archiver/check_result'
 require 'wayback_archiver/rate_limiter'
 require 'wayback_archiver/request'
+require 'wayback_archiver/retry'
 require 'wayback_archiver/thread_pool'
 
 module WaybackArchiver
@@ -30,22 +31,63 @@ module WaybackArchiver
       RATE_LIMITER_MUTEX.synchronize { @rate_limiter = nil }
     end
 
+    MAX_RETRIES = 3 # per-URL retry cap for transient CDX failures
+    BASE_DELAY  = 1 # seconds, doubled each attempt
+    MAX_DELAY   = 8 # seconds
+
+    # HTTP statuses worth another attempt. archive.org's CDX endpoint sheds
+    # load with 503/504 often enough that a single shot made --check report
+    # "unknown" for most URLs and --skip-archived re-archive them.
+    RETRYABLE_HTTP_CODES = [408, 425, 429, 500, 502, 503, 504].freeze
+
+    # A CDX lookup is a small JSON read that normally answers in well under a
+    # second. Fail fast and let the retry do the waiting, rather than letting
+    # one hung request sit on the global 60s read timeout.
+    OPEN_TIMEOUT = 10
+    READ_TIMEOUT = 15
+
     # Check a single URL against the CDX API.
+    # Transient failures are retried with backoff; anything else is reported
+    # as an errored result, which reads as "unknown", never "not archived".
     # @param url [String] the URL to check
     # @param from [String, nil] CDX timestamp (YYYYMMDDHHMMSS) to limit recency
     # @return [CheckResult]
     def self.check(url, from: nil)
-      rate_limiter.acquire
+      response = Retry.with_backoff(
+        max_retries: MAX_RETRIES, base_delay: BASE_DELAY, max_delay: MAX_DELAY,
+        retry_on: [Request::Error], retry_if: method(:retryable_error?)
+      ) do
+        rate_limiter.acquire
+        Request.get(
+          "#{URL}?#{query(url, from)}",
+          raise_on_http_error: true,
+          open_timeout: OPEN_TIMEOUT,
+          read_timeout: READ_TIMEOUT
+        )
+      end
 
-      params = "url=#{CGI.escape(url)}&output=json&limit=-1&filter=statuscode:200"
-      params << "&from=#{from}" if from
-
-      response = Request.get("#{URL}?#{params}", raise_on_http_error: true)
       parse_response(url, response.body)
     rescue Request::Error => e
       WaybackArchiver.logger.warn("CDX check failed for #{url}: #{e.message}")
       CheckResult.new(url, archived: false, error: e)
     end
+
+    def self.query(url, from)
+      params = "url=#{CGI.escape(url)}&output=json&limit=-1&filter=statuscode:200"
+      params << "&from=#{from}" if from
+      params
+    end
+    private_class_method :query
+
+    # A response that came back with a status tells us whether retrying is
+    # worth it; a connection-level failure (timeout, reset, DNS) has no status
+    # and is always worth one more go.
+    def self.retryable_error?(error)
+      return RETRYABLE_HTTP_CODES.include?(error.code) if error.is_a?(Request::ResponseError) && error.code
+
+      true
+    end
+    private_class_method :retryable_error?
 
     # Check multiple URLs concurrently.
     # @param urls [Array<String>] URLs to check

@@ -126,4 +126,37 @@ RSpec.describe WaybackArchiver::Retry do
       delays.each { |d| expect(d).to be <= 22 } # 20 + max jitter
     end
   end
+
+  describe 'retry_if' do
+    it 'retries only the errors the predicate accepts' do
+      attempts = 0
+      expect do
+        described_class.with_backoff(
+          retry_on: [WaybackArchiver::Request::Error],
+          retry_if: ->(e) { e.message == 'transient' }
+        ) do
+          attempts += 1
+          raise WaybackArchiver::Request::ServerError, 'permanent'
+        end
+      end.to raise_error(WaybackArchiver::Request::ServerError, 'permanent')
+
+      expect(attempts).to eq(1)
+    end
+
+    it 'still retries when the predicate accepts' do
+      attempts = 0
+      described_class.with_backoff(
+        max_retries: 2,
+        retry_on: [WaybackArchiver::Request::Error],
+        retry_if: ->(_e) { true }
+      ) do
+        attempts += 1
+        raise WaybackArchiver::Request::ServerError, 'transient' if attempts < 3
+
+        :ok
+      end
+
+      expect(attempts).to eq(3)
+    end
+  end
 end

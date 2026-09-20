@@ -41,6 +41,12 @@ module WaybackArchiver
     # Max number of redirects before an error is raised
     MAX_REDIRECTS = 10
 
+    # Default connection timeouts, generous enough for a slow page fetch or a
+    # screenshot download. Callers doing small, latency-sensitive lookups pass
+    # their own — see CDX, where a hung request used to cost a full minute.
+    DEFAULT_OPEN_TIMEOUT = 30
+    DEFAULT_READ_TIMEOUT = 60
+
     # Known request errors
     REQUEST_ERRORS = {
       # server
@@ -78,7 +84,9 @@ module WaybackArchiver
       max_redirects: MAX_REDIRECTS,
       raise_on_http_error: false,
       follow_redirects: true,
-      headers: {}
+      headers: {},
+      open_timeout: DEFAULT_OPEN_TIMEOUT,
+      read_timeout: DEFAULT_READ_TIMEOUT
     )
       uri = build_uri(uri)
 
@@ -86,7 +94,7 @@ module WaybackArchiver
       until redirect_count > max_redirects
         WaybackArchiver.logger.debug "Requesting #{uri}"
 
-        http = build_http(uri)
+        http = build_http(uri, open_timeout: open_timeout, read_timeout: read_timeout)
 
         request = Net::HTTP::Get.new(uri.request_uri)
         request['User-Agent'] = WaybackArchiver.config.user_agent
@@ -190,10 +198,10 @@ module WaybackArchiver
     # Build a Net::HTTP instance for the given URI.
     # @return [Net::HTTP]
     # @param [URI] uri the target URI.
-    def self.build_http(uri)
+    def self.build_http(uri, open_timeout: DEFAULT_OPEN_TIMEOUT, read_timeout: DEFAULT_READ_TIMEOUT)
       http = Net::HTTP.new(uri.host, uri.port)
-      http.open_timeout = 30
-      http.read_timeout = 60
+      http.open_timeout = open_timeout
+      http.read_timeout = read_timeout
       if uri.scheme == 'https'
         http.use_ssl = true
         http.verify_mode = OpenSSL::SSL::VERIFY_PEER
