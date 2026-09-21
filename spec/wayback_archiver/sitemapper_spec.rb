@@ -264,4 +264,53 @@ RSpec.describe WaybackArchiver::Sitemapper do
         .to eq(%w[http://example.com/page])
     end
   end
+
+  describe 'autodiscovery logging' do
+    before do
+      stub_request(:get, 'http://example.com/robots.txt').to_return(status: 404, body: '')
+      stub_request(:get, %r{http://example\.com/sitemap}).to_return(status: 404, body: '')
+    end
+
+    # Regression: the auto cascade logged its expected "no sitemap here" probe
+    # at ERROR, so a perfectly successful run shouted
+    #   ERROR: Error raised when requesting http://example.com,
+    #   WaybackArchiver::Request::ResponseError, Failed with response code: 404
+    #   when requesting https://www.other.example/sv
+    # — wrong level, the class name in the text, the message said it twice, and
+    # the URL named was the redirect target rather than the one asked for.
+    it 'reports a missing sitemap at info level, not error' do
+      stub_request(:get, 'http://example.com').to_return(status: 404, body: '')
+
+      described_class.autodiscover('http://example.com')
+
+      expect(WaybackArchiver.logger.error_log).to be_empty
+      expect(WaybackArchiver.logger.info_log).to include(
+        'No Sitemap found at http://example.com (HTTP 404) - falling back to crawling'
+      )
+    end
+
+    it 'names the requested URL, not the redirect target' do
+      stub_request(:get, 'http://example.com')
+        .to_return(status: 301, headers: { 'Location' => 'https://elsewhere.example/sv' })
+      stub_request(:get, 'https://elsewhere.example/sv').to_return(status: 404, body: '')
+
+      described_class.autodiscover('http://example.com')
+
+      line = WaybackArchiver.logger.info_log.grep(/No Sitemap found/).first
+      expect(line).to include('http://example.com')
+      expect(line).not_to include('elsewhere.example')
+    end
+
+    it 'describes a non-sitemap response without a stack of class names' do
+      stub_request(:get, 'http://example.com')
+        .to_return(status: 200, body: '<!doctype html><html><body>hi</body></html>')
+
+      described_class.autodiscover('http://example.com')
+
+      expect(WaybackArchiver.logger.error_log).to be_empty
+      expect(WaybackArchiver.logger.info_log).to include(
+        'No Sitemap found at http://example.com (not a sitemap) - falling back to crawling'
+      )
+    end
+  end
 end

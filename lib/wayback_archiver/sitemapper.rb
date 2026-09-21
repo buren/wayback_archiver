@@ -69,12 +69,26 @@ module WaybackArchiver
       WaybackArchiver.logger.info "Looking for Sitemap at #{url}"
       urls(url: url)
     rescue Request::Error => e
-      # autodiscover is the auto-cascade probe: a network failure here means
-      # 'no sitemap found' and the caller falls back to crawling. The explicit
-      # sitemap strategy (Sitemapper.urls) lets the error propagate instead.
-      WaybackArchiver.logger.error "Error raised when requesting #{url}, #{e.class}, #{e.message}"
+      # autodiscover is the auto-cascade probe: not finding a sitemap here is
+      # the expected outcome for most sites, not a failure — the caller falls
+      # back to crawling, which is why this is info rather than error. The
+      # explicit sitemap strategy (Sitemapper.urls) raises instead.
+      WaybackArchiver.logger.info "No Sitemap found at #{url} (#{describe_failure(e)}) - falling back to crawling"
       []
     end
+
+    # One short phrase for why the probe came up empty. The raw exception read
+    # as "Error raised when requesting X, <ClassName>, Failed with response
+    # code: 404 when requesting Y" — the reason twice, a class name, and a
+    # redirect target instead of the URL the user asked for.
+    def self.describe_failure(error)
+      case error
+      when InvalidSitemapError    then 'not a sitemap'
+      when Request::ResponseError then error.code ? "HTTP #{error.code}" : 'HTTP error'
+      else error.message
+      end
+    end
+    private_class_method :describe_failure
 
     # Fetch and parse sitemaps recursively.
     # @return [Array<String>] of URLs defined in Sitemap(s).
