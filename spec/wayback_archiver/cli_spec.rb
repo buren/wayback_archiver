@@ -723,7 +723,7 @@ RSpec.describe WaybackArchiver::CLI do
         listener.on_batch_start(total: 100)
 
         expect(clean_output).to include('0/100')
-        expect(clean_output).to include('Submitting...')
+        expect(clean_output).to include(WaybackArchiver::CLI::ProgressRenderer::STATE_SUBMITTING)
       end
 
       it 'prints completed URL above footer' do
@@ -741,14 +741,14 @@ RSpec.describe WaybackArchiver::CLI do
         listener.on_progress(captured: 2, failed: 0, pending: 5)
 
         expect(clean_output).to include('5 pending')
-        expect(clean_output).to include('Polling...')
+        expect(clean_output).to include(WaybackArchiver::CLI::ProgressRenderer::STATE_CAPTURING)
       end
 
       it 'shows waiting state' do
         listener.on_batch_start(total: 10)
         listener.on_waiting_for_slots(processing: 7)
 
-        expect(clean_output).to include('Waiting for available slots...')
+        expect(clean_output).to include(WaybackArchiver::CLI::ProgressRenderer::STATE_WAITING)
       end
 
       it 'clears footer on finish' do

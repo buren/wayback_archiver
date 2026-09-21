@@ -20,9 +20,11 @@ module WaybackArchiver
       EMPTY_CHAR = "\u2591" # ░
       BURST_THRESHOLD = 1.0 # seconds — completions closer than this are a burst
 
-      STATE_SUBMITTING = 'Submitting...'
-      STATE_POLLING = 'Polling...'
-      STATE_WAITING = 'Waiting for available slots...'
+      # Phrased from the reader's side rather than ours: "Polling" named the
+      # HTTP mechanic, and it is the state on screen most of the run.
+      STATE_SUBMITTING = 'Submitting URLs...'
+      STATE_CAPTURING  = 'Waiting for captures to finish...'
+      STATE_WAITING    = 'Waiting for a free capture slot...'
 
       CURSOR_UP = "\e[A"
       CLEAR_LINE = "\e[2K"
@@ -123,13 +125,13 @@ module WaybackArchiver
         write_above_footer { @stdout.write(text) }
       end
 
-      # Update pending count and set state to "Polling...", then repaint.
+      # Update pending count and switch to the capture-wait state, then repaint.
       def update_progress(pending:)
         @mutex.synchronize do
-          return if @pending == pending && @state == STATE_POLLING
+          return if @pending == pending && @state == STATE_CAPTURING
 
           @pending = pending
-          @state = STATE_POLLING
+          @state = STATE_CAPTURING
           repaint_footer
         end
       end

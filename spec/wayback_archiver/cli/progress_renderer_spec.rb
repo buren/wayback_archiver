@@ -103,11 +103,11 @@ RSpec.describe WaybackArchiver::CLI::ProgressRenderer do
       renderer.start
     end
 
-    it 'updates pending count and sets state to Polling' do
+    it 'updates pending count and switches to the capture-wait state' do
       renderer.update_progress(pending: 5)
 
       expect(clean_output).to include('5 pending')
-      expect(clean_output).to include('Polling...')
+      expect(clean_output).to include(described_class::STATE_CAPTURING)
     end
   end
 
@@ -118,15 +118,15 @@ RSpec.describe WaybackArchiver::CLI::ProgressRenderer do
     end
 
     it 'changes the status line' do
-      renderer.set_state('Waiting for available slots...')
+      renderer.set_state(described_class::STATE_WAITING)
 
-      expect(clean_output).to include('Waiting for available slots...')
+      expect(clean_output).to include(described_class::STATE_WAITING)
     end
 
     it 'does not repaint when state has not changed' do
-      renderer.set_state('Submitting...')
+      renderer.set_state(described_class::STATE_SUBMITTING)
       before_output = output.dup
-      renderer.set_state('Submitting...')
+      renderer.set_state(described_class::STATE_SUBMITTING)
 
       expect(output).to eq(before_output)
     end
