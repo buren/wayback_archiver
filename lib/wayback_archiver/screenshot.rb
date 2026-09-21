@@ -4,6 +4,8 @@ module WaybackArchiver
   # Download screenshots from the Wayback Machine
   # @api private
   class Screenshot
+    WAYBACK_ORIGIN = 'https://web.archive.org'.freeze
+
     # Magic numbers for the formats archive.org actually serves. The SPN2 docs
     # say "full-page screenshot (PNG)", but the bytes come back as image/jpg —
     # accept either and name the file after what arrived.
@@ -21,11 +23,13 @@ module WaybackArchiver
     # @param original_url [String] the original page URL (used for filename).
     # @param directory [String] local directory to save the screenshot.
     # @param timestamp [String, nil] capture timestamp, used to build the
-    #   Wayback replay URL. Without it the bare screenshot URL is used, which
-    #   archive.org answers with 404.
+    #   Wayback replay URL. Without it, screenshot_url must already be a usable
+    #   HTTPS URL on web.archive.org (port 443).
     # @raise [AuthenticationError] if credentials are not configured.
     # @raise [ArgumentError] if the directory does not exist.
     # @raise [Request::Error] if the download fails or isn't an image.
+    # @raise [Request::InvalidRedirectError] if the initial URL or a redirect
+    #   leaves the trusted HTTPS origin or contains URL credentials.
     def self.download(screenshot_url, original_url, directory:, timestamp: nil)
       unless WaybackArchiver.config.credentials?
         raise AuthenticationError, 'Credentials required for screenshot download'
@@ -39,6 +43,7 @@ module WaybackArchiver
         replay_url(screenshot_url, timestamp),
         follow_redirects: true,
         raise_on_http_error: true,
+        allowed_origin: WAYBACK_ORIGIN,
         headers: auth_headers
       )
 
@@ -78,7 +83,7 @@ module WaybackArchiver
     def self.replay_url(screenshot_url, timestamp)
       return screenshot_url if timestamp.to_s.empty?
 
-      "https://web.archive.org/web/#{timestamp}/#{screenshot_url}"
+      "#{WAYBACK_ORIGIN}/web/#{timestamp}/#{screenshot_url}"
     end
     private_class_method :replay_url
 

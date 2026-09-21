@@ -114,6 +114,95 @@ RSpec.describe WaybackArchiver::Request do
 
       expect(result.code).to eq('200')
     end
+
+    context 'credentials across redirects' do
+      let(:private_headers) do
+        {
+          'aUtHoRiZaTiOn' => 'LOW key:secret',
+          'cOoKiE' => 'session=secret',
+          'pRoXy-AuThOrIzAtIoN' => 'Basic proxy-secret',
+          'Accept' => 'image/*'
+        }.freeze
+      end
+
+      ['/image', 'https://EXAMPLE.com:443/image'].each do |location|
+        it "preserves credentials on a same-origin redirect to #{location}" do
+          stub_request(:get, 'https://example.com/')
+            .to_return(status: 302, headers: { 'Location' => location })
+          stub_request(:get, 'https://example.com/image').to_return(body: 'image')
+
+          described_class.get('https://example.com/', headers: private_headers)
+
+          expect(WebMock).to have_requested(:get, 'https://example.com/image')
+            .with(headers: private_headers)
+        end
+      end
+
+      {
+        'a different host' => 'https://other.example/image',
+        'a different port' => 'https://example.com:8443/image',
+        'an HTTPS downgrade' => 'http://example.com/image',
+        'a scheme-relative URL' => '//other.example/image'
+      }.each do |description, location|
+        it "strips sensitive headers for #{description} without mutating the caller's headers" do
+          target = URI.join('https://example.com/', location).to_s
+          stub_request(:get, 'https://example.com/')
+            .to_return(status: 302, headers: { 'Location' => location })
+          stub_request(:get, target).to_return(body: 'image')
+
+          described_class.get('https://example.com/', headers: private_headers)
+
+          expect(WebMock).to have_requested(:get, 'https://example.com/')
+            .with(headers: private_headers)
+          expect(WebMock).to have_requested(:get, target).with { |request|
+            %w[Authorization Cookie Proxy-Authorization].all? { |key| !request.headers.key?(key) } &&
+              request.headers['Accept'] == 'image/*'
+          }
+          expect(private_headers['aUtHoRiZaTiOn']).to eq('LOW key:secret')
+        end
+      end
+
+      it 'does not restore credentials later in a redirect chain' do
+        stub_request(:get, 'https://example.com/')
+          .to_return(status: 302, headers: { 'Location' => 'https://other.example/image' })
+        stub_request(:get, 'https://other.example/image')
+          .to_return(status: 302, headers: { 'Location' => 'https://example.com/returned' })
+        stub_request(:get, 'https://example.com/returned').to_return(body: 'image')
+
+        described_class.get('https://example.com/', headers: private_headers)
+
+        expect(WebMock).to have_requested(:get, 'https://example.com/returned').with { |request|
+          %w[Authorization Cookie Proxy-Authorization].none? { |key| request.headers.key?(key) }
+        }
+      end
+    end
+
+    context 'restricted origin' do
+      it 'rejects an initial destination outside the allowed origin before making a request' do
+        target = 'https://other.example/image'
+        stub_request(:get, target).to_return(body: 'image')
+
+        expect do
+          described_class.get(target, allowed_origin: 'https://example.com',
+                                      headers: { 'Authorization' => 'LOW key:secret' })
+        end.to raise_error(described_class::InvalidRedirectError, /origin/i)
+        expect(WebMock).not_to have_requested(:get, target)
+      end
+
+      it 'checks every hop, including a redirect after a permitted relative redirect' do
+        stub_request(:get, 'https://example.com/')
+          .to_return(status: 302, headers: { 'Location' => '/image' })
+        stub_request(:get, 'https://example.com/image')
+          .to_return(status: 302, headers: { 'Location' => 'https://other.example/image' })
+        stub_request(:get, 'https://other.example/image').to_return(body: 'image')
+
+        expect do
+          described_class.get('https://example.com/', allowed_origin: 'https://example.com')
+        end.to raise_error(described_class::InvalidRedirectError, /origin/i)
+        expect(WebMock).to have_requested(:get, 'https://example.com/image')
+        expect(WebMock).not_to have_requested(:get, 'https://other.example/image')
+      end
+    end
   end
 
   describe '::build_response' do

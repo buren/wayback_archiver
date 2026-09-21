@@ -84,6 +84,10 @@ with `screenshot_path` left `nil`. In testing this happened more often when
 capturing several URLs concurrently, so use `concurrency: 1` if you need the
 screenshots specifically. Despite the SPN2 docs saying PNG, archive.org serves
 JPEG; files are named after the format that actually arrives.
+Downloads and every redirect are restricted to `https://web.archive.org` on
+port 443 to protect your credentials. Unsafe destinations (including raw HTTP
+screenshot URLs when no capture timestamp is available) are rejected and logged;
+the capture still succeeds with `screenshot_path` left `nil`.
 
 **Processing results:**
 

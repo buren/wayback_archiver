@@ -3,6 +3,8 @@ require 'tmpdir'
 
 RSpec.describe WaybackArchiver::Screenshot do
   let(:screenshot_url) { 'http://web.archive.org/screenshot/http://example.com/' }
+  let(:timestamp) { '20260920202839' }
+  let(:replay_url) { "https://web.archive.org/web/#{timestamp}/#{screenshot_url}" }
   let(:original_url) { 'http://example.com/' }
   let(:png_data) { "\x89PNG\r\n\x1a\nfake_png_data" }
   let(:jpeg_data) { "\xFF\xD8\xFF\xE0fake_jpeg_data".b }
@@ -16,10 +18,10 @@ RSpec.describe WaybackArchiver::Screenshot do
 
       it 'downloads screenshot and saves to directory' do
         Dir.mktmpdir do |dir|
-          stub_request(:get, screenshot_url)
+          stub_request(:get, replay_url)
             .to_return(status: 200, body: png_data)
 
-          path = described_class.download(screenshot_url, original_url, directory: dir)
+          path = described_class.download(screenshot_url, original_url, directory: dir, timestamp: timestamp)
 
           expect(File.exist?(path)).to eq(true)
           expect(File.read(path)).to eq(png_data)
@@ -29,10 +31,10 @@ RSpec.describe WaybackArchiver::Screenshot do
 
       it 'sanitizes URL into filename' do
         Dir.mktmpdir do |dir|
-          stub_request(:get, screenshot_url)
+          stub_request(:get, replay_url)
             .to_return(status: 200, body: png_data)
 
-          path = described_class.download(screenshot_url, original_url, directory: dir)
+          path = described_class.download(screenshot_url, original_url, directory: dir, timestamp: timestamp)
           filename = File.basename(path)
 
           expect(filename).not_to include('/')
@@ -42,10 +44,10 @@ RSpec.describe WaybackArchiver::Screenshot do
 
       it 'returns the saved file path rooted in the given directory' do
         Dir.mktmpdir do |dir|
-          stub_request(:get, screenshot_url)
+          stub_request(:get, replay_url)
             .to_return(status: 200, body: png_data)
 
-          path = described_class.download(screenshot_url, original_url, directory: dir)
+          path = described_class.download(screenshot_url, original_url, directory: dir, timestamp: timestamp)
 
           expect(path).to start_with(dir)
           expect(path).to end_with('.png')
@@ -57,10 +59,10 @@ RSpec.describe WaybackArchiver::Screenshot do
       # bogus path recorded in the report's screenshot_path.
       it 'raises instead of saving an HTTP error body as a PNG' do
         Dir.mktmpdir do |dir|
-          stub_request(:get, screenshot_url)
+          stub_request(:get, replay_url)
             .to_return(status: 404, body: '<!doctype html><title>404 Not Found</title>')
 
-          expect { described_class.download(screenshot_url, original_url, directory: dir) }
+          expect { described_class.download(screenshot_url, original_url, directory: dir, timestamp: timestamp) }
             .to raise_error(WaybackArchiver::Request::ResponseError)
           expect(Dir.children(dir)).to be_empty
         end
@@ -68,10 +70,10 @@ RSpec.describe WaybackArchiver::Screenshot do
 
       it 'raises instead of saving a 200 response that is not an image' do
         Dir.mktmpdir do |dir|
-          stub_request(:get, screenshot_url)
+          stub_request(:get, replay_url)
             .to_return(status: 200, body: '<!doctype html><title>Login</title>')
 
-          expect { described_class.download(screenshot_url, original_url, directory: dir) }
+          expect { described_class.download(screenshot_url, original_url, directory: dir, timestamp: timestamp) }
             .to raise_error(WaybackArchiver::Request::ServerError, /not an image/i)
           expect(Dir.children(dir)).to be_empty
         end
@@ -79,11 +81,94 @@ RSpec.describe WaybackArchiver::Screenshot do
 
       it 'sends the Internet Archive credentials it insists on having' do
         Dir.mktmpdir do |dir|
-          stub_request(:get, screenshot_url).to_return(status: 200, body: png_data)
+          stub_request(:get, replay_url).to_return(status: 200, body: png_data)
 
-          described_class.download(screenshot_url, original_url, directory: dir)
+          described_class.download(screenshot_url, original_url, directory: dir, timestamp: timestamp)
 
-          expect(WebMock).to have_requested(:get, screenshot_url)
+          expect(WebMock).to have_requested(:get, replay_url)
+            .with(headers: { 'Authorization' => 'LOW key:secret' })
+        end
+      end
+
+      it 'keeps credentials through relative and same-origin HTTPS redirects' do
+        Dir.mktmpdir do |dir|
+          stub_request(:get, replay_url).to_return(status: 302, headers: { 'Location' => '/image' })
+          stub_request(:get, 'https://web.archive.org/image')
+            .to_return(status: 302, headers: { 'Location' => 'https://WEB.ARCHIVE.ORG:443/final' })
+          stub_request(:get, 'https://web.archive.org/final').to_return(body: png_data)
+
+          path = described_class.download(screenshot_url, original_url, directory: dir, timestamp: timestamp)
+
+          expect(File.binread(path)).to eq(png_data.b)
+          [replay_url, 'https://web.archive.org/image', 'https://web.archive.org/final'].each do |url|
+            expect(WebMock).to have_requested(:get, url).with(headers: { 'Authorization' => 'LOW key:secret' })
+          end
+        end
+      end
+
+      {
+        'a foreign host' => 'https://other.example/image',
+        'a different port' => 'https://web.archive.org:8443/image',
+        'an HTTPS downgrade' => 'http://web.archive.org/image',
+        'a scheme-relative foreign host' => '//other.example/image',
+        'a lookalike hostname' => 'https://web.archive.org.other.example/image',
+        'URL credentials' => 'https://user:password@web.archive.org/image',
+        'a non-HTTP scheme' => 'ftp://web.archive.org/image'
+      }.each do |description, location|
+        it "rejects a redirect to #{description} before requesting it" do
+          Dir.mktmpdir do |dir|
+            stub_request(:get, replay_url).to_return(status: 302, headers: { 'Location' => location })
+            # The transport must not even be constructed for an unsafe target.
+            allow(WaybackArchiver::Request).to receive(:build_http).and_call_original
+
+            expect do
+              described_class.download(screenshot_url, original_url, directory: dir, timestamp: timestamp)
+            end.to raise_error(WaybackArchiver::Request::InvalidRedirectError, /origin/i)
+
+            expect(WaybackArchiver::Request).to have_received(:build_http).once
+            expect(Dir.children(dir)).to be_empty
+            expect(WaybackArchiver.logger.debug_log.join).not_to include('password')
+          end
+        end
+      end
+
+      [nil, ''].each do |missing_timestamp|
+        it "rejects the raw HTTP screenshot URL when timestamp is #{missing_timestamp.inspect}" do
+          Dir.mktmpdir do |dir|
+            stub_request(:get, screenshot_url).to_return(body: png_data)
+
+            expect do
+              described_class.download(screenshot_url, original_url, directory: dir, timestamp: missing_timestamp)
+            end.to raise_error(WaybackArchiver::Request::InvalidRedirectError, /origin/i)
+
+            expect(WebMock).not_to have_requested(:get, screenshot_url)
+            expect(Dir.children(dir)).to be_empty
+          end
+        end
+      end
+
+      it 'rejects an off-origin HTTPS screenshot URL without a timestamp' do
+        Dir.mktmpdir do |dir|
+          target = 'https://other.example/image'
+          stub_request(:get, target).to_return(body: png_data)
+
+          expect do
+            described_class.download(target, original_url, directory: dir)
+          end.to raise_error(WaybackArchiver::Request::InvalidRedirectError, /origin/i)
+
+          expect(WebMock).not_to have_requested(:get, target)
+          expect(Dir.children(dir)).to be_empty
+        end
+      end
+
+      it 'allows a trusted HTTPS screenshot URL without a timestamp' do
+        Dir.mktmpdir do |dir|
+          stub_request(:get, replay_url).to_return(body: png_data)
+
+          path = described_class.download(replay_url, original_url, directory: dir)
+
+          expect(File.binread(path)).to eq(png_data.b)
+          expect(WebMock).to have_requested(:get, replay_url)
             .with(headers: { 'Authorization' => 'LOW key:secret' })
         end
       end
@@ -174,9 +259,10 @@ RSpec.describe WaybackArchiver::Screenshot do
       Dir.mktmpdir do |dir|
         WaybackArchiver.config.access_key = 'key'
         WaybackArchiver.config.secret_key = 'secret'
-        stub_request(:get, screenshot_url).to_return(status: 404, body: 'nope')
+        stub_request(:get, replay_url).to_return(status: 404, body: 'nope')
 
-        result = described_class.maybe_download(screenshot_url, original_url, { screenshot_dir: dir })
+        result = described_class.maybe_download(screenshot_url, original_url, { screenshot_dir: dir },
+                                               timestamp: timestamp)
 
         expect(result).to be_nil
         expect(Dir.children(dir)).to be_empty
@@ -189,6 +275,30 @@ RSpec.describe WaybackArchiver::Screenshot do
       result = described_class.maybe_download(screenshot_url, original_url, { screenshot_dir: '/tmp' })
 
       expect(result).to be_nil
+    end
+  end
+
+  describe 'capture result integration' do
+    it 'keeps a successful capture when an unsafe screenshot redirect is rejected' do
+      Dir.mktmpdir do |dir|
+        WaybackArchiver.config.access_key = 'key'
+        WaybackArchiver.config.secret_key = 'secret'
+        target = 'https://other.example/image'
+        stub_request(:get, replay_url).to_return(status: 302, headers: { 'Location' => '/image' })
+        stub_request(:get, 'https://web.archive.org/image')
+          .to_return(status: 302, headers: { 'Location' => target })
+        stub_request(:get, target).to_return(body: png_data)
+        status = { 'status' => 'success', 'timestamp' => timestamp, 'screenshot' => screenshot_url }
+
+        result = WaybackArchiver::ArchiveResult.from_status(original_url, 'job-id', status, screenshot_dir: dir)
+
+        expect(result).to be_success
+        expect(result.screenshot_url).to eq(screenshot_url)
+        expect(result.screenshot_path).to be_nil
+        expect(WaybackArchiver.logger.error_log.join).to match(/Failed to download screenshot:.*origin/i)
+        expect(WebMock).not_to have_requested(:get, target)
+        expect(Dir.children(dir)).to be_empty
+      end
     end
   end
 end

@@ -41,6 +41,9 @@ module WaybackArchiver
     # Max number of redirects before an error is raised
     MAX_REDIRECTS = 10
 
+    # These headers belong to the original origin, not an arbitrary redirect target.
+    SENSITIVE_HEADERS = %w[authorization cookie proxy-authorization].freeze
+
     # Default connection timeouts, generous enough for a slow page fetch or a
     # screenshot download. Callers doing small, latency-sensitive lookups pass
     # their own — see CDX, where a hung request used to cost a full minute.
@@ -65,6 +68,9 @@ module WaybackArchiver
     # @param [String, URI] uri to retrieve.
     # @param max_redirects [Integer] max redirects (default: 10).
     # @param follow_redirects [Boolean] follow redirects (default: true).
+    # @param allowed_origin [String, URI, nil] restrict the initial URL and every
+    #   redirect to this scheme, host and port; URLs with userinfo are rejected.
+    #   Without a restriction, cross-origin redirects strip sensitive headers.
     # @example Get example.com
     #    Request.get('example.com')
     # @example Get http://example.com and follow max 3 redirects
@@ -78,20 +84,27 @@ module WaybackArchiver
     # @raise [MaxRedirectError] too many redirects, subclass of HTTPError (only raised if raise_on_http_error flag is true)
     # @raise [ResponseError] server responsed with a 4xx or 5xx HTTP status code, subclass of HTTPError (only raised if raise_on_http_error flag is true)
     # @raise [UnknownResponseCodeError] server responded with an unknown HTTP status code, subclass of HTTPError (only raised if raise_on_http_error flag is true)
-    # @raise [InvalidRedirectError] server responded with an invalid redirect, subclass of HTTPError (only raised if raise_on_http_error flag is true)
+    # @raise [InvalidRedirectError] invalid redirect or URL violates allowed_origin.
     def self.get(
       uri,
       max_redirects: MAX_REDIRECTS,
       raise_on_http_error: false,
       follow_redirects: true,
       headers: {},
+      allowed_origin: nil,
       open_timeout: DEFAULT_OPEN_TIMEOUT,
       read_timeout: DEFAULT_READ_TIMEOUT
     )
       uri = build_uri(uri)
+      allowed_origin = build_uri(allowed_origin) if allowed_origin
 
       redirect_count = 0
       until redirect_count > max_redirects
+        if allowed_origin && (!same_origin?(uri, allowed_origin) || uri.userinfo)
+          # Do not log the rejected URL: it may itself contain credentials.
+          raise InvalidRedirectError, 'Request must stay on the allowed origin without URL credentials'
+        end
+
         WaybackArchiver.logger.debug "Requesting #{uri}"
 
         http = build_http(uri, open_timeout: open_timeout, read_timeout: read_timeout)
@@ -115,7 +128,13 @@ module WaybackArchiver
         when :redirect
           return build_response(uri, response) unless follow_redirects
 
-          uri = build_redirect_uri(uri, response)
+          next_uri = build_redirect_uri(uri, response)
+          unless same_origin?(uri, next_uri)
+            # Keep the caller's hash intact and never restore credentials if a
+            # later hop returns to the original origin.
+            headers = headers.reject { |name, _| SENSITIVE_HEADERS.include?(name.to_s.downcase) }
+          end
+          uri = next_uri
           redirect_count += 1
           next
         when :error
@@ -247,8 +266,14 @@ module WaybackArchiver
       )
     end
 
+    def self.same_origin?(left, right)
+      left.is_a?(URI::HTTP) && right.is_a?(URI::HTTP) &&
+        left.scheme == right.scheme && left.host && right.host &&
+        left.host.casecmp?(right.host) && left.port == right.port
+    end
+
     # `private` has no effect on `def self.` methods — these were public
     # despite sitting under one.
-    private_class_method :perform_request, :build_request_error
+    private_class_method :perform_request, :build_request_error, :same_origin?
   end
 end

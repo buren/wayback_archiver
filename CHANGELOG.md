@@ -84,6 +84,7 @@ CLI exit codes: `0` success, `1` finished with one or more failed URLs, `2` inva
 
 **Bug fixes / internal:**
 
+- **Screenshot credential protection** — authenticated screenshot downloads now require `https://web.archive.org` on port 443 for the initial request and every redirect, rejecting insecure or off-origin URLs before connecting. The shared request layer also strips authorization, cookie and proxy-authorization headers when a redirect changes scheme, host or port. Rejected screenshots remain best-effort and do not fail successful captures.
 - **Quieter retry logging** — intermediate retry attempts (connection errors, transient SPN2 errors, poll failures) now log at debug level instead of WARN. Only final failures (retry limit exceeded) log at ERROR.
 - **Increased retry limit** — per-URL retry cap for transient errors increased from 3 to 5, improving tolerance for intermittent SPN2 gateway timeouts and connection refused errors.
 - `--limit` now counts URLs actually archived for every strategy. During crawl it was handed to the crawler, which counts *pages visited* — a link to a .zip or a dead link burned a slot, so `--limit 100` archived fewer than 100. It is also applied after the skip/extension filters, matching `Archive.post`.
