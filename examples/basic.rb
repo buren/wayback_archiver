@@ -3,7 +3,10 @@
 
 require 'wayback_archiver'
 
-# Optional: configure credentials for higher rate limits
+# Credentials are required: SPN2 no longer allows anonymous captures.
+# Set WAYBACK_ACCESS_KEY and WAYBACK_SECRET_KEY in the environment (get them
+# at https://archive.org/account/s3.php), or configure them explicitly:
+#
 # WaybackArchiver.configure do |config|
 #   config.access_key = 'your-access-key'
 #   config.secret_key = 'your-secret-key'

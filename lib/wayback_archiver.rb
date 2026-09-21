@@ -78,7 +78,7 @@ module WaybackArchiver
   # @param [String] source (must be a valid URL).
   # @param concurrency [Integer]
   # @example Auto archive example.com
-  #    WaybackArchiver.auto('example.com') # Default concurrency is 1
+  #    WaybackArchiver.auto('example.com') # Default concurrency is 4
   # @example Auto archive example.com with low concurrency
   #    WaybackArchiver.auto('example.com', concurrency: 1)
   # @example Auto archive example.com and archive max 100 URLs
@@ -103,7 +103,7 @@ module WaybackArchiver
   # @param [Array<String, Regexp>] hosts to crawl
   # @param concurrency [Integer]
   # @example Crawl example.com and send all URLs of the same domain
-  #    WaybackArchiver.crawl('example.com') # Default concurrency is 1
+  #    WaybackArchiver.crawl('example.com') # Default concurrency is 4
   # @example Crawl example.com and send all URLs of the same domain with low concurrency
   #    WaybackArchiver.crawl('example.com', concurrency: 1)
   # @example Crawl example.com and archive max 100 URLs
@@ -127,7 +127,7 @@ module WaybackArchiver
   # @param [String] url to the sitemap.
   # @param concurrency [Integer]
   # @example Get example.com sitemap and archive all found URLs
-  #    WaybackArchiver.sitemap('example.com/sitemap.xml') # Default concurrency is 1
+  #    WaybackArchiver.sitemap('example.com/sitemap.xml') # Default concurrency is 4
   # @example Get example.com sitemap and archive all found URLs with low concurrency
   #    WaybackArchiver.sitemap('example.com/sitemap.xml', concurrency: 1)
   # @example Get example.com sitemap archive max 100 URLs

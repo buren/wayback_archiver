@@ -25,7 +25,11 @@ results.each do |result|
   if result.screenshot_path
     puts "Screenshot saved: #{result.screenshot_path}"
   elsif result.screenshot_url
-    puts "Screenshot available at: #{result.screenshot_url} (not downloaded)"
+    # Not a fetchable URL: it is the address the image was archived *under*,
+    # and requesting it directly returns 404. Reaching it means replaying it
+    # through the Wayback Machine at the capture's timestamp, which is what
+    # screenshot_dir does for you.
+    puts "SPN2 reported a screenshot for #{result.uri} but it could not be downloaded"
   else
     puts "No screenshot for: #{result.uri}"
   end

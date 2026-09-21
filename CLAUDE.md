@@ -16,11 +16,11 @@ Ruby gem wrapping the Internet Archive's SPN2 API. CLI entry point (`bin/wayback
 
 **Configuration**: `WaybackArchiver.config` returns a `Configuration` instance holding all settings (concurrency, credentials, etc.). `WaybackArchiver.logger` and `.listener` are convenience delegates. All other config goes through `config`.
 
-**Options flow**: CLI → `options` hash → `WaybackArchiver.archive(**options)` → `Archive.post`/`Archive.crawl` → `Archive.batch_post` (chunked submit + poll loop). SPN2-specific options pass through via `**options` to `WaybackMachine`. Filtering options (`skip_urls`, `skip_patterns`, `include_ext`, `exclude_ext`, `skip_duplicates`) are consumed by `Archive` before reaching `WaybackMachine`.
+**Options flow**: CLI → `options` hash → `WaybackArchiver.archive(**options)` → `Archive.post`/`Archive.crawl` → `BatchSubmitter#call` (chunked submit + poll loop). SPN2-specific options pass through via `**options` to `WaybackMachine`. Filtering options (`skip_urls`, `skip_patterns`, `include_ext`, `exclude_ext`, `skip_duplicates`) are consumed by `Archive` before reaching `WaybackMachine`.
 
 **Event system**: `WaybackArchiver.listener` dispatches lifecycle events (`on_resolved`, `on_batch_start`, `on_submitted`, `on_completed`, `on_progress`, `on_waiting_for_slots`, `on_duplicate_skipped`) to listeners. CLI uses `CLIListener` + `ProgressRenderer` for TTY progress bars.
 
-**Error handling**: `ErrorCodes` classifies 38 SPN2 `status_ext` codes into `:transient`, `:daily_limit`, `:permanent`. Transient errors trigger automatic retry with backoff (up to 5 attempts). Retry logging is debug-level; only final failures log at ERROR.
+**Error handling**: `ErrorCodes` classifies 39 SPN2 `status_ext` codes, plus a synthesised `error:unknown` for a bare error status, into `:transient`, `:daily_limit`, `:permanent`. Transient errors trigger automatic retry with backoff (up to 5 attempts). Retry logging is debug-level; only final failures log at ERROR.
 
 **Crawling**: Uses the [Spidr](https://github.com/postmodern/spidr) gem for web crawling. Non-success HTTP pages (404, 500, etc.) are filtered at crawl time. Duplicate content detection (`skip_duplicates`, default on) skips pages with the same URL path and identical body MD5 hash.
 
@@ -43,7 +43,8 @@ The authoritative API docs are in `docs/spn2-api.md` (converted from the officia
 
 - `lib/wayback_archiver.rb` — strategy dispatch, `discover_urls`, convenience delegates
 - `lib/wayback_archiver/configuration.rb` — `Configuration` class (all settings)
-- `lib/wayback_archiver/archive.rb` — `post`, `crawl`, `batch_post`, URL filtering
+- `lib/wayback_archiver/archive.rb` — `post`, `crawl`, URL filtering
+- `lib/wayback_archiver/batch_submitter.rb` — `BatchSubmitter#call`: chunked submit, polling, retries, job recovery
 - `lib/wayback_archiver/wayback_machine.rb` — SPN2 submit/poll, rate limiting
 - `lib/wayback_archiver/error_codes.rb` — SPN2 `status_ext` → category mapping (transient/daily_limit/permanent)
 - `lib/wayback_archiver/archive_result.rb` — `ArchiveResult` value object with status helpers

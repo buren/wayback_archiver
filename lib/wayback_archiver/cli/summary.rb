@@ -57,6 +57,9 @@ module WaybackArchiver
       def build_resume_command(options, session)
         parts = ['wayback_archiver']
         if options.file_path
+          # Both: --file alone dropped any URLs also given on the command line.
+          # (A resume cannot replay `--file=-`; the piped list is gone.)
+          Array(options.positional_urls).each { |u| parts << Shellwords.shellescape(u) }
           parts << "--file=#{Shellwords.shellescape(options.file_path)}"
         else
           options.urls.each { |u| parts << Shellwords.shellescape(u) }

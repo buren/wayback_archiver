@@ -10,7 +10,7 @@ module WaybackArchiver
       :session_path, :no_session, :resume_path,
       :check_mode, :status_mode, :list_mode, :skip_archived, :skip_archived_within,
       :skip_duplicates, :skip_patterns,
-      :urls,
+      :urls, :positional_urls,
       keyword_init: true
     )
 
@@ -328,6 +328,10 @@ module WaybackArchiver
 
       def read_urls!
         @opts.urls = @argv.map(&:strip).reject(&:empty?)
+        # Kept separate from the merged list so a resume command can name the
+        # positional sources and the file, rather than inlining the file's
+        # entire contents or dropping the positional ones.
+        @opts.positional_urls = @opts.urls.dup
 
         if @opts.file_path
           lines = if @opts.file_path == '-'

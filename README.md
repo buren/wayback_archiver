@@ -69,7 +69,8 @@ WaybackArchiver.archive('example.com',
 # Advanced options
 WaybackArchiver.archive('example.com',
   capture_outlinks: true,          # auto-capture up to 100 linked pages (requires auth)
-  screenshot_dir: './screenshots', # save screenshots locally (requires auth)
+  capture_screenshot: true,        # required for screenshot_dir to have anything to save
+  screenshot_dir: './screenshots', # save screenshots locally; the directory must exist
   js_behavior_timeout: 10,         # run JS for N seconds after page load (max 30, default 5)
   force_get: true,                 # force HTTP GET instead of HEAD+browser
   use_user_agent: 'MyBot/1.0',     # custom User-Agent for target page
@@ -136,7 +137,7 @@ wayback_archiver example.com --crawl --concurrency=8
 wayback_archiver www.example.com --crawl --hosts=www.example.com,blog.example.com
 
 # Crawl with regex host pattern
-wayback_archiver www.example.com --crawl --hosts=.*.example.com
+wayback_archiver www.example.com --crawl --hosts='(^|\.)example\.com$'
 
 # RSS/Atom feed
 wayback_archiver example.com/feed.xml --rss
@@ -387,7 +388,7 @@ v2.0 uses the SPN2 API, replacing the old fire-and-forget SPN1 approach. Capture
 - **Ruby >= 3.3** required (was >= 2.0)
 - **CI moved** from Travis CI to GitHub Actions
 - **SSL verification** enabled by default for requests this gem makes itself (sitemap, feed, SPN2, CDX, screenshots). Page fetches during `--crawl` are made by Spidr, which does not verify certificates — see the changelog.
-- **Configuration moved to `WaybackArchiver.config`** — settings like `concurrency`, `adapter`, `access_key` etc. are now accessed via `WaybackArchiver.config.concurrency` instead of `WaybackArchiver.concurrency`. The `configure` block is unchanged. `WaybackArchiver.logger` and `WaybackArchiver.listener` remain available as convenience getters.
+- **Configuration moved to `WaybackArchiver.config`** — settings like `concurrency`, `access_key` etc. are now accessed via `WaybackArchiver.config.concurrency` instead of `WaybackArchiver.concurrency`. The `configure` block is unchanged. `WaybackArchiver.logger` and `WaybackArchiver.listener` remain available as convenience getters.
 
 The primary entry points (`archive`, `crawl`, `sitemap`, `urls`) remain available, but v2 intentionally removes several legacy arguments, setters, adapter hooks, and result fields described above. Existing keyword-style calls such as `WaybackArchiver.archive(url, strategy: :auto)` continue to work — see [Auto discovery](#auto-discovery) for the updated behavior and the [CHANGELOG](CHANGELOG.md) for the complete migration list.
 
@@ -400,8 +401,14 @@ The primary entry points (`archive`, `crawl`, `sitemap`, `urls`) remain availabl
 The supported public API is: the `WaybackArchiver` module methods
 (`archive`, `crawl`, `sitemap`, `rss`, `urls`, `check`, `discover_urls`,
 `configure`, `config`), `Configuration`, `Archive`, `ArchiveResult`,
-`CheckResult`, `ErrorCodes`, and the listener classes
+`CheckResult`, `ErrorCodes`, the error classes callers need in order to
+recover (`AuthenticationError`, `CrawlError`), and the listener classes
 (`NullListener`, `ListenerProxy`). These follow semantic versioning.
+
+Everything else is internal and may change in a minor release — including
+`Report`, `Request`, `WaybackMachine`, `SessionFile` and `BatchSubmitter`.
+Some examples in [examples/](examples/) reach into these deliberately, to
+show what the API does not yet expose directly; treat those as unstable.
 
 Everything else (classes tagged `@api private` — HTTP plumbing, the batch
 submitter, discovery internals, the CLI implementation) is internal and may

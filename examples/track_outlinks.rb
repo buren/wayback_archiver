@@ -30,10 +30,25 @@ puts "Outlinks: #{result.outlinks.length} captured"
 result.outlinks.each do |outlink_url, job_id|
   puts "\nPolling outlink: #{outlink_url} (job: #{job_id})"
 
+  # Status reads need the same credentials as the capture. Give up rather
+  # than polling a stuck job forever.
+  auth = {
+    'Accept' => 'application/json',
+    'Authorization' => "LOW #{WaybackArchiver.config.access_key}:#{WaybackArchiver.config.secret_key}"
+  }
+  deadline = Time.now + 120
+
   loop do
+    if Time.now > deadline
+      puts '  Gave up waiting for this outlink'
+      break
+    end
+
     response = WaybackArchiver::Request.get(
       "#{WaybackArchiver::WaybackMachine::STATUS_URL}/#{job_id}",
-      follow_redirects: false
+      follow_redirects: false,
+      raise_on_http_error: true,
+      headers: auth
     )
     status = JSON.parse(response.body)
 

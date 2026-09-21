@@ -297,4 +297,30 @@ RSpec.describe WaybackArchiver::CLI::Summary do
       expect(banner).to include('strategy: crawl')
     end
   end
+
+  describe 'resume command with mixed input' do
+    # Regression: when --file was present the positional URLs were dropped, so
+    # `wayback_archiver extra-url --file=urls.txt` resumed without extra-url
+    # and silently archived less than the original run.
+    it 'keeps positional URLs alongside --file' do
+      Dir.mktmpdir do |dir|
+        list = File.join(dir, 'urls.txt')
+        File.write(list, "http://from-file.com/a\n")
+        stdout = StringIO.new
+        options = WaybackArchiver::CLI::OptionParser.new(
+          ['http://positional.com', "--file=#{list}", '--urls'], stdout: stdout
+        ).parse!
+        session = instance_double(WaybackArchiver::SessionFile, path: File.join(dir, 's.jsonl'))
+
+        command = described_class.new(stdout: stdout, stderr: StringIO.new)
+                                 .build_resume_command(options, session)
+
+        args = Shellwords.split(command)
+        expect(args).to include('http://positional.com')
+        expect(args).to include("--file=#{list}")
+        # The file's own URLs come back from the file, not repeated inline.
+        expect(args).not_to include('http://from-file.com/a')
+      end
+    end
+  end
 end
