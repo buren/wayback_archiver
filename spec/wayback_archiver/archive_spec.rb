@@ -201,6 +201,53 @@ RSpec.describe WaybackArchiver::Archive do
         .to raise_error(WaybackArchiver::AuthenticationError, /rejected/)
     end
 
+    describe 'when an observer raises' do
+      # Regression: record_result invoked the caller's block before adding the
+      # result to @results, so a block that raised made the URL vanish from
+      # the returned results while the counters had already moved — "1 of 0
+      # URL(s) posted", exit 0. The worker's rescue then called the same
+      # failing block again to report the failure, and that second exception
+      # was swallowed by the thread pool.
+      before do
+        allow(WaybackArchiver::WaybackMachine).to receive(:submit) do |url|
+          { 'url' => url, 'job_id' => "job-#{url[-1]}" }
+        end
+        allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses) do |ids|
+          ids.to_h { |j| [j, { 'status' => 'success', 'job_id' => j, 'timestamp' => '20260921120000' }] }
+        end
+      end
+
+      it 'still returns every result when the block always raises' do
+        urls = %w[http://e.com/1 http://e.com/2 http://e.com/3]
+
+        results = described_class.post(urls) { |_r| raise 'observer exploded' }
+
+        expect(results.map(&:uri)).to match_array(urls)
+        expect(results).to all(be_success)
+      end
+
+      it 'still returns every result under concurrency' do
+        urls = (1..6).map { |i| "http://e.com/#{i}" }
+
+        results = described_class.post(urls, concurrency: 4) { |_r| raise 'observer exploded' }
+
+        expect(results.length).to eq(6)
+      end
+
+      it 'keeps a raising listener from losing results too' do
+        boom = Class.new(WaybackArchiver::NullListener) do
+          def on_completed(result:)
+            raise 'listener exploded'
+          end
+        end.new
+        WaybackArchiver.config.listener = boom
+
+        results = described_class.post(%w[http://e.com/1 http://e.com/2])
+
+        expect(results.length).to eq(2)
+      end
+    end
+
     describe 'skip_patterns filtering' do
       before do
         allow(WaybackArchiver::WaybackMachine).to receive(:submit) do |url, **_opts|

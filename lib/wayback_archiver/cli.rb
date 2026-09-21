@@ -117,7 +117,8 @@ module WaybackArchiver
 
     # Exit codes (the read-only modes exit 0 internally):
     #   0   success — nothing failed
-    #   1   archiving finished but one or more URLs failed or remain unconfirmed
+    #   1   archiving finished but one or more URLs failed, remain unconfirmed,
+    #       or could not be written to the session/report
     #   2   usage / invalid arguments
     #   3   archiving credentials missing
     #   4   network error during discovery (sitemap/feed unreachable)
@@ -190,6 +191,12 @@ module WaybackArchiver
         return 4
       end
 
+      if @persistence_error
+        @stderr.puts "wayback_archiver: results could not be recorded (#{@persistence_error}). " \
+                     'The archiving itself may have succeeded; the session has been kept.'
+        return 1
+      end
+
       results.any? { |result| !result.success? } ? 1 : 0
     ensure
       # Only needed on the exception path; the happy path cleared it above.
@@ -201,6 +208,15 @@ module WaybackArchiver
     end
 
     private
+
+    # Run a persistence step, recording the first failure rather than letting
+    # it escape into the archive callback (where it would drop the result).
+    def persist(what)
+      yield
+    rescue StandardError => e
+      @persistence_error ||= "#{what}: #{e.class}, #{e.message}"
+      WaybackArchiver.logger.error("Could not write to the #{what}: #{e.class}, #{e.message}")
+    end
 
     # Fail fast before any discovery/submission if archiving credentials are
     # missing, instead of surfacing one AuthenticationError per worker thread
@@ -368,11 +384,15 @@ module WaybackArchiver
       @archive_start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
       archive_block = proc do |result|
-        @session&.write_result(result)
-        unless result.submitted?
-          @report_writer&.write_result(result)
-          @archive_results << result
-        end
+        # Persistence failures are the CLI's to notice: the session and the
+        # report are the only durable record of the run, so losing a write
+        # must not read as success. Keep going — one failed write shouldn't
+        # abandon the remaining captures — but remember it.
+        persist('session') { @session&.write_result(result) }
+        next if result.submitted?
+
+        persist('report') { @report_writer&.write_result(result) }
+        @archive_results << result
       end
 
       unless @pending_jobs.empty?
@@ -502,7 +522,7 @@ module WaybackArchiver
 
       # A failed crawl leaves the site half-archived, so keep the session even
       # when every result that did complete succeeded.
-      if @crawl_error || results.any? { |result| !result.success? }
+      if @crawl_error || @persistence_error || results.any? { |result| !result.success? }
         @summary.print_resume_message(resume_command)
       elsif @auto_generated_session
         @session.delete!

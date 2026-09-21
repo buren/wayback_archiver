@@ -75,6 +75,13 @@ module WaybackArchiver
         user_agent: WaybackArchiver.config.user_agent
       }
 
+      # Spidr makes its own HTTP connections and sets VERIFY_NONE on them, with
+      # no option to change it (spidr/session_cache.rb). Crawled pages are
+      # therefore fetched without certificate verification, unlike every
+      # request this gem makes through Request. Working around it would mean
+      # patching or replacing the crawler's transport; for now it is documented
+      # in the changelog, and discovered URLs are untrusted input either way.
+      #
       # Spidr catches DNS, timeout, connection and SSL errors itself and emits
       # them as failed-URL events rather than raising. Subscribing to only
       # every_page meant an unreachable seed looked like a site with nothing

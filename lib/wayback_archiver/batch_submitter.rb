@@ -371,7 +371,7 @@ module WaybackArchiver
       when :pending
         @pending[value] = url
         submitted_result = ArchiveResult.new(url, job_id: value, status_ext: 'submitted')
-        @block&.call(submitted_result)
+        notify_block(submitted_result)
         WaybackArchiver.listener.on_submitted(url: url, job_id: value)
       when :cached
         WaybackArchiver.logger.debug("Recent capture returned for #{url} [#{response['timestamp']}]")
@@ -579,9 +579,32 @@ module WaybackArchiver
       elsif result.success?
         @counts[:success].increment
       end
-      @block&.call(result)
-      WaybackArchiver.listener.on_completed(result: result)
+      # Retain before notifying. Notifying first meant a caller's block that
+      # raised took the URL out of the results while the counters had already
+      # moved — "1 of 0 URL(s) posted", and a run that exited 0 having lost
+      # the record of work it really did.
       @results << result
+      notify_observers(result)
+    end
+
+    # Observers watch the run; they don't get to change what happened in it.
+    def notify_observers(result)
+      notify_block(result)
+      WaybackArchiver.listener.on_completed(result: result)
+    end
+
+    # Every call into the caller's block goes through here, interim
+    # notifications included. An unprotected interim call raised inside the
+    # pool worker, whose rescue then recorded an error result for a URL that
+    # went on to complete successfully — two results for one URL. And the
+    # rescue must never re-enter a consistently failing callback to report its
+    # own failure, or the second exception escapes into the thread pool.
+    def notify_block(result)
+      @block&.call(result)
+    rescue StandardError => e
+      WaybackArchiver.logger.error(
+        "Result callback failed for #{result.uri}: #{e.class}, #{e.message}"
+      )
     end
   end
 end

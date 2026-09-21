@@ -807,4 +807,48 @@ RSpec.describe WaybackArchiver::CLI do
       expect(File.exist?(session_path)).to eq(true)
     end
   end
+
+  describe 'when results cannot be persisted' do
+    # Regression: a disk-full error from the report writer propagated out of
+    # the archive callback, dropping the result and leaving the run to report
+    # success — exit 0, an empty report, and the automatic session deleted,
+    # destroying the only record of what had actually been archived.
+    it 'reports the failure, keeps the session and exits nonzero' do
+      session_path = File.join(Dir.mktmpdir, 'session.jsonl')
+      done = WaybackArchiver::ArchiveResult.new('http://example.com/a', timestamp: '20260921120000')
+
+      allow(WaybackArchiver).to receive(:archive) do |*, **, &blk|
+        blk&.call(done)
+        [done]
+      end
+      allow_any_instance_of(WaybackArchiver::ReportWriter).to receive(:write_result)
+        .and_raise(Errno::ENOSPC, 'No space left on device')
+
+      report_path = File.join(Dir.mktmpdir, 'report.json')
+      cli = build_cli('--urls', "--session=#{session_path}", "--report=#{report_path}", 'http://example.com/a')
+
+      expect(cli.run).not_to eq(0)
+      expect(stderr_output).to match(/could not be recorded|No space left/i)
+      # The session is the only remaining record of the work — never delete it.
+      expect(File.exist?(session_path)).to eq(true)
+    end
+
+    it 'still counts the archived URL rather than losing it' do
+      session_path = File.join(Dir.mktmpdir, 'session.jsonl')
+      done = WaybackArchiver::ArchiveResult.new('http://example.com/a', timestamp: '20260921120000')
+
+      allow(WaybackArchiver).to receive(:archive) do |*, **, &blk|
+        blk&.call(done)
+        [done]
+      end
+      allow_any_instance_of(WaybackArchiver::ReportWriter).to receive(:write_result)
+        .and_raise(Errno::ENOSPC, 'No space left on device')
+
+      report_path = File.join(Dir.mktmpdir, 'report.json')
+      cli = build_cli('--urls', "--session=#{session_path}", "--report=#{report_path}", 'http://example.com/a')
+      cli.run
+
+      expect(stdout_output).to include('Total: 1')
+    end
+  end
 end

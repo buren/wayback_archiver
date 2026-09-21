@@ -386,7 +386,7 @@ v2.0 uses the SPN2 API, replacing the old fire-and-forget SPN1 approach. Capture
 - **New CLI features** — `--check`, `--skip-archived`, `--file`, `--session`/`--resume`, `--report`, `--status`, `--include-ext`/`--exclude-ext`
 - **Ruby >= 3.3** required (was >= 2.0)
 - **CI moved** from Travis CI to GitHub Actions
-- **SSL verification** enabled by default
+- **SSL verification** enabled by default for requests this gem makes itself (sitemap, feed, SPN2, CDX, screenshots). Page fetches during `--crawl` are made by Spidr, which does not verify certificates — see the changelog.
 - **Configuration moved to `WaybackArchiver.config`** — settings like `concurrency`, `adapter`, `access_key` etc. are now accessed via `WaybackArchiver.config.concurrency` instead of `WaybackArchiver.concurrency`. The `configure` block is unchanged. `WaybackArchiver.logger` and `WaybackArchiver.listener` remain available as convenience getters.
 
 The primary entry points (`archive`, `crawl`, `sitemap`, `urls`) remain available, but v2 intentionally removes several legacy arguments, setters, adapter hooks, and result fields described above. Existing keyword-style calls such as `WaybackArchiver.archive(url, strategy: :auto)` continue to work — see [Auto discovery](#auto-discovery) for the updated behavior and the [CHANGELOG](CHANGELOG.md) for the complete migration list.
