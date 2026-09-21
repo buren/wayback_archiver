@@ -36,19 +36,24 @@ module WaybackArchiver
     # @see http://www.sitemaps.org
     def self.autodiscover(url)
       url = Request.build_uri(url).to_s
-      WaybackArchiver.logger.info 'Looking for Sitemap(s) in /robots.txt'
+      # One line for the whole probe. Narrating robots.txt plus six common
+      # locations individually was most of the output on any site without a
+      # sitemap; the detail stays at debug for when you need to see which
+      # location answered.
+      WaybackArchiver.logger.info "Looking for a Sitemap for #{url}"
+      WaybackArchiver.logger.debug 'Looking for Sitemap(s) in /robots.txt'
       robots = WebRobots.new(WaybackArchiver.config.user_agent)
       sitemaps = robots.sitemaps(url)
 
       if sitemaps.any?
         return sitemaps.flat_map do |sitemap|
-          WaybackArchiver.logger.info "Fetching Sitemap at #{sitemap}"
+          WaybackArchiver.logger.info "Sitemap found at #{sitemap} (declared in robots.txt)"
           urls(url: sitemap)
         end
       end
 
       COMMON_SITEMAP_LOCATIONS.each do |path|
-        WaybackArchiver.logger.info "Looking for Sitemap at #{path}"
+        WaybackArchiver.logger.debug "Looking for Sitemap at #{path}"
         sitemap_url = [url, path].join(url.end_with?('/') ? '' : '/')
         response = Request.get(sitemap_url, raise_on_http_error: false)
         next unless response.success?
@@ -66,7 +71,7 @@ module WaybackArchiver
         return found
       end
 
-      WaybackArchiver.logger.info "Looking for Sitemap at #{url}"
+      WaybackArchiver.logger.debug "Looking for Sitemap at #{url}"
       urls(url: url)
     rescue Request::Error => e
       # autodiscover is the auto-cascade probe: not finding a sitemap here is

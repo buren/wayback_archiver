@@ -313,4 +313,48 @@ RSpec.describe WaybackArchiver::Sitemapper do
       )
     end
   end
+
+  describe 'autodiscovery verbosity' do
+    before do
+      stub_request(:get, 'http://example.com/robots.txt').to_return(status: 404, body: '')
+      stub_request(:get, %r{http://example\.com/sitemap}).to_return(status: 404, body: '')
+      stub_request(:get, 'http://example.com').to_return(status: 404, body: '')
+    end
+
+    # Probing robots.txt plus six common locations narrated one line each was
+    # most of what a user saw on any site without a sitemap.
+    it 'narrates the probe once at info level, not once per location' do
+      described_class.autodiscover('http://example.com')
+
+      probing = WaybackArchiver.logger.info_log.grep(/Looking for/)
+      expect(probing.length).to eq(1)
+      expect(probing.first).to eq('Looking for a Sitemap for http://example.com')
+    end
+
+    it 'keeps the per-location detail at debug level' do
+      described_class.autodiscover('http://example.com')
+
+      debug = WaybackArchiver.logger.debug_log
+      expect(debug).to include('Looking for Sitemap(s) in /robots.txt')
+      expect(debug).to include('Looking for Sitemap at sitemap.xml')
+      expect(debug).to include('Looking for Sitemap at sitemap_index.xml.gz')
+      expect(debug.grep(/Looking for Sitemap at/).length)
+        .to eq(described_class::COMMON_SITEMAP_LOCATIONS.length + 1) # + the URL itself
+    end
+
+    it 'still announces the outcome at info level' do
+      urlset = <<~XML
+        <?xml version="1.0" encoding="UTF-8"?>
+        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <url><loc>http://example.com/page</loc></url>
+        </urlset>
+      XML
+      stub_request(:get, 'http://example.com/sitemap.xml').to_return(status: 200, body: urlset)
+
+      described_class.autodiscover('http://example.com')
+
+      expect(WaybackArchiver.logger.info_log)
+        .to include('Sitemap found at http://example.com/sitemap.xml')
+    end
+  end
 end
