@@ -1,6 +1,32 @@
 require 'spec_helper'
 
 RSpec.describe WaybackArchiver::ArchiveResult do
+  describe 'incomplete final results' do
+    %w[poll-timeout status-unavailable missing-job-id].each do |reason|
+      it "distinguishes #{reason} from success, failure and interim submission" do
+        result = described_class.new('https://example.com', job_id: 'job-1', status_ext: "incomplete:#{reason}")
+        expect(result).to be_incomplete
+        expect(result).not_to be_success
+        expect(result).not_to be_errored
+        expect(result).not_to be_submitted
+        expect(result.status_label).to eq('INCOMPLETE')
+        expect(result.status_detail).not_to be_empty
+      end
+    end
+
+    it 'does not mark confirmed or interim results incomplete' do
+      expect(described_class.new('https://example.com')).not_to be_incomplete
+      expect(described_class.new('https://example.com', status_ext: 'submitted')).not_to be_incomplete
+    end
+  end
+
+  it 'keeps a bare remote error classified as a failure' do
+    result = described_class.from_status('https://example.com', 'job-id', { 'status' => 'error' })
+    expect(result).to be_errored
+    expect(result).not_to be_success
+    expect(result.status_ext).to eq('error:unknown')
+  end
+
   describe '#errored?' do
     it 'returns true if error is set' do
       expect(described_class.new(nil, error: true).errored?).to eq(true)

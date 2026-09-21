@@ -1,4 +1,5 @@
 require 'json'
+require 'time'
 require 'set'
 require 'tmpdir'
 
@@ -35,23 +36,36 @@ module WaybackArchiver
       end
     end
 
-    # Read the session file and return the set of URLs that should be skipped.
-    # Includes URLs that succeeded OR were submitted (got a job_id from SPN2).
-    # Uses last-write-wins: if a URL appears multiple times, only the
-    # latest record determines its status.
-    # @return [Set<String>] URLs to skip on resume
+    # Only confirmed successes may be skipped without checking their status.
+    # @return [Set<String>] successfully completed URLs
     def completed_urls
+      latest_records.select { |_url, data| data['success'] == true && !pending_record?(data) }.keys.to_set
+    end
+
+    # Old session files already store job IDs on interim submission records.
+    # Keep even missing IDs here so they cannot fall through to a fresh submit.
+    # @return [Hash] URL => {job_id:, since:}; job_id may be nil, and since is
+    #   when the URL *first* went pending, not when we last gave up on it.
+    def pending_jobs
+      first_pending = {}
       records = {}
-      File.foreach(@path) do |line|
-        data = JSON.parse(line)
-        records[data['url']] = data['success'] || data['submitted']
-      rescue JSON::ParserError
-        # Skip truncated/corrupt lines (e.g. from hard crash)
-        WaybackArchiver.logger.warn("Skipping corrupt session line: #{line.chomp}")
+      each_record do |data|
+        url = data['url']
+        records[url] = data
+        if pending_record?(data)
+          first_pending[url] ||= data['recorded_at']
+        else
+          # A confirmed outcome ends this pending stretch; a later resubmission
+          # starts a fresh one rather than inheriting the old clock.
+          first_pending.delete(url)
+        end
       end
-      records.select { |_url, completed| completed }.keys.to_set
-    rescue Errno::ENOENT
-      Set.new
+
+      records.each_with_object({}) do |(url, data), pending|
+        next unless pending_record?(data)
+
+        pending[url] = { job_id: data['job_id'], since: first_pending[url] }
+      end
     end
 
     # Close the file handle. Safe to call multiple times. Synchronized with
@@ -75,9 +89,40 @@ module WaybackArchiver
 
     private
 
+    # Last-write-wins, including transitions from submitted/incomplete to a
+    # confirmed success or failure. Ignore incomplete lines left by a crash.
+    def latest_records
+      records = {}
+      each_record { |data| records[data['url']] = data }
+      records
+    end
+
+    # Yields every well-formed record in file order.
+    def each_record
+      File.foreach(@path) do |line|
+        data = JSON.parse(line)
+        unless data.is_a?(Hash) && data['url'].is_a?(String) && !data['url'].empty?
+          WaybackArchiver.logger.warn('Skipping invalid session record')
+          next
+        end
+        yield data
+      rescue JSON::ParserError
+        WaybackArchiver.logger.warn("Skipping corrupt session line: #{line.chomp}")
+      end
+    rescue Errno::ENOENT
+      nil
+    end
+
+    def pending_record?(data)
+      data['submitted'] == true || data['status_ext'].to_s.start_with?('incomplete:')
+    end
+
     def serialize(result)
       {
         'url'        => result.uri,
+        # When we learned this state. For a submitted record that is the
+        # submission time, which is what dates an unresolved job later.
+        'recorded_at' => Time.now.utc.iso8601,
         'success'    => result.success?,
         'submitted'  => result.submitted?,
         'job_id'     => result.job_id,

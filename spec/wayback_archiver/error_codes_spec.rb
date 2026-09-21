@@ -3,13 +3,14 @@ require 'wayback_archiver/error_codes'
 
 RSpec.describe WaybackArchiver::ErrorCodes do
   describe 'REGISTRY' do
-    it 'has 39 entries total' do
-      expect(described_class::REGISTRY.size).to eq(39)
+    # 38 SPN2 status_ext codes plus the synthesised error:unknown.
+    it 'has 40 entries total' do
+      expect(described_class::REGISTRY.size).to eq(40)
     end
 
-    it 'has 17 transient entries' do
+    it 'has 18 transient entries' do
       count = described_class::REGISTRY.count { |_, v| v[:category] == :transient }
-      expect(count).to eq(17)
+      expect(count).to eq(18)
     end
 
     it 'has 4 daily_limit entries' do
@@ -127,6 +128,34 @@ RSpec.describe WaybackArchiver::ErrorCodes do
           expect(described_class.retryable?(code)).to eq(entry[:category] == :transient)
         end
       end
+    end
+  end
+
+  describe 'error:unknown' do
+    # ArchiveResult.from_status synthesises this for a bare {"status":"error"}
+    # with no status_ext. Leaving it out of the registry meant we invented a
+    # code and then warned that we did not recognise it — twice per result —
+    # before falling through to the unknown-code default.
+    it 'is a registered code' do
+      expect(described_class::REGISTRY).to have_key('error:unknown')
+    end
+
+    it 'classifies without warning about an unknown code' do
+      warnings = []
+      logger = double('logger')
+      allow(logger).to receive(:warn) { |msg| warnings << msg }
+      allow(logger).to receive(:debug)
+      allow(logger).to receive(:info)
+      allow(logger).to receive(:error)
+      allow(WaybackArchiver).to receive(:logger).and_return(logger)
+
+      expect(described_class.category('error:unknown')).to eq(:transient)
+
+      expect(warnings.grep(/Unknown SPN2 error code/)).to be_empty
+    end
+
+    it 'has a human-readable message rather than echoing the code' do
+      expect(described_class.message('error:unknown')).not_to eq('error:unknown')
     end
   end
 end

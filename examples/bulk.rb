@@ -12,9 +12,10 @@ urls = %w[
 ]
 
 # Concurrency controls how many URLs are submitted in parallel.
-# SPN2 rate limit: 12 captures/min.
+# SPN2 authenticated rate limit: 7 captures/min.
 results = WaybackArchiver.archive(urls, strategy: :urls, concurrency: 4)
 
 succeeded = results.count(&:success?)
 failed = results.count(&:errored?)
-puts "\nDone: #{succeeded} succeeded, #{failed} failed"
+incomplete = results.count(&:incomplete?)
+puts "\nDone: #{succeeded} succeeded, #{failed} failed, #{incomplete} unconfirmed"

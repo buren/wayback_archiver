@@ -51,7 +51,7 @@ RSpec.describe WaybackArchiver::WaybackMachine do
     it 'returns the same instance across concurrent first calls' do
       # @rate_limiter ||= is non-atomic: two workers hitting their first
       # submit concurrently could each build a limiter, briefly doubling the
-      # 12/min cap. Initialization is serialized behind a mutex.
+      # 7/min cap. Initialization is serialized behind a mutex.
       described_class.reset_rate_limiter!
 
       instances = Array.new(20) { Thread.new { described_class.rate_limiter } }.map(&:value)

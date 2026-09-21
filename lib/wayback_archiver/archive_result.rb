@@ -26,9 +26,9 @@ module WaybackArchiver
       @original_url = original_url
     end
 
-    # @return [Boolean] true if success (not submitted or errored)
+    # @return [Boolean] true if success (not submitted, incomplete or errored)
     def success?
-      !errored? && !submitted?
+      !errored? && !submitted? && !incomplete?
     end
 
     # @return [Boolean] true if errored
@@ -47,13 +47,31 @@ module WaybackArchiver
       status_ext == 'cached'
     end
 
-    # @return [Boolean] true if submitted to SPN2 but not yet confirmed
+    # @return [Boolean] true for an interim submission notification
     def submitted?
       status_ext == 'submitted'
     end
 
+    # A final local result whose remote outcome is still unknown. Unlike an
+    # interim submitted notification, this is included in reports and callbacks.
+    # @return [Boolean]
+    def incomplete?
+      status_ext.is_a?(String) && status_ext.start_with?('incomplete:')
+    end
+
+    # @return [Boolean] true if confirmed against the Wayback Machine after
+    #   SPN2 forgot the job
+    def recovered?
+      status_ext == 'recovered'
+    end
+
+    # Only errors have an error category. Passing a non-error status_ext such
+    # as 'cached', 'skipped:...' or 'recovered' through the registry reported
+    # them as transient failures and logged an unknown-code warning for each.
     # @return [Symbol, nil] :transient, :daily_limit, :permanent, or nil
     def error_category
+      return nil unless errored?
+
       ErrorCodes.category(status_ext)
     end
 
@@ -66,6 +84,10 @@ module WaybackArchiver
     def status_label
       if errored?
         'FAIL'
+      elsif incomplete?
+        'INCOMPLETE'
+      elsif recovered?
+        'recovrd'
       elsif cached?
         'cached'
       elsif skipped?
@@ -83,7 +105,13 @@ module WaybackArchiver
     def status_detail
       if errored?
         error_message || response_error || status_ext || error&.message
-      elsif cached?
+      elsif incomplete?
+        case status_ext
+        when 'incomplete:status-unavailable' then 'Job status unavailable (possibly expired); retained, not resubmitted'
+        when 'incomplete:missing-job-id' then 'Saved job ID missing; retained, not resubmitted'
+        else 'Capture not confirmed before polling stopped; resume to check again'
+        end
+      elsif recovered? || cached?
         formatted_timestamp
       elsif duration_sec
         "#{'%.1f' % duration_sec}s"
@@ -101,7 +129,7 @@ module WaybackArchiver
         new(
           url,
           job_id: job_id,
-          status_ext: status['status_ext'],
+          status_ext: status['status_ext'] || ('error:unknown' unless status['message']),
           response_error: status['message']
         )
       else

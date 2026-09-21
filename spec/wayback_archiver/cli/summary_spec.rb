@@ -44,6 +44,15 @@ RSpec.describe WaybackArchiver::CLI::Summary do
       expect(stdout_output).to include('Submitted: 1')
     end
 
+    it 'separates final incomplete outcomes from both successes and confirmed failures' do
+      results = [WaybackArchiver::ArchiveResult.new('http://a.com', job_id: 'j1', status_ext: 'incomplete:poll-timeout')]
+
+      summary.print_summary(results, Process.clock_gettime(Process::CLOCK_MONOTONIC))
+
+      expect(stdout_output).to include('Total: 1', 'Incomplete: 1', 'Succeeded: 0', 'Failed: 0')
+      expect(stdout_output).not_to include('Submitted:')
+    end
+
     it 'shows error breakdown by category' do
       results = [
         WaybackArchiver::ArchiveResult.new('http://a.com', status_ext: 'error:too-many-requests'),

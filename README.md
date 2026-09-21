@@ -93,9 +93,11 @@ the capture still succeeds with `screenshot_path` left `nil`.
 
 Each strategy returns an array of results and accepts a block. The block is
 called when a URL is accepted by SPN2 (an interim result where
-`result.submitted?` is true) and again with the final result once the capture
-completes — guard with `submitted?` if you only want final results. It may be
-called from multiple threads.
+`result.submitted?` is true) and again with the final result when the capture
+completes or polling stops. Guard with `submitted?` if you only want final
+results. `result.incomplete?` means the remote outcome is still unknown, not
+that the capture failed; `success?` is false for these results. The block may
+be called from multiple threads.
 
 ```ruby
 results = WaybackArchiver.archive('example.com') do |result|
@@ -103,6 +105,8 @@ results = WaybackArchiver.archive('example.com') do |result|
 
   if result.success?
     puts "Archived: #{result.wayback_url}"
+  elsif result.incomplete?
+    puts "Unconfirmed: #{result.uri} (job #{result.job_id}) — #{result.status_detail}"
   else
     puts "Failed: #{result.uri} - #{result.status_ext}"
   end
@@ -170,9 +174,9 @@ wayback_archiver example.com --crawl --no-skip-duplicates
 # Check SPN2 system and user status
 wayback_archiver --status --access-key=KEY --secret-key=SECRET
 
-# Resumable session (auto-saves progress, resumes on re-run)
+# Resumable session (repeat the original input and options when resuming)
 wayback_archiver example.com --session=session.jsonl
-wayback_archiver --resume=session.jsonl
+wayback_archiver example.com --resume=session.jsonl
 
 # Write results to CSV or JSON report
 wayback_archiver example.com --report=results.csv
@@ -184,6 +188,34 @@ wayback_archiver example.com --quiet
 # Kitchen sink
 wayback_archiver example.com --concurrency=10 --limit=100 --capture-all --verbose
 ```
+
+#### Recovery and rate limits
+
+`--resume` skips confirmed successes and checks saved, unconfirmed job IDs in
+batches before discovering or submitting new URLs. Repeat the original sources
+and options (or use the printed resume command); session files do not store the
+original discovery inputs. Already accepted jobs are recovered independently of
+the new URL limit. Confirmed transient capture failures may be resubmitted within
+the retry limit; status-read failures alone never trigger a new capture.
+
+If polling times out, the CLI exits **1**, retains its session, and includes an
+`incomplete:poll-timeout` result and job ID in the report. Successful captures
+still appear normally. Interim `submitted` notifications are not report rows.
+Resumed reports append new outcomes, so an incomplete row may be followed by a
+successful row for the same URL.
+
+Job status records are temporary: Internet Archive recommends checking within
+one hour. If a recovered status is missing, it is reported as
+`incomplete:status-unavailable`, retained, and **not automatically resubmitted**.
+Check the archive before intentionally submitting that URL again without
+`--resume`; the original capture may have succeeded. `--no-session` disables
+recovery storage, but incomplete runs still exit 1 and appear in reports.
+
+The capture limiter allows **7 submissions per minute per process**, matching
+the authenticated allowance in the upstream API docs dated 2026-07-22. Status
+polls are separate from this capture limiter and back off after request errors.
+Avoid simultaneous processes sharing one account: their combined submissions
+are not coordinated by the in-process limiter.
 
 #### All options
 

@@ -95,13 +95,15 @@ RSpec.describe WaybackArchiver::SessionFile do
       session.close
     end
 
-    it 'includes submitted URLs in completed_urls' do
+    it 'keeps submitted jobs separate from completed URLs' do
       path = session_path
       session = described_class.new(path)
 
       session.write_result(make_result('http://submitted.com', job_id: 'job-1', status_ext: 'submitted'))
 
-      expect(session.completed_urls).to include('http://submitted.com')
+      expect(session.completed_urls).not_to include('http://submitted.com')
+      expect(session.pending_jobs.transform_values { |j| j[:job_id] })
+        .to eq('http://submitted.com' => 'job-1')
 
       session.close
     end
@@ -115,7 +117,55 @@ RSpec.describe WaybackArchiver::SessionFile do
 
       completed = session.completed_urls
       expect(completed).to include('http://a.com')
+      expect(session.pending_jobs).to be_empty
 
+      session.close
+    end
+  end
+
+  describe '#pending_jobs' do
+    it 'ignores corrupt records without losing the last valid job record' do
+      session = described_class.new(session_path)
+      session.write_result(make_result('http://a.com', job_id: 'job-1', status_ext: 'submitted'))
+      session.close
+      File.open(session_path, 'a') do |file|
+        file.puts('null', '123', '[]', '{"url":null}', '{"url":""}', '{broken')
+      end
+
+      reopened = described_class.new(session_path)
+      expect(reopened.completed_urls).to be_empty
+      expect(reopened.pending_jobs.transform_values { |j| j[:job_id] }).to eq('http://a.com' => 'job-1')
+      expect(WaybackArchiver.logger.warn_log).not_to be_empty
+      reopened.close
+    end
+
+    it 'preserves incomplete jobs across close and reopen' do
+      session = described_class.new(session_path)
+      session.write_result(make_result('http://a.com', job_id: 'job-1', status_ext: 'incomplete:poll-timeout'))
+      session.close
+
+      reopened = described_class.new(session_path)
+      expect(reopened.completed_urls).to be_empty
+      expect(reopened.pending_jobs.transform_values { |j| j[:job_id] }).to eq('http://a.com' => 'job-1')
+      reopened.close
+    end
+
+    it 'uses the latest job for each URL and removes jobs with a terminal failure' do
+      session = described_class.new(session_path)
+      session.write_result(make_result('http://a.com', job_id: 'old', status_ext: 'submitted'))
+      session.write_result(make_result('http://a.com', job_id: 'new', status_ext: 'submitted'))
+      session.write_result(make_result('http://b.com', job_id: 'failed', status_ext: 'submitted'))
+      session.write_result(make_result('http://b.com', job_id: 'failed', status_ext: 'error:not-found'))
+
+      expect(session.pending_jobs.transform_values { |j| j[:job_id] }).to eq('http://a.com' => 'new')
+      expect(session.completed_urls).to be_empty
+      session.close
+    end
+
+    it 'retains an unconfirmed URL even if its job ID is missing' do
+      session = described_class.new(session_path)
+      session.write_result(make_result('http://a.com', status_ext: 'submitted'))
+      expect(session.pending_jobs.transform_values { |j| j[:job_id] }).to eq('http://a.com' => nil)
       session.close
     end
   end
@@ -234,6 +284,47 @@ RSpec.describe WaybackArchiver::SessionFile do
       session.delete!
 
       expect(File.exist?(path)).to eq(false)
+    end
+  end
+
+  describe 'pending job timing' do
+    # Resolving an expired job against CDX needs to know when it was
+    # submitted: "no capture indexed yet" means nothing moments after
+    # submission, and means the capture never happened an hour later.
+    it 'records when each result was written' do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, 'session.jsonl')
+        session = described_class.new(path)
+        session.write_result(
+          WaybackArchiver::ArchiveResult.new('http://e.com/a', job_id: 'job-1', status_ext: 'submitted')
+        )
+        session.close
+
+        record = JSON.parse(File.read(path).lines.first)
+        expect(record['recorded_at']).to match(/\A\d{4}-\d{2}-\d{2}T/)
+      end
+    end
+
+    it 'reports the job id and the time it first went pending' do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, 'session.jsonl')
+        session = described_class.new(path)
+        submitted = WaybackArchiver::ArchiveResult.new('http://e.com/a', job_id: 'job-1', status_ext: 'submitted')
+        session.write_result(submitted)
+        # A later incomplete record must not reset the clock: the job was
+        # submitted at the first timestamp, not when we gave up polling.
+        sleep 0.01
+        session.write_result(
+          WaybackArchiver::ArchiveResult.new('http://e.com/a', job_id: 'job-1', status_ext: 'incomplete:poll-timeout')
+        )
+        session.close
+
+        pending = described_class.new(path).pending_jobs
+        first_line = JSON.parse(File.read(path).lines.first)
+
+        expect(pending['http://e.com/a'][:job_id]).to eq('job-1')
+        expect(pending['http://e.com/a'][:since]).to eq(first_line['recorded_at'])
+      end
     end
   end
 end

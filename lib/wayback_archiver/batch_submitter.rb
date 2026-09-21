@@ -5,6 +5,8 @@ require 'wayback_archiver/wayback_machine'
 require 'wayback_archiver/archive_result'
 require 'wayback_archiver/request'
 require 'wayback_archiver/error_codes'
+require 'wayback_archiver/cdx'
+require 'time'
 
 module WaybackArchiver
   # Raised when the crawler thread fails partway through a streaming crawl.
@@ -40,6 +42,7 @@ module WaybackArchiver
   #   the queue. Used to determine when all URLs have been discovered (the queue
   #   being empty is not sufficient while the crawler is still running).
   # @param options [Hash] SPN2 capture options forwarded to WaybackMachine.
+  # @param pending_jobs [Hash] saved URL => job ID pairs to recover before submitting.
   # @param block [Proc] optional per-result callback.
   # @api private
   class BatchSubmitter
@@ -48,11 +51,15 @@ module WaybackArchiver
     MAX_SLOT_WAIT       = 180 # max seconds to wait for available slots
     SLOT_WAIT_INTERVAL  = 10  # seconds between status checks when waiting for slots
     IDLE_SLEEP          = 0.2 # seconds between checks while the crawler catches up
+    # Below this age, absence from the Wayback Machine means the index hasn't
+    # caught up yet — not that the capture never happened.
+    CDX_INDEX_GRACE     = 3600
 
-    def initialize(queue, concurrency:, source_thread: nil, **options, &block)
+    def initialize(queue, concurrency:, source_thread: nil, pending_jobs: {}, **options, &block)
       @queue = queue
       @concurrency = concurrency
       @source_thread = source_thread
+      @initial_pending = pending_jobs
       @options = options
       @block = block
     end
@@ -62,6 +69,8 @@ module WaybackArchiver
     def call
       @results = Concurrent::Array.new
       @pending = Concurrent::Hash.new
+      @recovering_ids = []
+      @poll_failures = 0
       # AtomicFixnum, not a Hash: record_result runs on pool workers and
       # `hash[k] += 1` is a non-atomic read-modify-write.
       @counts = { success: Concurrent::AtomicFixnum.new, error: Concurrent::AtomicFixnum.new }
@@ -73,7 +82,7 @@ module WaybackArchiver
 
       # Total is unknown during streaming crawl — the listener will update it
       # when on_crawl_complete fires.
-      @total = @source_thread ? nil : @queue.length
+      @total = @source_thread ? nil : @queue.length + @initial_pending.size
       WaybackArchiver.listener.on_batch_start(total: @total)
       # For non-streaming mode, copy the array so callers keep their original.
       # SizedQueue is already a separate object shared with the crawler thread.
@@ -81,6 +90,7 @@ module WaybackArchiver
       @submitted = 0
 
       begin
+        restore_pending
         run_submission_loop
 
         # Surface any exception raised by the crawler thread. value joins first,
@@ -92,10 +102,10 @@ module WaybackArchiver
           crawler_error = e
         end
 
-        # Any URLs still pending after final poll were submitted but unconfirmed
+        # A final incomplete outcome is distinct from the interim submission
+        # notification: it must reach callbacks, reports and recovery state.
         @pending.each do |job_id, url|
-          result = ArchiveResult.new(url, job_id: job_id, status_ext: 'submitted')
-          @results << result
+          record_incomplete(url, job_id, 'poll-timeout')
         end
 
         # Still raise — a failed crawl is not a successful run — but hand the
@@ -124,6 +134,71 @@ module WaybackArchiver
     end
 
     private
+
+    def restore_pending
+      @pending_since = {}
+      @initial_pending.each do |url, info|
+        # Sessions written before pending timing was recorded store a bare
+        # job id; treat those as undateable rather than unreadable.
+        job_id, since = info.is_a?(Hash) ? [info[:job_id], info[:since]] : [info, nil]
+        @pending_since[url] = since
+
+        if job_id.is_a?(String) && !job_id.strip.empty?
+          @pending[job_id] = url
+        else
+          record_incomplete(url, nil, 'missing-job-id')
+        end
+      end
+      @recovering_ids = @pending.keys
+      # Most jobs from a stopped process will already be done: check them in
+      # one batch immediately, without spending any new capture allowance.
+      poll_pending unless @pending.empty?
+    end
+
+    # SPN2 forgets a job's status about an hour after submission, but the
+    # Wayback Machine itself is the durable record of whether the capture
+    # landed — so ask it rather than leaving the URL in permanent limbo.
+    #
+    # Only an answer resolves the job. "Nothing indexed" resolves it as failed
+    # (and therefore resubmittable) solely once enough time has passed for the
+    # index to have caught up; sooner than that, or if the lookup itself
+    # fails, the outcome is still unknown and the job stays pending.
+    def resolve_unavailable(url, job_id)
+      since = parse_recorded_at(@pending_since[url])
+      # Without a submission time an older capture can't be told from this
+      # job's; count it anyway, since "the URL is archived" is the outcome
+      # that matters and the alternative is limbo for pre-timing sessions.
+      check = CDX.check(url, from: since&.strftime('%Y%m%d%H%M%S'))
+
+      if check.archived?
+        WaybackArchiver.logger.info("Confirmed #{url} in the Wayback Machine [#{check.timestamp}]")
+        record_result(ArchiveResult.new(url, job_id: job_id, timestamp: check.timestamp, status_ext: 'recovered'))
+      elsif check.errored?
+        record_incomplete(url, job_id, 'status-unavailable')
+      elsif since && (Time.now.utc - since) > CDX_INDEX_GRACE
+        WaybackArchiver.logger.warn("#{url}: job status expired and no capture was found; it will be retried")
+        record_result(
+          ArchiveResult.new(
+            url, job_id: job_id,
+            error: Request::ServerError.new('job status expired and no capture found in the Wayback Machine')
+          )
+        )
+      else
+        record_incomplete(url, job_id, 'status-unavailable')
+      end
+    end
+
+    def parse_recorded_at(value)
+      Time.iso8601(value.to_s).utc
+    rescue ArgumentError, TypeError
+      nil
+    end
+
+    def record_incomplete(url, job_id, reason)
+      result = ArchiveResult.new(url, job_id: job_id, status_ext: "incomplete:#{reason}")
+      WaybackArchiver.logger.warn("#{url}: #{result.status_detail}")
+      record_result(result)
+    end
 
     def run_submission_loop
       loop do
@@ -352,13 +427,17 @@ module WaybackArchiver
       statuses = begin
         WaybackMachine.poll_statuses(@pending.keys)
       rescue Request::Error => e
+        @poll_failures += 1
         WaybackArchiver.logger.debug("Poll failed: #{e.message}, will retry")
         return
       end
+      @poll_failures = 0
 
       # SPN2 occasionally returns a JSON array instead of the expected {job_id => status} hash
       if statuses.is_a?(Array)
         statuses = statuses.each_with_object({}) do |entry, h|
+          next unless entry.is_a?(Hash)
+
           jid = entry['job_id']
           h[jid] = entry if jid
         end
@@ -367,6 +446,15 @@ module WaybackArchiver
       unless statuses.is_a?(Hash)
         WaybackArchiver.logger.warn("Unexpected poll response type: #{statuses.class}, #{statuses}")
         return
+      end
+
+      # Status records are ephemeral. A missing recovered job is unknown, not
+      # a failed capture and not permission to submit a duplicate. Retain it
+      # for manual reconciliation instead of polling it indefinitely.
+      @recovering_ids.each do |job_id|
+        next unless @pending.key?(job_id) && statuses[job_id].nil?
+
+        resolve_unavailable(@pending.delete(job_id), job_id)
       end
 
       completed = []
@@ -434,12 +522,18 @@ module WaybackArchiver
 
       until @pending.empty?
         elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time
-        if elapsed > WaybackMachine::POLL_TIMEOUT
+        remaining = WaybackMachine::POLL_TIMEOUT - elapsed
+        if remaining <= 0
           WaybackArchiver.logger.info("Poll timeout reached, #{@pending.size} URL(s) submitted but unconfirmed")
           break
         end
 
-        sleep(WaybackMachine::POLL_INTERVAL)
+        # Status reads have no documented unlimited allowance. Slow down after
+        # errors (including 429s), and do not issue a request after the deadline.
+        delay = [WaybackMachine::POLL_INTERVAL * (2 ** [@poll_failures, 4].min), 30].min
+        sleep([delay, remaining].min)
+        next if Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time >= WaybackMachine::POLL_TIMEOUT
+
         poll_pending
         log_progress
       end

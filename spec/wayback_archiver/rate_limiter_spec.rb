@@ -102,9 +102,26 @@ RSpec.describe WaybackArchiver::RateLimiter do
   end
 
   describe '.for_current_user' do
-    it 'returns 12/min limiter' do
+    # Sources disagree on the current authenticated cap: archive.org's own
+    # docs are cited as 7/min, savepagenow cites 6/min attributed to Internet
+    # Archive staff. Take the lower — being under the cap costs a little
+    # throughput, being over it earns errors.
+    it 'returns the documented authenticated limiter at the lower cited cap' do
       limiter = described_class.for_current_user
-      expect(limiter.max_requests).to eq(12)
+      expect(limiter.max_requests).to eq(6)
+      expect(limiter.window).to eq(60.0)
+    end
+
+    it 'allows a full window of submissions and delays the next until it ends' do
+      limiter = described_class.for_current_user
+      clock = 100.0
+      allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC) { clock }
+      allow(limiter).to receive(:sleep) { |seconds| clock += seconds }
+
+      described_class::RATE.times { limiter.acquire }
+      expect(limiter).not_to have_received(:sleep)
+      limiter.acquire
+      expect(limiter).to have_received(:sleep).with(60.0).once
     end
   end
 end

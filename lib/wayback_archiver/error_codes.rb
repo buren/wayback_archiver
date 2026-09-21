@@ -26,6 +26,13 @@ module WaybackArchiver
       'error:bad-gateway'              => { message: 'Bad Gateway (HTTP 502)',                         category: :transient },
       'error:capture-location-error'   => { message: 'Cannot find created capture location',           category: :transient },
       'error:no-captures'              => { message: 'Capture produced no content',                     category: :transient },
+      # Not an SPN2 code: synthesised by ArchiveResult.from_status for a bare
+      # {"status":"error"} carrying no status_ext and no message. Declared here
+      # so it classifies deliberately instead of tripping the unknown-code
+      # warning we would be issuing about our own value. Transient because an
+      # unexplained failure is more often a blip than a property of the URL —
+      # at the cost of retrying it up to MAX_RETRIES times.
+      'error:unknown'                  => { message: 'SPN2 reported an error without a reason',        category: :transient },
 
       # -- Daily limit: won't succeed on immediate retry, resets next day --
       'error:too-many-daily-captures'     => { message: 'URL captured 10 times today',                    category: :daily_limit },

@@ -3,7 +3,11 @@ module WaybackArchiver
   # Tracks timestamps of recent requests and sleeps when the rate limit is reached.
   # @api private
   class RateLimiter
-    RATE = 12 # captures per minute
+    # Authenticated captures per minute. archive.org's docs are cited as 7/min
+    # (upstream revision 2026-07-22); savepagenow cites 6/min attributed to
+    # Internet Archive staff. Take the lower of the two: under the cap costs a
+    # little throughput, over it earns errors. Was 12, which is long stale.
+    RATE = 6
 
     attr_reader :max_requests, :window
 

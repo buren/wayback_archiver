@@ -11,7 +11,7 @@ module WaybackArchiver
       end
 
       def print_summary(results, archive_start_time, duplicates_skipped: 0)
-        tally = { succeeded: 0, submitted: 0, cached: 0, skipped: 0, failed: 0, errors: {} }
+        tally = { succeeded: 0, submitted: 0, incomplete: 0, cached: 0, skipped: 0, failed: 0, errors: {} }
         results.each do |r|
           if r.errored?
             tally[:failed] += 1
@@ -19,6 +19,8 @@ module WaybackArchiver
             tally[:errors][cat] = (tally[:errors][cat] || 0) + 1
           elsif r.submitted?
             tally[:submitted] += 1
+          elsif r.incomplete?
+            tally[:incomplete] += 1
           elsif r.cached?
             tally[:cached] += 1
           elsif r.skipped?
@@ -41,6 +43,7 @@ module WaybackArchiver
         end
         line = "Total: #{total}  Succeeded: #{tally[:succeeded]}  Failed: #{tally[:failed]}#{breakdown}"
         line << "  Submitted: #{tally[:submitted]}" if tally[:submitted] > 0
+        line << "  Incomplete: #{tally[:incomplete]}" if tally[:incomplete] > 0
         line << "  Cached: #{tally[:cached]}" if tally[:cached] > 0
         line << "  Skipped: #{tally[:skipped]}" if tally[:skipped] > 0
         line << "  Duplicates skipped: #{duplicates_skipped}" if duplicates_skipped > 0
@@ -98,7 +101,7 @@ module WaybackArchiver
       end
 
       def print_resume_message(resume_command)
-        @stderr.puts "Some URLs failed. Resume with:"
+        @stderr.puts "Some URLs failed or remain unconfirmed. Resume with:"
         @stderr.puts "  #{resume_command}"
       end
 

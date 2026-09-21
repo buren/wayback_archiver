@@ -117,7 +117,7 @@ module WaybackArchiver
 
     # Exit codes (the read-only modes exit 0 internally):
     #   0   success — nothing failed
-    #   1   archiving finished but one or more URLs failed
+    #   1   archiving finished but one or more URLs failed or remain unconfirmed
     #   2   usage / invalid arguments
     #   3   archiving credentials missing
     #   4   network error during discovery (sitemap/feed unreachable)
@@ -190,7 +190,7 @@ module WaybackArchiver
         return 4
       end
 
-      results.any?(&:errored?) ? 1 : 0
+      results.any? { |result| !result.success? } ? 1 : 0
     ensure
       # Only needed on the exception path; the happy path cleared it above.
       @cli_listener&.finish if $! && !@interrupted
@@ -252,9 +252,13 @@ module WaybackArchiver
       end
 
       @skip_urls = @session&.completed_urls
+      @pending_jobs = @session ? @session.pending_jobs : {}
       if @options.resume_path && @skip_urls&.any?
         WaybackArchiver.logger.info("Session contains #{@skip_urls.size} previously succeeded URL(s)")
       end
+      # Pending jobs are handled separately before discovery. Never let the
+      # discovery path submit them again while recovery is still unresolved.
+      @skip_urls&.merge(@pending_jobs.keys)
     end
 
     def setup_report_writer
@@ -357,12 +361,6 @@ module WaybackArchiver
       all_results = []
       urls_to_archive = nil
 
-      if @options.skip_archived
-        skipped, urls_to_archive = skip_archived_urls
-        all_results.concat(skipped)
-        skipped.each { |r| @report_writer&.write_result(r) }
-      end
-
       WaybackArchiver.logger.info(@summary.startup_banner(@options))
       @cli_listener = CLIListener.new(@stdout)
       @log_output&.renderer = @cli_listener.renderer
@@ -375,6 +373,19 @@ module WaybackArchiver
           @report_writer&.write_result(result)
           @archive_results << result
         end
+      end
+
+      unless @pending_jobs.empty?
+        WaybackArchiver.logger.info("Checking #{@pending_jobs.size} saved unconfirmed job(s)")
+        recovered = BatchSubmitter.new([], concurrency: @options.concurrency,
+                                      pending_jobs: @pending_jobs, **@options.spn2_options, &archive_block).call
+        all_results.concat(recovered)
+      end
+
+      if @options.skip_archived
+        skipped, urls_to_archive = skip_archived_urls
+        all_results.concat(skipped)
+        skipped.each { |r| @report_writer&.write_result(r) }
       end
 
       archive_opts = {
@@ -491,7 +502,7 @@ module WaybackArchiver
 
       # A failed crawl leaves the site half-archived, so keep the session even
       # when every result that did complete succeeded.
-      if @crawl_error || results.any?(&:errored?)
+      if @crawl_error || results.any? { |result| !result.success? }
         @summary.print_resume_message(resume_command)
       elsif @auto_generated_session
         @session.delete!

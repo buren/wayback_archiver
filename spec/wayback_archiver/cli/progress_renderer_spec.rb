@@ -199,13 +199,13 @@ RSpec.describe WaybackArchiver::CLI::ProgressRenderer do
       expect(clean_output).not_to include('left')
     end
 
-    it 'uses SPN2 rate limit (12 URLs/min) before 20 completions' do
+    it 'uses the SPN2 capture rate before 20 completions' do
       renderer.set_total(100)
       renderer.start
       5.times { renderer.record_completion(errored: false) }
       renderer.repaint
 
-      expect(clean_output).to include('~12 URLs/min')
+      expect(clean_output).to include("~#{WaybackArchiver::RateLimiter::RATE} URLs/min")
     end
 
     it 'switches to EMA-based rate after 20 completions' do

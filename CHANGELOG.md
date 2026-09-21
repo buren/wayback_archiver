@@ -7,7 +7,7 @@
 - **Authentication required** — the Wayback Machine SPN2 API no longer allows anonymous access. You must configure Internet Archive S3 API keys (`WAYBACK_ACCESS_KEY`/`WAYBACK_SECRET_KEY`) before archiving. Get your keys at [archive.org/account/s3.php](https://archive.org/account/s3.php). Read-only operations like `--check` (CDX API) still work without credentials.
 - Switched from SPN1 to **SPN2 API** — captures are now submitted via POST and polled for completion
 - `archive`, `crawl`, `sitemap`, `urls` now return **all results** (including failures), not just successes. Use `result.success?` to filter.
-- `ArchiveResult#success?` is now `false` for `submitted?` (queued but unconfirmed) results in addition to errors. `cached?` and `skipped?` results count as successes (the URL is archived / was intentionally not re-archived) — use the `cached?`/`skipped?` predicates if you need to distinguish them.
+- `ArchiveResult#success?` is now `false` for `submitted?` (interim acceptance) and `incomplete?` (final but unconfirmed) results in addition to errors. `cached?` and `skipped?` results count as successes (the URL is archived / was intentionally not re-archived) — use the `cached?`/`skipped?` predicates if you need to distinguish them.
 - **Discovery failures raise** — `WaybackArchiver.sitemap`/`.rss` (and `Sitemapper.urls`) raise `Request::Error` when the sitemap/feed is unreachable, instead of silently returning `[]` (previously indistinguishable from an empty sitemap). The `auto` strategy still falls back to crawling when no sitemap is found. The CLI reports discovery failures as a clean error with exit code 4.
 - **Unknown options raise** — `Archive.post`/`crawl`/`post_url` (and therefore `WaybackArchiver.archive`) raise `ArgumentError` for option keys that aren't SPN2 capture params or documented side-channel options. Previously a typo (`capture_screenshots:` instead of `capture_screenshot:`) was silently dropped.
 - **`ArchiveResult` pruned** — the vestigial v1 readers `code` (always `'200'`), `request_url` (never set), and `archived_url` (alias of `uri`) are removed. Use `uri` for the archived URL and `wayback_url` for the snapshot link.
@@ -42,7 +42,7 @@ WaybackArchiver.configure do |config|
 end
 ```
 
-CLI exit codes: `0` success, `1` finished with one or more failed URLs, `2` invalid arguments, `3` credentials missing, `4` discovery or crawl failed, `130` interrupted (Ctrl+C).
+CLI exit codes: `0` success, `1` finished with one or more failed or unconfirmed URLs, `2` invalid arguments, `3` credentials missing, `4` discovery or crawl failed, `130` interrupted (Ctrl+C).
 
 **New features:**
 
@@ -53,7 +53,7 @@ CLI exit codes: `0` success, `1` finished with one or more failed URLs, `2` inva
 - **Cached capture detection** — when `if_not_archived_within` matches a recent snapshot, SPN2 returns immediately; these are tagged with `status_ext: 'cached'` and reported separately in the CLI summary
 - **Retry with backoff** — transient SPN2 errors (rate limits, service unavailable) are retried automatically with exponential backoff
 - **Expanded error classification** — 38 SPN2 error codes mapped to `:transient`, `:daily_limit`, and `:permanent` categories for smarter retry decisions
-- **Proactive rate limiter** — sliding-window rate limiting to stay within the SPN2 cap of 12 captures/min proactively
+- **Proactive rate limiter** — sliding-window rate limiting to stay within the authenticated SPN2 capture cap, paced at 6/min (upstream docs cite 7/min as of 2026-07-22; savepagenow cites 6/min from Internet Archive staff, so the lower figure is used). Was 12/min, long stale.
 - **Streaming crawl** — crawl strategy streams discovered URLs to SPN2 as they are found, instead of waiting for the crawl to finish. New listener events `on_url_discovered` and `on_crawl_complete` track progress.
 - **Smart crawl filtering** — crawler only yields archivable content types (HTML, PDF, XML, RSS, JSON, plain text, Word docs), automatically skipping images, CSS, JS, and fonts. SPN2 captures embedded assets as part of page snapshots.
 - **Batch status polling** — efficient bulk archiving via `POST /save/status` with multiple job IDs
@@ -84,6 +84,8 @@ CLI exit codes: `0` success, `1` finished with one or more failed URLs, `2` inva
 
 **Bug fixes / internal:**
 
+- **Recover accepted jobs on resume** — saved job IDs are batch-polled before new discovery or submissions, instead of treating acceptance as confirmed success. Terminal outcomes are persisted and transient capture errors follow bounded retries. Missing/expired statuses remain explicitly incomplete, with no automatic duplicate submission.
+- **Unconfirmed results are not success** — final polling timeouts now reach callbacks, session files, and JSON/CSV/JSONL reports as `incomplete?` results with their job IDs intact. The CLI reports them separately, exits 1, and retains automatic recovery sessions. Status polling backs off after errors, including throttling.
 - **Screenshot credential protection** — authenticated screenshot downloads now require `https://web.archive.org` on port 443 for the initial request and every redirect, rejecting insecure or off-origin URLs before connecting. The shared request layer also strips authorization, cookie and proxy-authorization headers when a redirect changes scheme, host or port. Rejected screenshots remain best-effort and do not fail successful captures.
 - **Quieter retry logging** — intermediate retry attempts (connection errors, transient SPN2 errors, poll failures) now log at debug level instead of WARN. Only final failures (retry limit exceeded) log at ERROR.
 - **Increased retry limit** — per-URL retry cap for transient errors increased from 3 to 5, improving tolerance for intermittent SPN2 gateway timeouts and connection refused errors.
@@ -109,6 +111,10 @@ CLI exit codes: `0` success, `1` finished with one or more failed URLs, `2` inva
 - `Request.get` accepts per-call `open_timeout`/`read_timeout`; CDX uses 10s/15s so one hung lookup can't sit on the global 60s read timeout. Defaults are unchanged for every other caller.
 - CLI output reads from the reader's side: the progress footer's `Polling...` is now `Waiting for captures to finish...` (with `Submitting URLs...` and `Waiting for a free capture slot...` alongside it), and sitemap autodiscovery is down to two lines — one as it starts looking, one for the outcome. It no longer logs its expected "no sitemap here" probe at ERROR, and the per-location attempts (robots.txt plus six common paths) moved to debug.
 - A rejected status check no longer kills a healthy run. `check_user_status` maps HTTP 401/403 to `AuthenticationError`, which isn't a `Request::Error` and so escaped `BatchSubmitter`'s slot check — archive.org rejects that endpoint under load, so a run that was archiving fine would stream a few `ok` lines, print "credentials were rejected" and exit 3, dropping the remaining URLs with no summary. It is now treated as transient once anything has succeeded, and still fails fast when nothing has.
+- A finite `config.max_limit` no longer truncates crawl discovery before filtering. `Archive.crawl` enforces the limit itself, after the skip/extension filters, but stopped passing `limit:` to the collector — whose default is `config.max_limit` — so a global limit reintroduced the very ordering the move was meant to fix. With `config.max_limit = 1` and `include_ext: ['pdf']`, a homepage linking to a PDF archived nothing.
+- A crawl that cannot reach its seed now fails instead of reporting an empty success. Spidr catches DNS, timeout, connection and TLS errors internally and emits failed-URL events, which nothing subscribed to, so an unreachable host exited 0 with zero URLs and no error. Failures later in the traversal keep the URLs already found and warn instead.
+- `--rss` rejects a response that isn't a feed, the way `--sitemap` already did. An HTML login page or truncated feed parsed to an empty list and exited 0; a valid feed with no entries is still an empty success.
+- Crawl deduplication remembers every body seen for a path rather than only the first, so a path serving A, B, B no longer archives the second B as new.
 - Fixed CLI typo: `Verboes` → `Verbose`
 - Removed duplicate `-h` flag in CLI
 - Fixed `:auto` strategy not passing `limit:` to all code paths

@@ -49,7 +49,7 @@ module WaybackArchiver
       WaybackArchiver.logger.debug "Request are sent with up to #{concurrency} parallel threads"
 
       # Sitemap indexes with overlapping children (and hand-assembled URL
-      # lists) routinely repeat URLs. At 7 captures/min each duplicate is a
+      # lists) routinely repeat URLs. At 6 captures/min each duplicate is a
       # wasted slot, so collapse them before anything else counts them.
       urls_queue = urls.uniq
       if (dupes = urls.length - urls_queue.length) > 0

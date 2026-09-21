@@ -2,6 +2,10 @@
 
 Vangelis Banos — updated: 2025-10-22
 
+Local snapshot note: capture-rate and job-status-retention guidance below was
+rechecked on 2026-09-21 against the upstream revision dated 2026-07-22. Other
+sections remain the historical snapshot and may differ from the current API.
+
 Original: [https://docs.google.com/document/d/1Nsv52MvSjbLb2PCpHlat0gkzw0EvtSgpKHu4mk0MnrA/edit?tab=t.0#heading=h.1gmodju1d6p0](https://docs.google.com/document/d/1Nsv52MvSjbLb2PCpHlat0gkzw0EvtSgpKHu4mk0MnrA/edit?tab=t.0#heading=h.1gmodju1d6p0)
 
 Changelog: [https://docs.google.com/document/d/19RJsRncGUw2qHqGGg9lqYZYf7KKXMDL1Mro5o1Qw6QI/edit#](https://docs.google.com/document/d/19RJsRncGUw2qHqGGg9lqYZYf7KKXMDL1Mro5o1Qw6QI/edit#)
@@ -85,6 +89,12 @@ A capture request may return:
 ### Status request
 
 You can query the status of one or multiple captures.
+
+Status records are temporary; upstream recommends checking within one hour of
+submission. A missing old status does not establish whether the capture succeeded
+or failed. The documented per-minute allowance is for captures, not explicitly
+all API calls; no unlimited status-read allowance is promised. Batch status reads
+and back off on throttling or transport errors.
 
 #### GET example
 
@@ -258,7 +268,7 @@ If overloaded:
 | Limitation | Description |
 | --- | --- |
 | Network connection timeout = 10s | If connection takes &gt; 10s, target is considered unresponsive and capture errors out. |
-| Max captures/min | Authenticated: 12; Anonymous: 4. If exceeded, SPN2 returns an error. |
+| Max captures/min | Authenticated: 7; Anonymous: 3 (upstream revision 2026-07-22). Note: savepagenow cites 6/min for authenticated users, attributed to Internet Archive staff — this client paces at the lower figure. If exceeded, SPN2 returns an error. |
 | Max web page capture time = 50s | Browsers can spend up to 50s visiting target URL + running JS behaviors; after that the browser is terminated. |
 | Max capture duration = 2m | Total time spent capturing any URL cannot exceed 2 minutes. |
 | Max JS behavior runtime = 7s (configurable) | Total time running JS events cannot exceed default 5s; configurable via `js_behavior_timeout=&lt;N&gt;`. |
