@@ -163,6 +163,35 @@ RSpec.describe WaybackArchiver::Archive do
       expect(results).to all(be_success)
     end
 
+    # The other half of that condition: submits have been accepted but nothing
+    # has finished yet. Those submits prove the credentials work, so a 401 here
+    # is transient too — dropping the `@pending.empty?` clause would abort a
+    # run whose every submit had succeeded.
+    it 'treats a rejection as transient while submitted jobs are still pending' do
+      status_calls = 0
+      allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status) do
+        status_calls += 1
+        raise WaybackArchiver::AuthenticationError, 'Wayback Machine credentials were rejected (HTTP 401)' if status_calls == 2
+
+        { 'available' => 1, 'processing' => 0 }
+      end
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit) { |u| { 'url' => u, 'job_id' => "job-#{u[-1]}" } }
+
+      poll_calls = 0
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses) do |ids|
+        poll_calls += 1
+        # Still running the first time we look, so nothing has succeeded when
+        # the rejection lands on the next slot check.
+        state = poll_calls == 1 ? 'pending' : 'success'
+        ids.to_h { |j| [j, { 'status' => state, 'job_id' => j, 'timestamp' => '20260921120000' }] }
+      end
+
+      results = described_class.post(%w[http://e.com/1 http://e.com/2])
+
+      expect(results.length).to eq(2)
+      expect(results).to all(be_success)
+    end
+
     # A credential that never worked should still fail fast and loudly.
     it 'raises when the very first status check is rejected' do
       allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status)
