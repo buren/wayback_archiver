@@ -150,13 +150,14 @@ RSpec.describe WaybackArchiver::CLI do
       expect(lines).to eq(%w[http://a.com http://b.com http://c.com])
     end
 
-    it 'prints summary when enabled' do
+    it 'prints summary when enabled, on stderr so stdout stays pipeable' do
       allow(WaybackArchiver).to receive(:discover_urls).and_return(%w[http://a.com http://b.com])
 
       cli = build_cli('--list-urls', '--sitemap', 'http://example.com')
       expect { cli.run }.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
 
-      expect(stdout_output).to include('2 URL(s) discovered')
+      expect(stderr_output).to include('2 URL(s) discovered')
+      expect(stdout_output).not_to include('discovered')
     end
 
     it 'applies --skip-patterns filter' do
@@ -849,6 +850,21 @@ RSpec.describe WaybackArchiver::CLI do
       cli.run
 
       expect(stdout_output).to include('Total: 1')
+    end
+  end
+
+  describe 'list-urls output is pipeable' do
+    # Regression: the README documents `--list-urls > urls.txt` followed by
+    # `--file=urls.txt`, but the summary went to stdout, so "1 URL(s)
+    # discovered" landed in the file and the next run treated it as a URL.
+    it 'keeps the summary off stdout' do
+      allow(WaybackArchiver).to receive(:discover_urls).and_return(%w[https://example.com/a])
+
+      cli = build_cli('--list-urls', '--sitemap', 'https://example.com')
+      expect { cli.run }.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
+
+      expect(stdout_output).to eq("https://example.com/a\n")
+      expect(stderr_output).to include('1 URL(s) discovered')
     end
   end
 end

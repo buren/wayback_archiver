@@ -420,6 +420,16 @@ RSpec.describe WaybackArchiver do
         expect(described_class.discover_urls('http://example.com/feed.xml', strategy: :rss, limit: 3).length).to eq(3)
       end
 
+      # Regression: truncation ran before deduplication, so a sitemap listing
+      # a, a, b with --limit=2 yielded a single URL.
+      it 'deduplicates before applying the limit' do
+        allow(described_class::URLCollector).to receive(:sitemap)
+          .and_return(%w[http://e.com/a http://e.com/a http://e.com/b])
+
+        expect(described_class.discover_urls('http://e.com', strategy: :sitemap, limit: 2))
+          .to eq(%w[http://e.com/a http://e.com/b])
+      end
+
       it 'returns everything when unlimited' do
         urls = (1..10).map { |i| "http://example.com/#{i}" }
         expect(described_class.discover_urls(urls, strategy: :urls, limit: -1).length).to eq(10)

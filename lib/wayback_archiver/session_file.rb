@@ -1,4 +1,5 @@
 require 'json'
+require 'securerandom'
 require 'time'
 require 'set'
 require 'tmpdir'
@@ -12,9 +13,13 @@ module WaybackArchiver
 
     # Generate an auto-path in /tmp based on current timestamp.
     # @return [String] path like /tmp/wayback_archiver_20260331_143022.jsonl
+    # Timestamped for recognisability, with a random suffix because the
+    # timestamp alone collided for runs starting in the same second — they
+    # shared one append-only file with independent mutexes, and either could
+    # delete the other's recovery data on a clean finish.
     def self.auto_path
       stamp = Time.now.strftime('%Y%m%d_%H%M%S')
-      File.join(Dir.tmpdir, "wayback_archiver_#{stamp}.jsonl")
+      File.join(Dir.tmpdir, "wayback_archiver_#{stamp}_#{SecureRandom.hex(4)}.jsonl")
     end
 
     # @param path [String] file path for the session file

@@ -28,7 +28,8 @@ RSpec.describe WaybackArchiver::SessionFile do
     it 'generates a path in the system temp directory with timestamp pattern' do
       path = described_class.auto_path
       expect(path).to start_with(Dir.tmpdir)
-      expect(File.basename(path)).to match(/^wayback_archiver_\d{8}_\d{6}\.jsonl$/)
+      # Timestamp plus a random suffix; see the collision example below.
+      expect(File.basename(path)).to match(/^wayback_archiver_\d{8}_\d{6}_[0-9a-f]+\.jsonl$/)
     end
   end
 
@@ -325,6 +326,25 @@ RSpec.describe WaybackArchiver::SessionFile do
         expect(pending['http://e.com/a'][:job_id]).to eq('job-1')
         expect(pending['http://e.com/a'][:since]).to eq(first_line['recorded_at'])
       end
+    end
+  end
+
+  describe '.auto_path' do
+    # Regression: the name held only a second-resolution timestamp, so two
+    # runs starting in the same second shared one append-only file with
+    # independent mutexes — and either could delete the other's recovery data.
+    it 'is unique for runs starting in the same second' do
+      allow(Time).to receive(:now).and_return(Time.at(1_790_000_000))
+
+      paths = 20.times.map { described_class.auto_path }
+
+      expect(paths.uniq.length).to eq(20)
+    end
+
+    it 'still names the file by timestamp for recognisability' do
+      allow(Time).to receive(:now).and_return(Time.at(1_790_000_000))
+
+      expect(described_class.auto_path).to include(Time.at(1_790_000_000).strftime('%Y%m%d_%H%M%S'))
     end
   end
 end

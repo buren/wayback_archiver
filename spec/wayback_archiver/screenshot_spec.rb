@@ -301,4 +301,35 @@ RSpec.describe WaybackArchiver::Screenshot do
       end
     end
   end
+
+  describe 'filename collisions' do
+    # Regression: punctuation was collapsed to underscores, so distinct URLs
+    # mapped to one file and the second download silently overwrote the first.
+    it 'gives distinct URLs distinct filenames' do
+      Dir.mktmpdir do |dir|
+        WaybackArchiver.config.access_key = 'key'
+        WaybackArchiver.config.secret_key = 'secret'
+        stub_request(:get, %r{web\.archive\.org/web/}).to_return(status: 200, body: png_data)
+
+        a = described_class.download(screenshot_url, 'https://example.com/a/b', directory: dir, timestamp: '20260921120000')
+        b = described_class.download(screenshot_url, 'https://example.com/a_b', directory: dir, timestamp: '20260921120000')
+
+        expect(a).not_to eq(b)
+        expect(Dir.children(dir).length).to eq(2)
+      end
+    end
+
+    it 'is stable for the same URL' do
+      Dir.mktmpdir do |dir|
+        WaybackArchiver.config.access_key = 'key'
+        WaybackArchiver.config.secret_key = 'secret'
+        stub_request(:get, %r{web\.archive\.org/web/}).to_return(status: 200, body: png_data)
+
+        first = described_class.download(screenshot_url, original_url, directory: dir, timestamp: '20260921120000')
+        second = described_class.download(screenshot_url, original_url, directory: dir, timestamp: '20260921120000')
+
+        expect(first).to eq(second)
+      end
+    end
+  end
 end

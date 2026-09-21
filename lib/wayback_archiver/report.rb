@@ -72,7 +72,7 @@ module WaybackArchiver
         result.screenshot_url,
         result.status_ext,
         result.error_category&.to_s,
-        result.error&.to_s
+        result.failure_reason
       ]
     end
 
@@ -87,7 +87,7 @@ module WaybackArchiver
         'screenshot_url' => result.screenshot_url,
         'status_ext'      => result.status_ext,
         'error_category'  => result.error_category&.to_s,
-        'error'           => result.error&.to_s
+        'error'           => result.failure_reason
       }
     end
 

@@ -80,6 +80,17 @@ module WaybackArchiver
       ErrorCodes.message(status_ext)
     end
 
+    # The most useful description of why this failed, wherever it ended up.
+    # A polled failure stores its message in response_error while an exception
+    # lands in error, and exports only read the latter — so a failure could be
+    # serialized with every error field null.
+    # @return [String, nil]
+    def failure_reason
+      return nil unless errored?
+
+      error&.message || response_error || error_message || status_ext
+    end
+
     # Short label for display output (e.g. "ok", "FAIL", "cached", "skip").
     def status_label
       if errored?

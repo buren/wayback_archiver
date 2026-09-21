@@ -1,3 +1,5 @@
+require 'digest'
+
 require 'wayback_archiver/request'
 
 module WaybackArchiver
@@ -96,13 +98,20 @@ module WaybackArchiver
     end
     private_class_method :auth_headers
 
+    # Readable, and unique. Collapsing punctuation to underscores mapped
+    # distinct URLs onto one name (/a/b and /a_b), so the second download
+    # silently overwrote the first; truncation and query stripping collided
+    # the same way. A digest of the full URL keeps the name stable per URL
+    # while guaranteeing two URLs never share a file.
     def self.sanitize_filename(url)
-      url.to_s
+      readable = url.to_s
         .sub(%r{^https?://}, '')
         .gsub(%r{[/:?&#=+%]}, '_')
         .gsub(/_+/, '_')
         .gsub(/^_|_$/, '')
-        .slice(0, 200)
+        .slice(0, 180)
+
+      "#{readable}_#{Digest::SHA256.hexdigest(url.to_s)[0, 10]}"
     end
     private_class_method :sanitize_filename
   end

@@ -356,7 +356,10 @@ module WaybackArchiver
 
       all_urls.each { |url| @stdout.puts url }
 
-      @stdout.puts "\n#{all_urls.length} URL(s) discovered" if @options.show_summary
+      # stderr, not stdout: the documented pipeline is
+      #   wayback_archiver … --list-urls > urls.txt && wayback_archiver --file=urls.txt
+      # and a summary line on stdout lands in the file as a bogus URL.
+      @stderr.puts "\n#{all_urls.length} URL(s) discovered" if @options.show_summary
 
       exit(0)
     end

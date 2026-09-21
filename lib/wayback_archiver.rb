@@ -198,6 +198,9 @@ module WaybackArchiver
     # The crawl strategies stop at the limit themselves; sitemap/rss/urls
     # return everything, so cap here too — otherwise --list-urls --limit and
     # --check --limit are silent no-ops for those strategies.
+    # Deduplicate first: truncating before it let a sitemap listing a, a, b
+    # satisfy --limit=2 with a single URL.
+    discovered = discovered.uniq
     discovered = discovered.first(limit) unless limit == -1
     discovered
   end

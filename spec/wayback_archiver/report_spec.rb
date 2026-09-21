@@ -216,4 +216,32 @@ RSpec.describe WaybackArchiver::Report do
       end
     end
   end
+
+  describe 'failure reasons' do
+    # Regression: a poll failure stores its message in response_error, but
+    # exports only wrote `error` — so a result could be success: false with
+    # every error field null while the reason was sitting right there.
+    it 'exports the message from a polled failure' do
+      result = WaybackArchiver::ArchiveResult.new(
+        'http://e.com/a', status_ext: 'error:job-failed', response_error: 'Capture failed due to system error'
+      )
+
+      row = described_class.result_hash(result)
+
+      expect(row['success']).to eq(false)
+      expect(row['error']).to include('Capture failed due to system error')
+    end
+
+    it 'still exports an exception-backed failure' do
+      result = WaybackArchiver::ArchiveResult.new('http://e.com/a', error: StandardError.new('boom'))
+
+      expect(described_class.result_hash(result)['error']).to include('boom')
+    end
+
+    it 'leaves the error field empty for a success' do
+      result = WaybackArchiver::ArchiveResult.new('http://e.com/a', timestamp: '20260921120000')
+
+      expect(described_class.result_hash(result)['error']).to be_nil
+    end
+  end
 end
