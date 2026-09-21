@@ -216,10 +216,25 @@ module WaybackArchiver
     def available_slots
       start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       waiting_logged = false
+      rejection_logged = false
 
       loop do
         status = begin
           WaybackMachine.check_user_status
+        rescue AuthenticationError => e
+          # Credentials that have already worked don't stop working mid-run:
+          # archive.org rejects this endpoint under load. Only believe it when
+          # nothing has succeeded yet — otherwise a healthy run would abort
+          # with "credentials were rejected", dropping the remaining URLs.
+          raise if @counts[:success].value.zero? && @pending.empty?
+
+          unless rejection_logged
+            WaybackArchiver.logger.warn(
+              "Status check rejected mid-run (#{e.message}) - treating as transient"
+            )
+            rejection_logged = true
+          end
+          nil
         rescue Request::Error => e
           if @counts[:success].value.zero? && @pending.empty? && e.is_a?(Request::ClientError)
             WaybackArchiver.logger.error("Connection refused by web.archive.org — your IP may be temporarily blocked. Try again later.")

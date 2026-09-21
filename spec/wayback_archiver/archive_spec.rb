@@ -139,6 +139,39 @@ RSpec.describe WaybackArchiver::Archive do
       expect(WaybackArchiver::WaybackMachine).to have_received(:submit).with('http://example.com/b')
     end
 
+    # Regression: check_user_status maps 401/403 to AuthenticationError, which
+    # is not a Request::Error, so it escaped available_slots and killed the
+    # run. archive.org rejects that endpoint under load, so a healthy run
+    # would stream a few "ok" lines, print a bare "credentials were rejected"
+    # and exit 3 — dropping the remaining URLs with no summary.
+    it 'treats a mid-run status rejection as transient once captures have succeeded' do
+      calls = 0
+      allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status) do
+        calls += 1
+        raise WaybackArchiver::AuthenticationError, 'Wayback Machine credentials were rejected (HTTP 401)' if calls == 2
+
+        { 'available' => 1, 'processing' => 0 }
+      end
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit) { |u| { 'url' => u, 'job_id' => "job-#{u[-1]}" } }
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses) do |ids|
+        ids.to_h { |j| [j, { 'status' => 'success', 'job_id' => j, 'timestamp' => '20260921120000' }] }
+      end
+
+      results = described_class.post(%w[http://e.com/1 http://e.com/2 http://e.com/3])
+
+      expect(results.length).to eq(3)
+      expect(results).to all(be_success)
+    end
+
+    # A credential that never worked should still fail fast and loudly.
+    it 'raises when the very first status check is rejected' do
+      allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status)
+        .and_raise(WaybackArchiver::AuthenticationError, 'Wayback Machine credentials were rejected (HTTP 401)')
+
+      expect { described_class.post(%w[http://e.com/1]) }
+        .to raise_error(WaybackArchiver::AuthenticationError, /rejected/)
+    end
+
     describe 'skip_patterns filtering' do
       before do
         allow(WaybackArchiver::WaybackMachine).to receive(:submit) do |url, **_opts|
