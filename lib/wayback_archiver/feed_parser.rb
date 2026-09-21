@@ -7,6 +7,14 @@ module WaybackArchiver
   # Fetch and parse RSS/Atom feeds to extract URLs
   # @api private
   class FeedParser
+    # Raised when a fetched document isn't a recognisable RSS/Atom feed.
+    #
+    # Mirrors Sitemapper::InvalidSitemapError: a Request::ServerError, because
+    # the server answered with something unusable, so callers that already
+    # rescue Request::Error handle it — the CLI maps it to exit 4, and
+    # autodiscovery moves on to the next candidate.
+    class InvalidFeedError < Request::ServerError; end
+
     # Common locations for RSS/Atom feeds
     COMMON_FEED_PATHS = %w[
       feed
@@ -29,8 +37,10 @@ module WaybackArchiver
       xml = Request.get(url, raise_on_http_error: true).body unless xml
 
       feed = RSS::Parser.parse(xml, false)
-      return [] unless feed
 
+      # A feed with no entries is a legitimate empty result; input that isn't a
+      # feed at all is not. Collapsing both to [] meant --rss against an HTML
+      # login page exited 0 having archived nothing, looking like success.
       case feed
       when RSS::Rss
         feed.items.filter_map { |item| item.link&.strip }
@@ -40,12 +50,20 @@ module WaybackArchiver
           link&.href&.strip
         end
       else
-        []
+        raise InvalidFeedError, invalid_feed_message(url, feed)
       end
     rescue RSS::Error => e
-      WaybackArchiver.logger.debug "Not a valid feed: #{e.class}, #{e.message}"
-      []
+      # The parser's own message runs to several lines of position detail —
+      # useful when debugging, noise for someone who pointed --rss at a page.
+      WaybackArchiver.logger.debug "Feed parse failed for #{url}: #{e.class}, #{e.message}"
+      raise InvalidFeedError, invalid_feed_message(url, nil)
     end
+
+    def self.invalid_feed_message(url, feed)
+      got = feed ? feed.class.name : 'an unrecognised document'
+      "Response is not an RSS or Atom feed#{" (#{url})" if url}: got #{got}"
+    end
+    private_class_method :invalid_feed_message
 
     # Autodiscover RSS/Atom feeds for a site and return all entry URLs.
     # Probes HTML <link> tags and common feed paths.
@@ -67,7 +85,15 @@ module WaybackArchiver
         response = Request.get(feed_url, raise_on_http_error: false)
         next unless response.success?
 
-        found_urls = urls(xml: response.body)
+        begin
+          found_urls = urls(xml: response.body)
+        rescue InvalidFeedError => e
+          # A 200 that isn't a feed — catch-all routes answer every path with
+          # the homepage. Keep probing the remaining candidates.
+          WaybackArchiver.logger.debug "Not a feed at #{feed_url}: #{e.message}"
+          next
+        end
+
         if found_urls.any?
           WaybackArchiver.logger.info "Feed found at #{feed_url}"
           return found_urls

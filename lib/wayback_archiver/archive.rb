@@ -49,7 +49,7 @@ module WaybackArchiver
       WaybackArchiver.logger.debug "Request are sent with up to #{concurrency} parallel threads"
 
       # Sitemap indexes with overlapping children (and hand-assembled URL
-      # lists) routinely repeat URLs. At 12 captures/min each duplicate is a
+      # lists) routinely repeat URLs. At 7 captures/min each duplicate is a
       # wasted slot, so collapse them before anything else counts them.
       urls_queue = urls.uniq
       if (dupes = urls.length - urls_queue.length) > 0
@@ -60,7 +60,7 @@ module WaybackArchiver
         before = urls_queue.length
         urls_queue = urls_queue.reject { |url| skip_urls.include?(url) }
         skipped = before - urls_queue.length
-        WaybackArchiver.logger.info "Skipped #{skipped} previously succeeded URL(s)" if skipped > 0
+        WaybackArchiver.logger.info "Skipped #{skipped} URL(s) already handled by the session" if skipped > 0
       end
 
       if skip_patterns && !skip_patterns.empty?
@@ -132,7 +132,11 @@ module WaybackArchiver
         # block is what throws, so it owns the unwind and works no matter who
         # drives it.
         catch(URLCollector::HALT) do
-          URLCollector.crawl(source, hosts: hosts, skip_duplicates: skip_duplicates, capture_all: !!options[:capture_all]) do |url|
+          # limit: -1 explicitly. URLCollector.crawl defaults to
+          # config.max_limit, so omitting it handed discovery a finite budget
+          # again for anyone who set a global limit — truncating before the
+          # filters below, which is the ordering this block exists to avoid.
+          URLCollector.crawl(source, hosts: hosts, limit: -1, skip_duplicates: skip_duplicates, capture_all: !!options[:capture_all]) do |url|
             next if skip_urls&.include?(url)
             next if skip_patterns&.any? { |pat| pat.match?(url) }
             next unless url_filter.match?(url)

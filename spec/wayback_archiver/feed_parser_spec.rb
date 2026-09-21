@@ -89,9 +89,12 @@ RSpec.describe WaybackArchiver::FeedParser do
     end
 
     context 'with unparseable XML' do
-      it 'returns an empty array' do
-        urls = described_class.urls(xml: 'not xml at all')
-        expect(urls).to eq([])
+      # Policy change: input that isn't a feed is a discovery failure, not an
+      # empty feed. Collapsing both to [] made --rss against an HTML page exit
+      # 0 having archived nothing. Valid-but-empty feeds below still return [].
+      it 'raises InvalidFeedError' do
+        expect { described_class.urls(xml: 'not xml at all') }
+          .to raise_error(described_class::InvalidFeedError)
       end
     end
 
@@ -114,9 +117,11 @@ RSpec.describe WaybackArchiver::FeedParser do
     end
 
     context 'with an unrecognized feed type' do
-      it 'returns an empty array' do
+      it 'raises InvalidFeedError' do
         allow(RSS::Parser).to receive(:parse).and_return(Object.new)
-        expect(described_class.urls(xml: 'anything')).to eq([])
+
+        expect { described_class.urls(xml: 'anything') }
+          .to raise_error(described_class::InvalidFeedError, /unrecognised|Object/)
       end
     end
 
@@ -239,6 +244,56 @@ RSpec.describe WaybackArchiver::FeedParser do
       html = '<link rel="alternate" type="application/rss+xml" href="ht tp://bad url">'
       urls = described_class.autodiscover(base_url, html: html)
       expect(urls).to eq([])
+    end
+  end
+
+  describe 'invalid feed input' do
+    # Regression: --sitemap learned to reject a 200 that isn't a sitemap, but
+    # --rss did not. An HTML login page or a truncated feed parsed to [] and
+    # the run exited 0 having archived nothing, indistinguishable from a feed
+    # with no entries.
+    it 'raises when the response is HTML rather than a feed' do
+      stub_request(:get, 'http://example.com/feed.xml')
+        .to_return(status: 200, body: '<!doctype html><html><body>Please log in</body></html>')
+
+      expect { described_class.urls(url: 'http://example.com/feed.xml') }
+        .to raise_error(WaybackArchiver::FeedParser::InvalidFeedError, /not a(n)? (RSS|Atom|recognised)/i)
+    end
+
+    it 'raises on malformed XML' do
+      stub_request(:get, 'http://example.com/feed.xml')
+        .to_return(status: 200, body: '<rss><channel><title>oops')
+
+      expect { described_class.urls(url: 'http://example.com/feed.xml') }
+        .to raise_error(WaybackArchiver::FeedParser::InvalidFeedError)
+    end
+
+    # A real feed that simply has no entries is a successful empty result.
+    it 'accepts a valid feed with no items' do
+      empty = <<~XML
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0"><channel><title>Empty</title><link>http://example.com</link>
+        <description>none</description></channel></rss>
+      XML
+      stub_request(:get, 'http://example.com/feed.xml').to_return(status: 200, body: empty)
+
+      expect(described_class.urls(url: 'http://example.com/feed.xml')).to eq([])
+    end
+
+    it 'keeps probing candidates during autodiscovery instead of failing' do
+      feed = <<~XML
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0"><channel><title>T</title><link>http://example.com</link>
+        <description>d</description>
+        <item><title>i</title><link>http://example.com/post</link></item></channel></rss>
+      XML
+      # The first candidate answers 200 with the homepage, as SPA catch-all
+      # routes do; the next is the real feed.
+      stub_request(:get, 'http://example.com/feed')
+        .to_return(status: 200, body: '<!doctype html><html>home</html>')
+      stub_request(:get, 'http://example.com/feed.xml').to_return(status: 200, body: feed)
+
+      expect(described_class.autodiscover('http://example.com')).to eq(%w[http://example.com/post])
     end
   end
 end

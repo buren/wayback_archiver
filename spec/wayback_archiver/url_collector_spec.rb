@@ -433,4 +433,66 @@ RSpec.describe WaybackArchiver::URLCollector do
       expect(found_urls).to include('http://example.com/doc.pdf')
     end
   end
+
+  describe 'crawl transport failures' do
+    # Regression: Spidr swallows DNS/timeout/connection/SSL errors internally
+    # and emits failed-URL events. We only subscribed to every_page, so an
+    # unreachable seed produced exit 0, zero URLs and no error — a failed run
+    # that looked like a site with nothing to archive. These drive real Spidr
+    # traversal rather than stubbing URLCollector.crawl to raise.
+    it 'raises when the seed cannot be fetched at all' do
+      stub_request(:get, 'http://unreachable.example/').to_raise(SocketError.new('getaddrinfo: nodename nor servname provided'))
+
+      expect { described_class.crawl('http://unreachable.example') }
+        .to raise_error(WaybackArchiver::Request::Error, /could not be reached/i)
+    end
+
+    it 'raises when the seed times out' do
+      stub_request(:get, 'http://slow.example/').to_timeout
+
+      expect { described_class.crawl('http://slow.example') }
+        .to raise_error(WaybackArchiver::Request::Error, /could not be reached/i)
+    end
+
+    # A 404 is an answer, not a transport failure: the crawl legitimately
+    # finds nothing and should not raise.
+    it 'does not raise when the seed answers with an HTTP error' do
+      stub_request(:get, 'http://example.com/').to_return(status: 404, body: 'nope')
+
+      expect(described_class.crawl('http://example.com')).to eq([])
+    end
+
+    it 'keeps the URLs it did find when only some pages fail, and warns' do
+      h = { 'Content-Type' => 'text/html; charset=utf-8' }
+      stub_request(:get, 'http://example.com/')
+        .to_return(status: 200, headers: h, body: '<a href="/ok.html">ok</a><a href="/dead.html">dead</a>')
+      stub_request(:get, 'http://example.com/ok.html').to_return(status: 200, headers: h, body: 'ok')
+      stub_request(:get, 'http://example.com/dead.html').to_raise(SocketError.new('boom'))
+
+      found = described_class.crawl('http://example.com')
+
+      expect(found).to include('http://example.com/ok.html')
+      expect(WaybackArchiver.logger.warn_log.join("\n")).to match(/1 URL\(s\) could not be fetched/)
+    end
+  end
+
+  describe 'crawl deduplication across bodies' do
+    # Regression: seen_pages[path] ||= digest kept only the first body, so for
+    # one path serving bodies A, B, B the second B was archived as though it
+    # were new — wasting capture slots on query-string variants.
+    it 'remembers every body seen for a path, not just the first' do
+      h = { 'Content-Type' => 'text/html; charset=utf-8' }
+      stub_request(:get, 'http://example.com/')
+        .to_return(status: 200, headers: h,
+                   body: '<a href="/p?v=1">1</a><a href="/p?v=2">2</a><a href="/p?v=3">3</a>')
+      stub_request(:get, 'http://example.com/p?v=1').to_return(status: 200, headers: h, body: 'BODY-A')
+      stub_request(:get, 'http://example.com/p?v=2').to_return(status: 200, headers: h, body: 'BODY-B')
+      stub_request(:get, 'http://example.com/p?v=3').to_return(status: 200, headers: h, body: 'BODY-B')
+
+      found = described_class.crawl('http://example.com')
+
+      # v=1 and v=2 are distinct bodies; v=3 repeats v=2 and must be skipped.
+      expect(found.grep(%r{/p\?v=}).length).to eq(2)
+    end
+  end
 end

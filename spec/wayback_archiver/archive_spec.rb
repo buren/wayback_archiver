@@ -378,7 +378,7 @@ RSpec.describe WaybackArchiver::Archive do
       expect(results.find { |r| r.uri == 'http://a.com' }.success?).to eq(true)
     end
 
-    it 'marks timed-out pending jobs as submitted' do
+    it 'emits a final incomplete result after the interim submitted notification on timeout' do
       job1 = 'job-aaa'
 
       allow(WaybackArchiver::WaybackMachine).to receive(:submit)
@@ -397,10 +397,14 @@ RSpec.describe WaybackArchiver::Archive do
         start + 130    # poll_until_done elapsed check (exceeds timeout)
       )
 
-      results = described_class.post(%w[http://slow.com])
+      yielded = []
+      results = described_class.post(%w[http://slow.com]) { |result| yielded << result }
 
       expect(results.length).to eq(1)
-      expect(results.first.submitted?).to eq(true)
+      expect(results.first).to be_incomplete
+      expect(results.first).not_to be_success
+      expect(yielded.map(&:status_ext)).to eq(['submitted', 'incomplete:poll-timeout'])
+      expect(yielded.last).to equal(results.first)
       expect(results.first.job_id).to eq(job1)
     end
 
@@ -1030,6 +1034,55 @@ RSpec.describe WaybackArchiver::Archive do
       described_class.crawl('http://example.com', limit: 3)
 
       expect(WaybackArchiver::WaybackMachine).to have_received(:submit).exactly(3).times
+    end
+
+    # Regression: Archive.crawl enforces the limit itself, after the filters,
+    # but stopped passing limit: to URLCollector.crawl — whose default is
+    # config.max_limit. A user with a finite global limit therefore still got
+    # truncated during discovery, before filtering, which is the ordering the
+    # limit was moved out of the collector to avoid.
+    it 'does not let a finite global limit truncate discovery before filtering' do
+      WaybackArchiver.config.max_limit = 1
+      h = { 'Content-Type' => 'text/html; charset=utf-8' }
+      stub_request(:get, 'http://example.com/')
+        .to_return(status: 200, headers: h, body: '<a href="/doc.pdf">doc</a>')
+      stub_request(:get, 'http://example.com/doc.pdf')
+        .to_return(status: 200, headers: { 'Content-Type' => 'application/pdf' }, body: '%PDF-1.4')
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit) do |url|
+        { 'url' => url, 'job_id' => 'job-1' }
+      end
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses).and_return(
+        'job-1' => { 'status' => 'success', 'job_id' => 'job-1', 'timestamp' => '20260326120000' }
+      )
+
+      # The homepage is discovered first and dropped by include_ext, so a
+      # discovery-time limit of 1 would end the crawl having archived nothing.
+      described_class.crawl('http://example.com', include_ext: %w[pdf], limit: 1)
+
+      expect(WaybackArchiver::WaybackMachine).to have_received(:submit).once
+      expect(WaybackArchiver::WaybackMachine).to have_received(:submit).with('http://example.com/doc.pdf')
+    ensure
+      WaybackArchiver.config.max_limit = WaybackArchiver::DEFAULT_MAX_LIMIT
+    end
+
+    it 'honours a per-call limit larger than the global default' do
+      WaybackArchiver.config.max_limit = 1
+      h = { 'Content-Type' => 'text/html; charset=utf-8' }
+      stub_request(:get, 'http://example.com/')
+        .to_return(status: 200, headers: h, body: '<a href="/a.html">a</a><a href="/b.html">b</a>')
+      stub_request(:get, 'http://example.com/a.html').to_return(status: 200, headers: h, body: 'a')
+      stub_request(:get, 'http://example.com/b.html').to_return(status: 200, headers: h, body: 'b')
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit) { |u| { 'url' => u, 'job_id' => "job-#{u.hash.abs}" } }
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses) do |ids|
+        ids.to_h { |j| [j, { 'status' => 'success', 'job_id' => j, 'timestamp' => '20260326120000' }] }
+      end
+
+      described_class.crawl('http://example.com', limit: 10)
+
+      # All three pages, not the one the global default would have allowed.
+      expect(WaybackArchiver::WaybackMachine).to have_received(:submit).exactly(3).times
+    ensure
+      WaybackArchiver.config.max_limit = WaybackArchiver::DEFAULT_MAX_LIMIT
     end
 
     it 'applies the limit after the skip filters' do
