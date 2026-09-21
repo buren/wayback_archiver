@@ -179,7 +179,16 @@ module WaybackArchiver
   # @param [String/Symbol] strategy for URL discovery.
   # @param [Array<String, Regexp>] hosts to crawl (crawl strategy only).
   # @param [Integer] limit max number of URLs.
-  def self.discover_urls(source, strategy: 'auto', hosts: [], limit: config.max_limit)
+  # @param capture_all [Boolean] include HTTP error pages, as the crawl
+  #   strategy does with the same flag.
+  # @param skip_duplicates [Boolean] dedupe identical bodies at one path.
+  #
+  # capture_all and skip_duplicates decide which URLs are *eligible*, so the
+  # read-only modes have to honour them too: without them --list-urls,
+  # --check and --skip-archived reported on a different set of URLs than an
+  # archiving run with the same flags would have touched.
+  def self.discover_urls(source, strategy: 'auto', hosts: [], limit: config.max_limit,
+                         capture_all: false, skip_duplicates: true)
     discovered = case strategy.to_s
                  when 'urls', 'url'
                    Array(source)
@@ -188,9 +197,11 @@ module WaybackArchiver
                  when 'rss'
                    URLCollector.feed(source)
                  when 'crawl'
-                   URLCollector.crawl(source, hosts: hosts, limit: limit)
+                   URLCollector.crawl(source, hosts: hosts, limit: limit,
+                                              capture_all: capture_all, skip_duplicates: skip_duplicates)
                  when 'auto'
-                   discover_urls_auto(source, hosts: hosts, limit: limit)
+                   discover_urls_auto(source, hosts: hosts, limit: limit,
+                                              capture_all: capture_all, skip_duplicates: skip_duplicates)
                  else
                    raise ArgumentError, "Unknown strategy: '#{strategy}'"
                  end
@@ -217,12 +228,14 @@ module WaybackArchiver
   end
 
   # Auto-discover URLs without archiving (mirrors the auto strategy logic).
-  def self.discover_urls_auto(source, hosts: [], limit: config.max_limit)
+  def self.discover_urls_auto(source, hosts: [], limit: config.max_limit,
+                              capture_all: false, skip_duplicates: true)
     strategy, urls = resolve_auto_strategy(source)
 
     if strategy == :crawl
       WaybackArchiver.logger.info "Strategy resolved: crawl"
-      URLCollector.crawl(source, hosts: hosts, limit: limit)
+      URLCollector.crawl(source, hosts: hosts, limit: limit,
+                                 capture_all: capture_all, skip_duplicates: skip_duplicates)
     else
       WaybackArchiver.logger.info "Strategy resolved: #{strategy} (#{urls.length} URLs)"
       urls

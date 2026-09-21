@@ -51,6 +51,11 @@ module WaybackArchiver
     MAX_SLOT_WAIT       = 180 # max seconds to wait for available slots
     SLOT_WAIT_INTERVAL  = 10  # seconds between status checks when waiting for slots
     IDLE_SLEEP          = 0.2 # seconds between checks while the crawler catches up
+    # How long to let the crawler wind itself down before terminating it.
+    # Closing the queue only stops it at its next push, so one blocked in a
+    # socket read keeps the process alive — crawl reads wait up to 60s, and
+    # after Ctrl+C the user has already been told the run is over.
+    SHUTDOWN_GRACE      = 3
     # Below this age, absence from the Wayback Machine means the index hasn't
     # caught up yet — not that the capture never happened.
     CDX_INDEX_GRACE     = 3600
@@ -118,22 +123,38 @@ module WaybackArchiver
         # Never leak the crawler thread. Closing the queue unblocks a crawler
         # backpressured on a full SizedQueue (its push raises ClosedQueueError,
         # which it rescues); join then guarantees it has exited.
-        if @source_thread
-          @queue.close if @queue.respond_to?(:close) && !@queue.closed?
-          begin
-            @source_thread.join
-          rescue StandardError
-            # join re-raises the thread's exception. On the normal path we
-            # already captured it above and are raising CrawlError; letting it
-            # escape from here would clobber that with the bare error and lose
-            # the partial results.
-            nil
-          end
-        end
+        stop_crawler
       end
     end
 
     private
+
+    # Never leak the crawler thread, and never wait on it indefinitely.
+    # Closing the queue unblocks one backpressured on a full SizedQueue (its
+    # push raises ClosedQueueError, which it rescues); a crawler blocked in
+    # network IO has no such wake-up, so it gets a grace period and is then
+    # terminated. It only pushes to the queue and notifies listeners, so there
+    # is no half-written state to protect.
+    def stop_crawler
+      return unless @source_thread
+
+      @queue.close if @queue.respond_to?(:close) && !@queue.closed?
+
+      begin
+        return if @source_thread.join(SHUTDOWN_GRACE)
+      rescue StandardError
+        # join re-raises the thread's exception. On the normal path we already
+        # captured it above and are raising CrawlError; letting it escape from
+        # here would clobber that and lose the partial results.
+        return
+      end
+
+      WaybackArchiver.logger.warn(
+        "Crawler did not stop within #{SHUTDOWN_GRACE}s; terminating it"
+      )
+      @source_thread.kill
+      @source_thread.join(SHUTDOWN_GRACE)
+    end
 
     def restore_pending
       @pending_since = {}

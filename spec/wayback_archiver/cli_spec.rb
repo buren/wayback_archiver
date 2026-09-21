@@ -205,7 +205,7 @@ RSpec.describe WaybackArchiver::CLI do
       expect { cli.run }.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
 
       expect(WaybackArchiver).to have_received(:discover_urls).with(
-        anything, strategy: 'crawl', hosts: [], limit: 3
+        anything, hash_including(strategy: 'crawl', hosts: [], limit: 3)
       )
     end
 
@@ -217,7 +217,7 @@ RSpec.describe WaybackArchiver::CLI do
       expect { cli.run }.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
 
       expect(WaybackArchiver).to have_received(:discover_urls).with(
-        anything, strategy: 'crawl', hosts: [], limit: -1
+        anything, hash_including(strategy: 'crawl', hosts: [], limit: -1)
       )
     end
 
@@ -237,7 +237,7 @@ RSpec.describe WaybackArchiver::CLI do
       expect(stdout_output.lines.map(&:chomp))
         .to eq(%w[http://example.com/a http://example.com/shared])
       expect(WaybackArchiver).to have_received(:discover_urls).twice.with(
-        anything, strategy: 'sitemap', hosts: [], limit: -1
+        anything, hash_including(strategy: 'sitemap', hosts: [], limit: -1)
       )
     end
 
@@ -258,9 +258,7 @@ RSpec.describe WaybackArchiver::CLI do
 
       expect(WaybackArchiver).to have_received(:discover_urls).with(
         'http://example.com',
-        strategy: 'auto',
-        hosts: [],
-        limit: -1
+        hash_including(strategy: 'auto', hosts: [], limit: -1)
       )
     end
   end
@@ -338,7 +336,7 @@ RSpec.describe WaybackArchiver::CLI do
       cli.run
 
       expect(WaybackArchiver).to have_received(:discover_urls).with(
-        'http://example.com', strategy: 'sitemap', hosts: [], limit: -1
+        'http://example.com', hash_including(strategy: 'sitemap', hosts: [], limit: -1)
       )
       expect(WaybackArchiver).to have_received(:archive)
         .with(%w[http://example.com/new], hash_including(strategy: 'urls', limit: 1))
@@ -865,6 +863,32 @@ RSpec.describe WaybackArchiver::CLI do
 
       expect(stdout_output).to eq("https://example.com/a\n")
       expect(stderr_output).to include('1 URL(s) discovered')
+    end
+  end
+
+  describe 'discovery options across modes' do
+    # Regression: the shared discovery API took only strategy/hosts/limit, so
+    # --list-urls, --check and --skip-archived silently saw a different set of
+    # eligible URLs than --crawl did. --capture-all dropped its 4xx/5xx pages
+    # before they were ever considered, and --no-skip-duplicates still deduped.
+    it 'passes --capture-all through in list mode' do
+      allow(WaybackArchiver).to receive(:discover_urls).and_return([])
+
+      cli = build_cli('--list-urls', '--crawl', '--capture-all', '--no-summary', 'http://example.com')
+      expect { cli.run }.to raise_error(SystemExit)
+
+      expect(WaybackArchiver).to have_received(:discover_urls)
+        .with(anything, hash_including(capture_all: true))
+    end
+
+    it 'passes --no-skip-duplicates through in list mode' do
+      allow(WaybackArchiver).to receive(:discover_urls).and_return([])
+
+      cli = build_cli('--list-urls', '--crawl', '--no-skip-duplicates', '--no-summary', 'http://example.com')
+      expect { cli.run }.to raise_error(SystemExit)
+
+      expect(WaybackArchiver).to have_received(:discover_urls)
+        .with(anything, hash_including(skip_duplicates: false))
     end
   end
 end

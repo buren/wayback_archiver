@@ -1599,4 +1599,50 @@ RSpec.describe WaybackArchiver::Archive do
       expect(result.errored?).to eq(true)
     end
   end
+
+  describe 'crawler shutdown' do
+    # Regression: cleanup closed the queue and then joined the crawler with no
+    # deadline. Closing only stops it at its next push, so an interrupt landing
+    # while the crawler sat in a socket read printed "Interrupted. Resume
+    # with:" and then kept the process alive — real crawl reads wait up to 60s.
+    it 'terminates a crawler blocked in IO when the run is interrupted' do
+      allow(WaybackArchiver::WaybackMachine).to receive(:check_user_status)
+        .and_return({ 'available' => 6, 'processing' => 0 })
+      allow(WaybackArchiver::WaybackMachine).to receive(:submit) { |u| { 'url' => u, 'job_id' => 'job-1' } }
+      allow(WaybackArchiver::WaybackMachine).to receive(:poll_statuses).and_return(
+        'job-1' => { 'status' => 'pending', 'job_id' => 'job-1' }
+      )
+      # Yields one URL, then blocks as if inside a slow socket read. Crucially
+      # it is *not* waiting on the queue, so closing the queue cannot wake it.
+      blocked = Queue.new
+      allow(WaybackArchiver::URLCollector).to receive(:crawl) do |*, **, &blk|
+        blk.call('http://example.com/a')
+        blocked << :in_io
+        sleep 120
+      end
+
+      crawler = nil
+      allow(Thread).to receive(:new).and_wrap_original do |orig, *args, &body|
+        crawler = orig.call(*args, &body)
+      end
+
+      # SIGINT calls exit, which raises SystemExit in the main thread while it
+      # waits in the idle loop — the same unwind this shutdown has to survive.
+      allow_any_instance_of(WaybackArchiver::BatchSubmitter).to receive(:sleep) do
+        blocked.pop # don't interrupt until the crawler is genuinely stuck
+        raise SystemExit.new(130)
+      end
+
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      expect { described_class.crawl('http://example.com') }.to raise_error(SystemExit)
+      elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+
+      # Long enough to prove it waited out the grace period and then killed
+      # the thread, short enough to prove it did not wait on the 120s read.
+      expect(elapsed).to be >= WaybackArchiver::BatchSubmitter::SHUTDOWN_GRACE
+      expect(elapsed).to be < 30
+      expect(crawler).not_to be_alive
+      expect(WaybackArchiver.logger.warn_log.join("\n")).to include('terminating it')
+    end
+  end
 end

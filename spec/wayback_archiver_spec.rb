@@ -394,7 +394,7 @@ RSpec.describe WaybackArchiver do
       result = described_class.discover_urls('http://example.com', strategy: :crawl, hosts: hosts, limit: 10)
 
       expect(described_class::URLCollector).to have_received(:crawl)
-        .with('http://example.com', hosts: hosts, limit: 10)
+        .with('http://example.com', hash_including(hosts: hosts, limit: 10))
     end
 
     # Regression: limit was only forwarded to the crawl strategy, so
@@ -428,6 +428,24 @@ RSpec.describe WaybackArchiver do
 
         expect(described_class.discover_urls('http://e.com', strategy: :sitemap, limit: 2))
           .to eq(%w[http://e.com/a http://e.com/b])
+      end
+
+      it 'carries capture_all into crawl discovery' do
+        allow(described_class::URLCollector).to receive(:crawl).and_return([])
+
+        described_class.discover_urls('http://e.com', strategy: :crawl, capture_all: true)
+
+        expect(described_class::URLCollector).to have_received(:crawl)
+          .with('http://e.com', hash_including(capture_all: true))
+      end
+
+      it 'carries skip_duplicates into crawl discovery' do
+        allow(described_class::URLCollector).to receive(:crawl).and_return([])
+
+        described_class.discover_urls('http://e.com', strategy: :crawl, skip_duplicates: false)
+
+        expect(described_class::URLCollector).to have_received(:crawl)
+          .with('http://e.com', hash_including(skip_duplicates: false))
       end
 
       it 'returns everything when unlimited' do

@@ -484,13 +484,24 @@ module WaybackArchiver
       urls = @options.urls.flat_map do |url|
         WaybackArchiver.discover_urls(
           url, strategy: @options.strategy, hosts: @options.hosts,
-               limit: pushdown ? @options.limit : -1
+               limit: pushdown ? @options.limit : -1,
+               **discovery_options
         )
       end
       urls = apply_url_filters(urls).uniq
       urls = urls.reject { |url| skip_urls.include?(url) } if skip_urls
       urls = urls.first(@options.limit) if apply_limit && @options.limit != -1
       urls
+    end
+
+    # Flags that decide which URLs are eligible at all, as opposed to the
+    # SPN2 capture params. The read-only modes must discover the same set an
+    # archiving run with these flags would.
+    def discovery_options
+      {
+        capture_all: !!@options.spn2_options[:capture_all],
+        skip_duplicates: @options.skip_duplicates != false
+      }
     end
 
     # Whether any CLI-side filter can drop URLs after discovery.
