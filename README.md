@@ -197,7 +197,10 @@ batches before discovering or submitting new URLs. Repeat the original sources
 and options (or use the printed resume command); session files do not store the
 original discovery inputs. Already accepted jobs are recovered independently of
 the new URL limit. Confirmed transient capture failures may be resubmitted within
-the retry limit; status-read failures alone never trigger a new capture.
+the retry limit; status-read failures alone never trigger a new capture. Each
+retry of a URL waits longer than the last (2s, doubling, plus jitter) so a
+service having a bad minute has time to recover; other URLs keep going
+meanwhile, and a run therefore outlives its slowest retry chain.
 
 If polling times out, the CLI exits **1**, retains its session, and includes an
 `incomplete:poll-timeout` result and job ID in the report. Successful captures

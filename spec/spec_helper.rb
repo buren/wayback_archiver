@@ -39,5 +39,10 @@ RSpec.configure do |config|
       :@rate_limiter,
       WaybackArchiver::RateLimiter.new(max_requests: 999, enabled: false)
     )
+    # Per-URL retry backoff is wall-clock time. Specs that stub BatchSubmitter's
+    # sleep to a no-op would otherwise busy-wait out the real 62s of a URL's
+    # five retries. batch_retry_spec.rb restores the real delay (against a
+    # simulated clock) to cover the backoff itself.
+    stub_const('WaybackArchiver::BatchSubmitter::RETRY_BASE_DELAY', 0)
   end
 end

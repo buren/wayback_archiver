@@ -59,6 +59,17 @@ module WaybackArchiver
     # Below this age, absence from the Wayback Machine means the index hasn't
     # caught up yet — not that the capture never happened.
     CDX_INDEX_GRACE     = 3600
+    # Per-URL retry backoff, matching Retry.with_backoff: the nth retry of a
+    # URL waits RETRY_BASE_DELAY * 2**(n - 1) seconds, capped, plus jitter so
+    # a batch that failed together doesn't come back in lockstep.
+    RETRY_BASE_DELAY    = 2
+    RETRY_MAX_DELAY     = 60
+    RETRY_JITTER        = 0.1
+
+    # A URL waiting out its backoff. +ready_at+ is a monotonic timestamp: the
+    # submission loop simply doesn't pick the entry up before then, so other
+    # URLs keep flowing while this one waits.
+    RetryEntry = Struct.new(:url, :ready_at)
 
     def initialize(queue, concurrency:, source_thread: nil, pending_jobs: {}, **options, &block)
       @queue = queue
@@ -80,9 +91,14 @@ module WaybackArchiver
       # `hash[k] += 1` is a non-atomic read-modify-write.
       @counts = { success: Concurrent::AtomicFixnum.new, error: Concurrent::AtomicFixnum.new }
       @retries = Hash.new(0)
-      # Separate buffer for URLs to retry. Never push retries into the SizedQueue
-      # — that would deadlock when both the main thread and crawler thread block
-      # on a full queue with nobody consuming.
+      # Why each URL last failed, so a URL that runs out of retries is reported
+      # with the error that actually kept failing rather than a bare
+      # "retry limit exceeded" with no category.
+      @last_failure = {}
+      # Separate buffer for URLs to retry, ordered by the time they come due.
+      # Never push retries into the SizedQueue — that would deadlock when both
+      # the main thread and crawler thread block on a full queue with nobody
+      # consuming.
       @retry_buffer = []
 
       # Total is unknown during streaming crawl — the listener will update it
@@ -128,6 +144,13 @@ module WaybackArchiver
     end
 
     private
+
+    # Single source of elapsed time for the whole pipeline: slot waits, poll
+    # deadlines and retry backoff all read the same monotonic clock (immune to
+    # system time jumps, unlike Time.now).
+    def monotonic_now
+      Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    end
 
     # Never leak the crawler thread, and never wait on it indefinitely.
     # Closing the queue unblocks one backpressured on a full SizedQueue (its
@@ -233,7 +256,7 @@ module WaybackArchiver
           if nothing_to_submit?
             idle_poll
             log_progress
-            sleep(IDLE_SLEEP)
+            sleep(idle_delay)
             next
           end
 
@@ -258,7 +281,7 @@ module WaybackArchiver
               handle_submit_response(WaybackMachine.submit(url, **@options), url, retry_urls)
             rescue Request::Error => e
               WaybackArchiver.logger.debug("Connection error for #{url}: #{e.message}, will retry")
-              retry_urls << url
+              retry_urls << [url, { message: e.message }]
             rescue StandardError => e
               # Anything escaping a pool worker is swallowed by concurrent-ruby
               # — the URL would silently vanish from the results. Record it as
@@ -288,9 +311,35 @@ module WaybackArchiver
 
     # Whether there is nothing to hand to SPN2 right now. Distinct from
     # {#queue_exhausted?}: in streaming mode the queue can be momentarily
-    # empty while the crawler is still running, which is not exhaustion.
+    # empty while the crawler is still running, and a retry still waiting out
+    # its backoff is work that exists but isn't due yet — neither is
+    # exhaustion.
     def nothing_to_submit?
-      @retry_buffer.empty? && @queue.empty?
+      @queue.empty? && next_retry_wait != 0
+    end
+
+    # Seconds until the earliest scheduled retry comes due: 0 when one is due
+    # now, nil when none is scheduled.
+    # @return [Float, Integer, nil]
+    def next_retry_wait
+      entry = @retry_buffer.first
+      return nil unless entry
+
+      [entry.ready_at - monotonic_now, 0].max
+    end
+
+    # How long to idle before looking for work again. Normally the short tick
+    # that lets a streaming crawler catch up; when the only work left is a
+    # retry waiting out its backoff there is nothing to check until it comes
+    # due, so sleep through it — but keep waking on the usual cadence while a
+    # crawler is still discovering URLs or jobs are still in flight.
+    def idle_delay
+      wait = next_retry_wait
+      return IDLE_SLEEP if wait.nil?
+      return [wait, IDLE_SLEEP].min if @source_thread
+      return [wait, WaybackMachine::POLL_INTERVAL].min unless @pending.empty?
+
+      wait
     end
 
     # Check if the queue has been fully consumed.
@@ -310,7 +359,7 @@ module WaybackArchiver
     # Loops until slots are available, with timeout fallback.
     # @return [Integer, :abort] number of slots available, or :abort to stop
     def available_slots
-      start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      start_time = monotonic_now
       waiting_logged = false
       rejection_logged = false
 
@@ -343,7 +392,7 @@ module WaybackArchiver
         available = status&.dig('available').to_i
         return available if available > 0
 
-        elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time
+        elapsed = monotonic_now - start_time
         if elapsed >= MAX_SLOT_WAIT
           WaybackArchiver.logger.warn("No slots available after #{MAX_SLOT_WAIT}s, using fallback chunk size")
           return FALLBACK_CHUNK_SIZE
@@ -362,10 +411,10 @@ module WaybackArchiver
     end
 
     # Non-blocking drain that works with both Array and SizedQueue.
-    # Pulls from retry_buffer first, then fills up from the main queue.
+    # Pulls due retries first, then fills up from the main queue.
     # Returns up to +max+ items without blocking if the queue is empty.
     def drain_queue(max)
-      items = @retry_buffer.shift(max)
+      items = take_due_retries(max)
       remaining = max - items.size
       return items if remaining <= 0
 
@@ -379,6 +428,17 @@ module WaybackArchiver
         end
       end
       items
+    end
+
+    # Retries whose backoff has elapsed, oldest deadline first. The buffer is
+    # kept sorted by +ready_at+, so this stops at the first entry not yet due.
+    def take_due_retries(max)
+      now = monotonic_now
+      due = []
+      while due.size < max && @retry_buffer.first && @retry_buffer.first.ready_at <= now
+        due << @retry_buffer.shift.url
+      end
+      due
     end
 
     def handle_submit_response(response, url, retry_urls)
@@ -400,7 +460,7 @@ module WaybackArchiver
         record_result(result)
       when :retry
         WaybackArchiver.logger.debug("Transient submit error for #{url}: #{value}, will retry")
-        retry_urls << url
+        retry_urls << [url, { status_ext: value, message: ErrorCodes.message(value) }]
       when :error
         msg, status_ext = value
         error = Request::ServerError.new(msg)
@@ -413,28 +473,76 @@ module WaybackArchiver
     def handle_retries(retry_urls)
       return if retry_urls.empty?
 
-      requeued = []
-      retry_urls.each do |url|
-        @retries[url] += 1
-        if @retries[url] > MAX_RETRIES
-          WaybackArchiver.logger.error("Retry limit exceeded (#{MAX_RETRIES}) for #{url}")
-          result = ArchiveResult.new(url, error: Request::ServerError.new('retry limit exceeded'))
-          record_result(result)
+      requeued = 0
+      retry_urls.each do |url, reason|
+        if schedule_retry(url, reason)
+          requeued += 1
         else
-          requeued << url
+          record_exhausted(url)
         end
       end
-      unless requeued.empty?
-        WaybackArchiver.logger.debug("Re-queuing #{requeued.size} URL(s) due to transient error")
-        @retry_buffer.concat(requeued)
-      end
+      return if requeued.zero?
+
+      WaybackArchiver.logger.debug("Re-queuing #{requeued} URL(s) due to transient error")
+    end
+
+    # Queue a URL for another attempt once its backoff has elapsed.
+    #
+    # Draining the retry buffer straight back into the next chunk burned all
+    # five attempts within milliseconds of the first failure — well before a
+    # service having a bad minute could recover. Each attempt now waits longer
+    # than the last, while the rest of the run carries on: the entry is simply
+    # invisible to {#drain_queue} until it comes due.
+    #
+    # @param reason [Hash, nil] why this attempt failed (:status_ext, :message).
+    # @return [Boolean] false when the URL has used up its retries.
+    def schedule_retry(url, reason = nil)
+      @last_failure[url] = reason if reason
+      attempt = (@retries[url] += 1)
+      return false if attempt > MAX_RETRIES
+
+      delay = retry_delay(attempt)
+      WaybackArchiver.logger.debug(
+        "Retrying #{url} in #{'%.1f' % delay}s (#{attempt}/#{MAX_RETRIES})"
+      )
+      insert_retry(RetryEntry.new(url, monotonic_now + delay))
+      true
+    end
+
+    # Exponential growth with jitter, same shape as Retry.with_backoff.
+    def retry_delay(attempt)
+      delay = [RETRY_BASE_DELAY * (2**(attempt - 1)), RETRY_MAX_DELAY].min
+      delay + rand(0.0..(delay * RETRY_JITTER))
+    end
+
+    # Keep the buffer ordered by deadline so draining only has to look at the
+    # front of it.
+    def insert_retry(entry)
+      index = @retry_buffer.index { |queued| queued.ready_at > entry.ready_at }
+      @retry_buffer.insert(index || @retry_buffer.size, entry)
+    end
+
+    # Final result for a URL whose retries ran out. The transient error that
+    # kept failing is the useful diagnosis — and its category drives the
+    # summary's failure breakdown — so carry it into the result rather than
+    # reporting an uncategorized "retry limit exceeded".
+    def record_exhausted(url)
+      failure = @last_failure[url] || {}
+      detail = failure[:message] || failure[:status_ext]
+      message = "retry limit exceeded (#{MAX_RETRIES})"
+      message = "#{message}: #{detail}" if detail
+
+      WaybackArchiver.logger.error("Retry limit exceeded (#{MAX_RETRIES}) for #{url}")
+      record_result(
+        ArchiveResult.new(url, error: Request::ServerError.new(message), status_ext: failure[:status_ext])
+      )
     end
 
     # Poll from the idle (queue-empty) loop, rate-limited to POLL_INTERVAL.
     def idle_poll
       return if @pending.empty?
 
-      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      now = monotonic_now
       return if @last_idle_poll && (now - @last_idle_poll) < WaybackMachine::POLL_INTERVAL
 
       @last_idle_poll = now
@@ -489,10 +597,9 @@ module WaybackArchiver
         # trigger screenshot downloads and other side effects)
         status_ext = status['status_ext']
         if status['status'] == 'error' && ErrorCodes.retryable?(status_ext)
-          @retries[url] += 1
-          if @retries[url] <= MAX_RETRIES
+          reason = { status_ext: status_ext, message: status['message'] || ErrorCodes.message(status_ext) }
+          if schedule_retry(url, reason)
             WaybackArchiver.logger.debug("Transient poll error for #{url}: #{status_ext}, re-queuing (#{@retries[url]}/#{MAX_RETRIES})")
-            @retry_buffer.push(url)
             next
           end
           WaybackArchiver.logger.error("Retry limit exceeded (#{MAX_RETRIES}) for #{url}: #{status_ext}")
@@ -539,10 +646,10 @@ module WaybackArchiver
 
     # Poll in a loop until all pending jobs complete or timeout.
     def poll_until_done
-      start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      start_time = monotonic_now
 
       until @pending.empty?
-        elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time
+        elapsed = monotonic_now - start_time
         remaining = WaybackMachine::POLL_TIMEOUT - elapsed
         if remaining <= 0
           WaybackArchiver.logger.info("Poll timeout reached, #{@pending.size} URL(s) submitted but unconfirmed")
@@ -553,7 +660,7 @@ module WaybackArchiver
         # errors (including 429s), and do not issue a request after the deadline.
         delay = [WaybackMachine::POLL_INTERVAL * (2 ** [@poll_failures, 4].min), 30].min
         sleep([delay, remaining].min)
-        next if Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time >= WaybackMachine::POLL_TIMEOUT
+        next if monotonic_now - start_time >= WaybackMachine::POLL_TIMEOUT
 
         poll_pending
         log_progress
@@ -561,7 +668,7 @@ module WaybackArchiver
     end
 
     def abort_remaining
-      all_urls = @retry_buffer + drain_all_queued
+      all_urls = @retry_buffer.map(&:url) + drain_all_queued
       @retry_buffer.clear
       all_urls.each do |url|
         result = ArchiveResult.new(url, error: Request::ClientError.new('Connection refused by web.archive.org'))
