@@ -48,11 +48,13 @@ WaybackArchiver.archive('www.example.com', strategy: :crawl,
 # Limit concurrency and total URLs
 WaybackArchiver.archive('example.com', concurrency: 10, limit: 100)
 
-# Filter by file extension
+# Filter by file extension. The match is on the URL's own extension, and a
+# clean URL such as https://example.com/about has none: include_ext will not
+# select it, exclude_ext will not drop it.
 WaybackArchiver.archive('example.com', strategy: :crawl,
-  include_ext: %w[html pdf])  # only archive these extensions
+  include_ext: %w[pdf])  # archive the site's PDFs and nothing else
 WaybackArchiver.archive('example.com', strategy: :crawl,
-  exclude_ext: %w[zip png jpg])  # skip these extensions
+  exclude_ext: %w[zip png jpg])  # archive everything except these
 ```
 
 **SPN2 capture options:**
@@ -162,8 +164,9 @@ wayback_archiver example.com --check
 # Skip URLs already archived within the last 7 days
 wayback_archiver example.com --skip-archived=7d
 
-# Filter by file extension
-wayback_archiver example.com --crawl --include-ext=html,pdf
+# Filter by file extension. --include-ext picks out file types: a page at
+# /about has no extension, so only --exclude-ext keeps it.
+wayback_archiver example.com --crawl --include-ext=pdf
 wayback_archiver example.com --crawl --exclude-ext=zip,png,jpg
 
 # Skip URLs matching regex patterns
@@ -248,8 +251,8 @@ are not coordinated by the in-process limiter.
 | `--check` | Report which URLs are already archived, then exit |
 | `--list-urls` | Print discovered URLs, then exit |
 | `--skip-archived[=TIMEDELTA]` | Skip URLs already archived (optionally only within a window) |
-| `--include-ext=pdf,doc` | Only archive URLs with these extensions |
-| `--exclude-ext=zip,png` | Skip URLs with these extensions |
+| `--include-ext=pdf,doc` | Only archive URLs ending in these extensions (a clean URL like `/about` has none) |
+| `--exclude-ext=zip,png` | Skip URLs ending in these extensions |
 | `--skip-patterns=PATTERN` | Skip URLs matching regex(es), comma-separated, repeatable |
 | `-f`, `--file=PATH` | Read URLs from a file (`-` for stdin) |
 | `--session=PATH` | Write the session file here (default: auto-generated in /tmp) |

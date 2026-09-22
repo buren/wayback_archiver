@@ -214,11 +214,11 @@ module WaybackArchiver
           parser.separator ''
           parser.separator 'Filter options:'
 
-          parser.on('--include-ext=pdf,doc', Array, 'Only archive URLs with these extensions') do |value|
+          parser.on('--include-ext=pdf,doc', Array, 'Only archive URLs ending in these extensions') do |value|
             opts.spn2_options[:include_ext] = value
           end
 
-          parser.on('--exclude-ext=zip,png', Array, 'Skip URLs with these extensions') do |value|
+          parser.on('--exclude-ext=zip,png', Array, 'Skip URLs ending in these extensions') do |value|
             opts.spn2_options[:exclude_ext] = value
           end
 

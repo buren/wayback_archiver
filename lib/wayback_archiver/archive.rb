@@ -24,8 +24,10 @@ module WaybackArchiver
     # @param limit [Integer] cap on URLs to submit (-1 for unlimited).
     # @param skip_urls [Set<String>, nil] URLs to omit (e.g. from a session file).
     # @param skip_patterns [Array<Regexp>, nil] URLs matching any pattern are skipped.
-    # @param include_ext [Array<String>, nil] only submit URLs with these extensions.
-    # @param exclude_ext [Array<String>, nil] omit URLs with these extensions.
+    # @param include_ext [Array<String>, nil] only submit URLs ending in these
+    #   extensions. A URL without an extension (https://example.com/about)
+    #   matches nothing, so it is not submitted.
+    # @param exclude_ext [Array<String>, nil] omit URLs ending in these extensions.
     # @param options [Hash] forwarded to SPN2 (capture_all:, capture_screenshot:, ...).
     # @yield [archive_result] called when a URL is accepted by SPN2 (interim
     #   result, +submitted?+ true) and again with the final result — guard with
@@ -92,8 +94,11 @@ module WaybackArchiver
     # @param limit [Integer] cap on URLs to discover/submit (-1 for unlimited).
     # @param skip_urls [Set<String>, nil] discovered URLs in this set are skipped.
     # @param skip_patterns [Array<Regexp>, nil] URLs matching any pattern are skipped.
-    # @param include_ext [Array<String>, nil] only crawl/submit URLs with these extensions.
-    # @param exclude_ext [Array<String>, nil] omit URLs with these extensions.
+    # @param include_ext [Array<String>, nil] only submit URLs ending in these
+    #   extensions. A URL without an extension (https://example.com/about)
+    #   matches nothing, so it is not submitted. Crawl traversal is unaffected:
+    #   the pages linking to the matches still have to be visited.
+    # @param exclude_ext [Array<String>, nil] omit URLs ending in these extensions.
     # @param skip_duplicates [Boolean] when true, pages with the same path and identical body are deduped.
     # @param options [Hash] forwarded to SPN2 (capture_all:, capture_screenshot:, ...).
     # @yield [archive_result] called when a URL is accepted by SPN2 (interim
