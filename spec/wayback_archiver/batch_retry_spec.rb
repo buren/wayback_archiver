@@ -6,19 +6,7 @@ require 'spec_helper'
 # a fake monotonic clock instead of the wall clock, so the specs can assert on
 # elapsed seconds without waiting for them.
 RSpec.describe WaybackArchiver::Archive, 'batch retry backoff' do
-  # Virtual clock: `sleep` advances it, `monotonic_now` reads it.
-  class SimulatedClock
-    attr_reader :now
-
-    def initialize
-      @now = 0.0
-    end
-
-    def advance(seconds)
-      @now += seconds.to_f
-    end
-  end
-
+  # `sleep` advances the clock, `monotonic_now` reads it.
   let(:clock) { SimulatedClock.new }
 
   before do
