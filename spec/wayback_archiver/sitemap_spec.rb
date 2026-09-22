@@ -99,4 +99,39 @@ RSpec.describe WaybackArchiver::Sitemap do
       expect(sitemap.urlset?).to eq(false)
     end
   end
+
+  describe '#valid?' do
+    it 'accepts a urlset' do
+      expect(described_class.new(File.read('spec/data/sitemap.xml'))).to be_valid
+    end
+
+    it 'accepts a sitemap index' do
+      expect(described_class.new(File.read('spec/data/sitemap_index.xml'))).to be_valid
+    end
+
+    it 'accepts a sitemaps.org plain-text URL list' do
+      expect(described_class.new("http://www.example.com/\nhttp://www.example.com/path")).to be_valid
+    end
+
+    # An HTML page is not well-formed XML, so it falls into the plain-text
+    # branch and gets line-scanned for URLs. Without a validity check,
+    # --sitemap pointed at a homepage reported "0 URLs" and exited 0.
+    it 'rejects an HTML page' do
+      html = "<!DOCTYPE html>\n<html><body><a href='/x'>x</a></body></html>"
+      expect(described_class.new(html)).not_to be_valid
+    end
+
+    it 'rejects an HTML page that happens to mention a URL' do
+      html = "<html><body>\nhttp://www.example.com/\n</body></html>"
+      expect(described_class.new(html)).not_to be_valid
+    end
+
+    it 'rejects a well-formed XML document that is not a sitemap' do
+      expect(described_class.new('<rss><channel></channel></rss>')).not_to be_valid
+    end
+
+    it 'rejects an empty document' do
+      expect(described_class.new('')).not_to be_valid
+    end
+  end
 end

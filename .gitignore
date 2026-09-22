@@ -17,3 +17,4 @@ test/version_tmp
 tmp
 TODO.md
 .byebug_history
+.claude/

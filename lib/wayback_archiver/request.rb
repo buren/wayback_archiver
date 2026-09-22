@@ -9,6 +9,7 @@ require 'wayback_archiver/response'
 
 module WaybackArchiver
   # Make HTTP requests
+  # @api private
   class Request
     # General error, something went wrong
     class Error < StandardError; end
@@ -19,7 +20,14 @@ module WaybackArchiver
     # Remote server responded with a HTTP error
     class HTTPError < ServerError; end
     # Remote server error
-    class ResponseError < ServerError; end
+    class ResponseError < ServerError
+      attr_reader :code
+
+      def initialize(message = nil, code: nil)
+        @code = code&.to_i
+        super(message)
+      end
+    end
     # Max redirects reached error
     class MaxRedirectError < ServerError; end
     # Remote server responded with an invalid redirect
@@ -32,6 +40,15 @@ module WaybackArchiver
 
     # Max number of redirects before an error is raised
     MAX_REDIRECTS = 10
+
+    # These headers belong to the original origin, not an arbitrary redirect target.
+    SENSITIVE_HEADERS = %w[authorization cookie proxy-authorization].freeze
+
+    # Default connection timeouts, generous enough for a slow page fetch or a
+    # screenshot download. Callers doing small, latency-sensitive lookups pass
+    # their own — see CDX, where a hung request used to cost a full minute.
+    DEFAULT_OPEN_TIMEOUT = 30
+    DEFAULT_READ_TIMEOUT = 60
 
     # Known request errors
     REQUEST_ERRORS = {
@@ -51,6 +68,9 @@ module WaybackArchiver
     # @param [String, URI] uri to retrieve.
     # @param max_redirects [Integer] max redirects (default: 10).
     # @param follow_redirects [Boolean] follow redirects (default: true).
+    # @param allowed_origin [String, URI, nil] restrict the initial URL and every
+    #   redirect to this scheme, host and port; URLs with userinfo are rejected.
+    #   Without a restriction, cross-origin redirects strip sensitive headers.
     # @example Get example.com
     #    Request.get('example.com')
     # @example Get http://example.com and follow max 3 redirects
@@ -64,27 +84,34 @@ module WaybackArchiver
     # @raise [MaxRedirectError] too many redirects, subclass of HTTPError (only raised if raise_on_http_error flag is true)
     # @raise [ResponseError] server responsed with a 4xx or 5xx HTTP status code, subclass of HTTPError (only raised if raise_on_http_error flag is true)
     # @raise [UnknownResponseCodeError] server responded with an unknown HTTP status code, subclass of HTTPError (only raised if raise_on_http_error flag is true)
-    # @raise [InvalidRedirectError] server responded with an invalid redirect, subclass of HTTPError (only raised if raise_on_http_error flag is true)
+    # @raise [InvalidRedirectError] invalid redirect or URL violates allowed_origin.
     def self.get(
       uri,
       max_redirects: MAX_REDIRECTS,
       raise_on_http_error: false,
-      follow_redirects: true
+      follow_redirects: true,
+      headers: {},
+      allowed_origin: nil,
+      open_timeout: DEFAULT_OPEN_TIMEOUT,
+      read_timeout: DEFAULT_READ_TIMEOUT
     )
       uri = build_uri(uri)
+      allowed_origin = build_uri(allowed_origin) if allowed_origin
 
       redirect_count = 0
       until redirect_count > max_redirects
-        WaybackArchiver.logger.debug "Requesting #{uri}"
-
-        http = Net::HTTP.new(uri.host, uri.port)
-        if uri.scheme == 'https'
-          http.use_ssl = true
-          http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+        if allowed_origin && (!same_origin?(uri, allowed_origin) || uri.userinfo)
+          # Do not log the rejected URL: it may itself contain credentials.
+          raise InvalidRedirectError, 'Request must stay on the allowed origin without URL credentials'
         end
 
+        WaybackArchiver.logger.debug "Requesting #{uri}"
+
+        http = build_http(uri, open_timeout: open_timeout, read_timeout: read_timeout)
+
         request = Net::HTTP::Get.new(uri.request_uri)
-        request['User-Agent'] = WaybackArchiver.user_agent
+        request['User-Agent'] = WaybackArchiver.config.user_agent
+        headers.each { |key, value| request[key] = value }
 
         result = perform_request(uri, http, request)
         response = result.response
@@ -101,12 +128,21 @@ module WaybackArchiver
         when :redirect
           return build_response(uri, response) unless follow_redirects
 
-          uri = build_redirect_uri(uri, response)
+          next_uri = build_redirect_uri(uri, response)
+          unless same_origin?(uri, next_uri)
+            # Keep the caller's hash intact and never restore credentials if a
+            # later hop returns to the original origin.
+            headers = headers.reject { |name, _| SENSITIVE_HEADERS.include?(name.to_s.downcase) }
+          end
+          uri = next_uri
           redirect_count += 1
           next
         when :error
           if raise_on_http_error
-            raise ResponseError, "Failed with response code: #{code} when requesting #{uri}"
+            raise ResponseError.new(
+              "Failed with response code: #{code} when requesting #{uri}",
+              code: code
+            )
           end
 
           return build_response(uri, response)
@@ -178,39 +214,66 @@ module WaybackArchiver
       response_body
     end
 
-    # Return whether a value is blank or not.
-    # @return [Boolean] whether the value is blank or not.
-    # @param [Object] value the value to check if its blank or not.
-    # @example Returns false for nil.
-    #    Request.blank?(nil)
-    # @example Returns false for empty string.
-    #    Request.blank?('')
-    # @example Returns false for string with only spaces.
-    #    Request.blank?('  ')
-    def self.blank?(value)
-      return true unless value
-      return true if value.strip.empty?
-
-      false
+    # Build a Net::HTTP instance for the given URI.
+    # @return [Net::HTTP]
+    # @param [URI] uri the target URI.
+    def self.build_http(uri, open_timeout: DEFAULT_OPEN_TIMEOUT, read_timeout: DEFAULT_READ_TIMEOUT)
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.open_timeout = open_timeout
+      http.read_timeout = read_timeout
+      if uri.scheme == 'https'
+        http.use_ssl = true
+        http.verify_mode = OpenSSL::SSL::VERIFY_PEER
+      end
+      http
     end
 
-    private
+    # Send a POST request.
+    # @return [Response] the http response representation.
+    # @param [String, URI] uri to post to.
+    # @param body [Hash] form-encoded body parameters.
+    # @param headers [Hash] HTTP headers.
+    def self.post(uri, body: {}, headers: {})
+      uri = build_uri(uri)
+      http = build_http(uri)
+
+      request = Net::HTTP::Post.new(uri.request_uri)
+      request['User-Agent'] = WaybackArchiver.config.user_agent
+      headers.each { |key, value| request[key] = value }
+      request.set_form_data(body)
+
+      result = perform_request(uri, http, request)
+      raise result.error if result.error
+
+      build_response(uri, result.response)
+    end
 
     def self.perform_request(uri, http, request)
       # TODO: Consider retrying on certain HTTP response codes, i.e 429, 503
       response = http.request(request)
       GETStruct.new(response)
     rescue *REQUEST_ERRORS.keys => e
-      build_request_error(uri, e, REQUEST_ERRORS.fetch(e.class))
+      error_klass = REQUEST_ERRORS.find { |k, _| e.is_a?(k) }&.last || ServerError
+      build_request_error(uri, e, error_klass)
     end
 
     def self.build_request_error(uri, error, error_wrapper_klass)
-      WaybackArchiver.logger.error "Request to #{uri} failed: #{error_wrapper_klass}, #{error.class}, #{error.message}"
+      WaybackArchiver.logger.debug "Request to #{uri} failed: #{error_wrapper_klass}, #{error.class}, #{error.message}"
 
       GETStruct.new(
         Response.new,
         error_wrapper_klass.new("#{error.class}, #{error.message}")
       )
     end
+
+    def self.same_origin?(left, right)
+      left.is_a?(URI::HTTP) && right.is_a?(URI::HTTP) &&
+        left.scheme == right.scheme && left.host && right.host &&
+        left.host.casecmp?(right.host) && left.port == right.port
+    end
+
+    # `private` has no effect on `def self.` methods — these were public
+    # despite sitting under one.
+    private_class_method :perform_request, :build_request_error, :same_origin?
   end
 end

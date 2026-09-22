@@ -6,7 +6,7 @@ RSpec.describe WaybackArchiver::Request do
       {
         'Accept' => '*/*',
         'Accept-Encoding' => 'gzip;q=1.0,deflate;q=0.6,identity;q=0.3',
-        'User-Agent' => WaybackArchiver.user_agent
+        'User-Agent' => WaybackArchiver.config.user_agent
       }
     end
 
@@ -92,6 +92,116 @@ RSpec.describe WaybackArchiver::Request do
       result = described_class.get('https://example.com', raise_on_http_error: false)
 
       expect(result.code).to eq('400')
+    end
+
+    it 'returns redirect response directly when follow_redirects is false' do
+      stub_request(:get, 'https://example.com/')
+        .to_return(status: 301, body: '', headers: { 'location' => 'https://example.com/new' })
+
+      result = described_class.get('https://example.com', follow_redirects: false)
+
+      expect(result.code).to eq('301')
+    end
+
+    it 'sends custom headers when provided' do
+      custom_headers = { 'Authorization' => 'LOW key:secret', 'Accept' => 'application/json' }
+
+      stub_request(:get, 'https://example.com/')
+        .with(headers: headers.merge(custom_headers))
+        .to_return(status: 200, body: 'ok')
+
+      result = described_class.get('https://example.com', headers: custom_headers)
+
+      expect(result.code).to eq('200')
+    end
+
+    context 'credentials across redirects' do
+      let(:private_headers) do
+        {
+          'aUtHoRiZaTiOn' => 'LOW key:secret',
+          'cOoKiE' => 'session=secret',
+          'pRoXy-AuThOrIzAtIoN' => 'Basic proxy-secret',
+          'Accept' => 'image/*'
+        }.freeze
+      end
+
+      ['/image', 'https://EXAMPLE.com:443/image'].each do |location|
+        it "preserves credentials on a same-origin redirect to #{location}" do
+          stub_request(:get, 'https://example.com/')
+            .to_return(status: 302, headers: { 'Location' => location })
+          stub_request(:get, 'https://example.com/image').to_return(body: 'image')
+
+          described_class.get('https://example.com/', headers: private_headers)
+
+          expect(WebMock).to have_requested(:get, 'https://example.com/image')
+            .with(headers: private_headers)
+        end
+      end
+
+      {
+        'a different host' => 'https://other.example/image',
+        'a different port' => 'https://example.com:8443/image',
+        'an HTTPS downgrade' => 'http://example.com/image',
+        'a scheme-relative URL' => '//other.example/image'
+      }.each do |description, location|
+        it "strips sensitive headers for #{description} without mutating the caller's headers" do
+          target = URI.join('https://example.com/', location).to_s
+          stub_request(:get, 'https://example.com/')
+            .to_return(status: 302, headers: { 'Location' => location })
+          stub_request(:get, target).to_return(body: 'image')
+
+          described_class.get('https://example.com/', headers: private_headers)
+
+          expect(WebMock).to have_requested(:get, 'https://example.com/')
+            .with(headers: private_headers)
+          expect(WebMock).to have_requested(:get, target).with { |request|
+            %w[Authorization Cookie Proxy-Authorization].all? { |key| !request.headers.key?(key) } &&
+              request.headers['Accept'] == 'image/*'
+          }
+          expect(private_headers['aUtHoRiZaTiOn']).to eq('LOW key:secret')
+        end
+      end
+
+      it 'does not restore credentials later in a redirect chain' do
+        stub_request(:get, 'https://example.com/')
+          .to_return(status: 302, headers: { 'Location' => 'https://other.example/image' })
+        stub_request(:get, 'https://other.example/image')
+          .to_return(status: 302, headers: { 'Location' => 'https://example.com/returned' })
+        stub_request(:get, 'https://example.com/returned').to_return(body: 'image')
+
+        described_class.get('https://example.com/', headers: private_headers)
+
+        expect(WebMock).to have_requested(:get, 'https://example.com/returned').with { |request|
+          %w[Authorization Cookie Proxy-Authorization].none? { |key| request.headers.key?(key) }
+        }
+      end
+    end
+
+    context 'restricted origin' do
+      it 'rejects an initial destination outside the allowed origin before making a request' do
+        target = 'https://other.example/image'
+        stub_request(:get, target).to_return(body: 'image')
+
+        expect do
+          described_class.get(target, allowed_origin: 'https://example.com',
+                                      headers: { 'Authorization' => 'LOW key:secret' })
+        end.to raise_error(described_class::InvalidRedirectError, /origin/i)
+        expect(WebMock).not_to have_requested(:get, target)
+      end
+
+      it 'checks every hop, including a redirect after a permitted relative redirect' do
+        stub_request(:get, 'https://example.com/')
+          .to_return(status: 302, headers: { 'Location' => '/image' })
+        stub_request(:get, 'https://example.com/image')
+          .to_return(status: 302, headers: { 'Location' => 'https://other.example/image' })
+        stub_request(:get, 'https://other.example/image').to_return(body: 'image')
+
+        expect do
+          described_class.get('https://example.com/', allowed_origin: 'https://example.com')
+        end.to raise_error(described_class::InvalidRedirectError, /origin/i)
+        expect(WebMock).to have_requested(:get, 'https://example.com/image')
+        expect(WebMock).not_to have_requested(:get, 'https://other.example/image')
+      end
     end
   end
 
@@ -180,21 +290,184 @@ RSpec.describe WaybackArchiver::Request do
     end
   end
 
-  describe '::blank?' do
-    it 'returns true if passed nil' do
-      expect(described_class.blank?(nil)).to eq(true)
+  describe '::build_http' do
+    it 'returns Net::HTTP instance' do
+      uri = URI.parse('https://example.com')
+      http = described_class.build_http(uri)
+      expect(http).to be_a(Net::HTTP)
     end
 
-    it 'returns true if passed empty string' do
-      expect(described_class.blank?('')).to eq(true)
+    it 'enables SSL for https URIs' do
+      uri = URI.parse('https://example.com')
+      http = described_class.build_http(uri)
+      expect(http.use_ssl?).to eq(true)
     end
 
-    it 'returns true if passed string with only spaces' do
-      expect(described_class.blank?('  ')).to eq(true)
+    it 'sets verify_mode to VERIFY_PEER for https' do
+      uri = URI.parse('https://example.com')
+      http = described_class.build_http(uri)
+      expect(http.verify_mode).to eq(OpenSSL::SSL::VERIFY_PEER)
     end
 
-    it 'returns false if passed non-string empty' do
-      expect(described_class.blank?('buren')).to eq(false)
+    it 'does not enable SSL for http URIs' do
+      uri = URI.parse('http://example.com')
+      http = described_class.build_http(uri)
+      expect(http.use_ssl?).to eq(false)
+    end
+
+    it 'sets open_timeout' do
+      uri = URI.parse('https://example.com')
+      http = described_class.build_http(uri)
+      expect(http.open_timeout).to eq(30)
+    end
+
+    it 'sets read_timeout' do
+      uri = URI.parse('https://example.com')
+      http = described_class.build_http(uri)
+      expect(http.read_timeout).to eq(60)
+    end
+  end
+
+  describe '::post' do
+    it 'sends a POST request and returns Response' do
+      stub_request(:post, 'https://example.com/save')
+        .with(
+          body: 'url=http%3A%2F%2Ftest.com',
+          headers: { 'Accept' => 'application/json' }
+        )
+        .to_return(status: 200, body: '{"job_id":"abc123"}', headers: {})
+
+      result = described_class.post(
+        'https://example.com/save',
+        body: { 'url' => 'http://test.com' },
+        headers: { 'Accept' => 'application/json' }
+      )
+      expect(result.code).to eq('200')
+      expect(result.body).to eq('{"job_id":"abc123"}')
+    end
+
+    it 'maps Timeout::Error to ServerError' do
+      allow_any_instance_of(Net::HTTP).to receive(:request).and_raise(Timeout::Error)
+
+      expect do
+        described_class.post('https://example.com/save', body: {}, headers: {})
+      end.to raise_error(described_class::ServerError)
+    end
+
+    it 'maps SocketError to ClientError' do
+      allow_any_instance_of(Net::HTTP).to receive(:request).and_raise(SocketError)
+
+      expect do
+        described_class.post('https://example.com/save', body: {}, headers: {})
+      end.to raise_error(described_class::ClientError)
+    end
+
+    it 'maps IOError to ClientError' do
+      allow_any_instance_of(Net::HTTP).to receive(:request).and_raise(IOError)
+
+      expect do
+        described_class.post('https://example.com/save', body: {}, headers: {})
+      end.to raise_error(described_class::ClientError)
+    end
+
+    it 'maps OpenSSL::SSL::SSLError to ServerError' do
+      allow_any_instance_of(Net::HTTP).to receive(:request).and_raise(OpenSSL::SSL::SSLError)
+
+      expect do
+        described_class.post('https://example.com/save', body: {}, headers: {})
+      end.to raise_error(described_class::ServerError)
+    end
+
+    it 'sends User-Agent header' do
+      stub_request(:post, 'https://example.com/save')
+        .with(headers: { 'User-Agent' => WaybackArchiver.config.user_agent })
+        .to_return(status: 200, body: 'ok')
+
+      described_class.post('https://example.com/save', body: {})
+    end
+
+    it 'sends custom headers' do
+      stub_request(:post, 'https://example.com/save')
+        .with(headers: { 'Authorization' => 'LOW key:secret' })
+        .to_return(status: 200, body: 'ok')
+
+      described_class.post('https://example.com/save', body: {}, headers: { 'Authorization' => 'LOW key:secret' })
+    end
+
+    it 'decompresses gzipped response body' do
+      gz = StringIO.new
+      writer = Zlib::GzipWriter.new(gz)
+      writer.write('compressed content')
+      writer.close
+
+      stub_request(:post, 'https://example.com/save')
+        .to_return(status: 200, body: gz.string)
+
+      result = described_class.post('https://example.com/save', body: {})
+      expect(result.body).to eq('compressed content')
+    end
+  end
+
+  describe '::get error handling' do
+    it 'maps IOError to ClientError' do
+      allow_any_instance_of(Net::HTTP).to receive(:request).and_raise(IOError)
+
+      expect { described_class.get('https://example.com') }
+        .to raise_error(described_class::ClientError)
+    end
+
+    it 'maps Zlib::Error to ServerError' do
+      allow_any_instance_of(Net::HTTP).to receive(:request).and_raise(Zlib::Error)
+
+      expect { described_class.get('https://example.com') }
+        .to raise_error(described_class::ServerError)
+    end
+
+    it 'includes error class in the error message' do
+      allow_any_instance_of(Net::HTTP).to receive(:request).and_raise(SocketError.new('getaddrinfo failed'))
+
+      expect { described_class.get('https://example.com') }
+        .to raise_error(described_class::ClientError, /SocketError/)
+    end
+  end
+
+
+  describe 'encapsulation' do
+    # `private` has no effect on `def self.` methods, so these were public.
+    it 'keeps request internals private' do
+      expect(described_class).not_to respond_to(:perform_request)
+      expect(described_class).not_to respond_to(:build_request_error)
+    end
+  end
+
+  describe 'per-call timeouts' do
+    # A CDX lookup is a tiny JSON read; the 60s default let a single hung
+    # request burn a minute, which made retrying transient failures far more
+    # expensive than the failures themselves.
+    it 'defaults to the global timeouts' do
+      http = nil
+      allow(Net::HTTP).to receive(:new).and_wrap_original do |orig, *args|
+        http = orig.call(*args)
+      end
+      stub_request(:get, 'http://example.com/').to_return(status: 200, body: 'ok')
+
+      described_class.get('http://example.com')
+
+      expect(http.open_timeout).to eq(30)
+      expect(http.read_timeout).to eq(60)
+    end
+
+    it 'accepts per-call overrides' do
+      http = nil
+      allow(Net::HTTP).to receive(:new).and_wrap_original do |orig, *args|
+        http = orig.call(*args)
+      end
+      stub_request(:get, 'http://example.com/').to_return(status: 200, body: 'ok')
+
+      described_class.get('http://example.com', open_timeout: 5, read_timeout: 15)
+
+      expect(http.open_timeout).to eq(5)
+      expect(http.read_timeout).to eq(15)
     end
   end
 end

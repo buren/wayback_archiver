@@ -1,6 +1,143 @@
 # Change Log
 
-## HEAD
+## v2.0.0
+
+**Breaking changes:**
+
+- **Authentication required** — the Wayback Machine SPN2 API no longer allows anonymous access. You must configure Internet Archive S3 API keys (`WAYBACK_ACCESS_KEY`/`WAYBACK_SECRET_KEY`) before archiving. Get your keys at [archive.org/account/s3.php](https://archive.org/account/s3.php). Read-only operations like `--check` (CDX API) still work without credentials.
+- Switched from SPN1 to **SPN2 API** — captures are now submitted via POST and polled for completion
+- `archive`, `crawl`, `sitemap`, `urls` now return **all results** (including failures), not just successes. Use `result.success?` to filter.
+- `ArchiveResult#success?` is now `false` for `submitted?` (interim acceptance) and `incomplete?` (final but unconfirmed) results in addition to errors. `cached?` and `skipped?` results count as successes (the URL is archived / was intentionally not re-archived) — use the `cached?`/`skipped?` predicates if you need to distinguish them.
+- **Discovery failures raise** — `WaybackArchiver.sitemap`/`.rss` (and `Sitemapper.urls`) raise `Request::Error` when the sitemap/feed is unreachable, instead of silently returning `[]` (previously indistinguishable from an empty sitemap). The `auto` strategy still falls back to crawling when no sitemap is found. The CLI reports discovery failures as a clean error with exit code 4.
+- **Unknown options raise** — `Archive.post`/`crawl`/`post_url` (and therefore `WaybackArchiver.archive`) raise `ArgumentError` for option keys that aren't SPN2 capture params or documented side-channel options. Previously a typo (`capture_screenshots:` instead of `capture_screenshot:`) was silently dropped.
+- **`ArchiveResult` pruned** — the vestigial v1 readers `code` (always `'200'`), `request_url` (never set), and `archived_url` (alias of `uri`) are removed. Use `uri` for the archived URL and `wayback_url` for the snapshot link.
+- **Positional strategy argument removed** — `WaybackArchiver.archive('example.com', :crawl)` now raises `ArgumentError`. Use the keyword form: `WaybackArchiver.archive('example.com', strategy: :crawl)`.
+- **Module-level setters removed** — settings now live on `WaybackArchiver.config`. The following no longer exist and raise `NoMethodError`: `WaybackArchiver.logger=`, `.default_logger!`, `.user_agent`/`.user_agent=`, `.concurrency=`, `.max_limit=`, `.respect_robots_txt`/`.respect_robots_txt=`, and `.adapter`/`.adapter=` (the swappable adapter extension point is gone; archiving always uses SPN2). See the migration table below.
+- **`--hosts` matches plain hostnames exactly** — every value used to be compiled to an unanchored regex, so `--hosts=example.com` also matched `example.com.attacker.net`, `notexample.com` and `exampleXcom`, letting the crawler wander off-site. A bare DNS name is now a literal; anything else is still a regex (`--hosts='.*\.example\.com'`).
+- **Unreachable sitemaps raise** — a sitemap URL returning 404/5xx used to parse as empty and report "0 URLs found", so a typo in `--sitemap` looked like a successful run. A dead child inside a sitemap index is still skipped with a warning rather than failing the whole index.
+- Default concurrency changed from 1 to 4
+- Ruby >= 3.3 required (3.1 and 3.2 are end-of-life)
+- SSL certificate verification enabled by default for every request this gem makes itself — sitemap and feed fetches, SPN2 submit/poll/status, CDX lookups and screenshot downloads. **Crawling is the exception**: page fetches during `--crawl` go through [Spidr](https://github.com/postmodern/spidr), which sets `VERIFY_NONE` on its own connections and offers no way to change it, so crawled pages are fetched without certificate verification. The URLs a crawl discovers should be treated as untrusted input.
+- Removed deprecated development dependencies (`coveralls`, `redcarpet`, `byebug`)
+
+**Migration from v1:**
+
+| v1 (removed) | v2 |
+| --- | --- |
+| `WaybackArchiver.logger = l` | `WaybackArchiver.config.logger = l` |
+| `WaybackArchiver.concurrency = n` | `WaybackArchiver.config.concurrency = n` |
+| `WaybackArchiver.max_limit = n` | `WaybackArchiver.config.max_limit = n` |
+| `WaybackArchiver.user_agent = s` | `WaybackArchiver.config.user_agent = s` |
+| `WaybackArchiver.respect_robots_txt = b` | `WaybackArchiver.config.respect_robots_txt = b` |
+| `WaybackArchiver.default_logger!` | (removed — logger defaults to `NullLogger`) |
+| `WaybackArchiver.adapter = a` | (removed — SPN2 is the only backend) |
+
+The `configure` block still works and is the recommended entry point:
+
+```ruby
+WaybackArchiver.configure do |config|
+  config.access_key = 'your-access-key'
+  config.secret_key = 'your-secret-key'
+  config.concurrency = 8
+end
+```
+
+CLI exit codes: `0` success, `1` finished with one or more failed or unconfirmed URLs, `2` invalid arguments, `3` credentials missing, `4` discovery or crawl failed, `130` interrupted (Ctrl+C).
+
+**New features:**
+
+- **Authentication** — configure Internet Archive S3 API keys via `access_key`/`secret_key` (programmatic, env vars, or CLI flags)
+- **SPN2 capture options** — `capture_all`, `capture_outlinks`, `capture_screenshot`, `force_get`, `skip_first_archive`, `if_not_archived_within`, `js_behavior_timeout`, `use_user_agent`, `delay_wb_availability`
+- **Screenshot download** — save full-page screenshots locally with `screenshot_dir:` option (requires auth). Files are named after the format archive.org actually returns, currently JPEG despite the SPN2 docs saying PNG.
+- **Rich results** — `ArchiveResult` now includes `job_id`, `timestamp`, `duration_sec`, `resources`, `outlinks`, `screenshot_url`, `original_url`, `status_ext`, `wayback_url`
+- **Cached capture detection** — when `if_not_archived_within` matches a recent snapshot, SPN2 returns immediately; these are tagged with `status_ext: 'cached'` and reported separately in the CLI summary
+- **Retry with backoff** — transient SPN2 errors (rate limits, service unavailable) are retried automatically with exponential backoff
+- **Expanded error classification** — 39 SPN2 error codes mapped to `:transient`, `:daily_limit`, and `:permanent` categories for smarter retry decisions
+- **Proactive rate limiter** — sliding-window rate limiting to stay within the authenticated SPN2 capture cap, paced at 6/min (upstream docs cite 7/min as of 2026-07-22; savepagenow cites 6/min from Internet Archive staff, so the lower figure is used). Was 12/min, long stale.
+- **Streaming crawl** — crawl strategy streams discovered URLs to SPN2 as they are found, instead of waiting for the crawl to finish. New listener events `on_url_discovered` and `on_crawl_complete` track progress.
+- **Smart crawl filtering** — crawler only yields archivable content types (HTML, PDF, XML, RSS, JSON, plain text, Word docs), automatically skipping images, CSS, JS, and fonts. SPN2 captures embedded assets as part of page snapshots.
+- **Batch status polling** — efficient bulk archiving via `/save/status` with multiple job IDs in one request
+- **CDX API integration** — `--check` queries the Wayback Machine CDX API to see if URLs are already archived; `--skip-archived[=TIMEDELTA]` skips URLs already in the archive (optionally within a time window)
+- **Accurate CDX results** — checks retain the exact original URL returned by CDX for playback links, expose blocked/malformed/request failure categories, and safely encode all query parameters
+- **Resumable sessions** — `--session=PATH` writes a progressive JSONL state file during archiving; `--resume=PATH` picks up where a previous run left off, skipping already-completed URLs
+- **File input** — `--file=PATH` (or `-f`) reads URLs from a file (one per line, `#` comments supported, `-` for stdin)
+- **RSS/Atom feed strategy** — `strategy: :rss` for archiving URLs from RSS and Atom feeds (not included in `:auto` since feeds typically contain only recent posts)
+- **Report export** — `--report=results.csv` or `--report=results.json` from the CLI
+- **Event listener system** — subscribe to lifecycle events (`on_resolved`, `on_batch_start`, `on_url_discovered`, `on_crawl_complete`, `on_submitted`, `on_completed`, `on_progress`, `on_waiting_for_slots`) for custom progress reporting. Subclass `NullListener`, pass a hash of procs, or use any object — unimplemented events are silently skipped.
+- **Configuration class** — all settings extracted into `WaybackArchiver::Configuration`, accessed via `WaybackArchiver.config`. The `configure` block and the read-only convenience delegates `WaybackArchiver.logger`/`.listener` still work; the module-level *setters* were removed (see Breaking changes above).
+- **SPN2 system/user status** — `--status` flag queries `GET /save/status/system` and `GET /save/status/user` and exits
+- **URL extension filtering** — `--include-ext=pdf,doc` archives only URLs ending in those extensions; `--exclude-ext=zip,png` skips them. The match is on the URL's own extension, and a clean URL such as `/about` has none: `--include-ext` will not select it, `--exclude-ext` will not drop it. Available via Ruby API as `include_ext:` / `exclude_ext:` parameters.
+- **Outlinks availability** — `--outlinks-availability` returns last-capture timestamps for outlinks
+- **TTY progress bar** — sticky two-line footer with adaptive progress bar, ETA (exponential moving average), and state indicator (Submitting/Polling/Waiting). Automatically hidden on non-TTY output.
+- **Connection error retry** — transient connection errors (timeouts, refused, reset) retried with exponential backoff (up to 5 attempts)
+- **Ctrl+C handling** — graceful interrupt shows summary of progress so far and a `--resume` command to continue
+- **Dynamic chunk sizing** — batch submissions adapt chunk size based on `check_user_status` response and available capture slots
+- **List URLs mode** — `--list-urls` discovers URLs using any strategy (crawl, sitemap, RSS, auto) and prints them one per line without archiving. Useful for auditing site contents, previewing before archiving, or piping to other tools. Supports all filter options (`--skip-patterns`, `--include-ext`, `--exclude-ext`, `--limit`). Logging is suppressed by default for clean pipe-friendly output.
+- **Crawl deduplication** — pages with the same URL path and identical body content are automatically skipped during crawl, preventing infinite pagination from flooding SPN2 with duplicate submissions. Opt out with `--no-skip-duplicates` or `skip_duplicates: false`. New `on_duplicate_skipped` listener event and duplicate count in CLI summary.
+- **Crawl HTTP filtering** — non-success pages (404, 500, etc.) discovered during crawl are now filtered out before archiving instead of being submitted to SPN2 and failing predictably.
+- **Skip patterns** — `--skip-patterns=PATTERN` accepts comma-separated regex patterns to exclude matching URLs from archiving. Works for all strategies. Ruby API: `skip_patterns: [/pattern/]`.
+- **CLI improvements** — summary after archiving (`--[no-]summary`), `--quiet` mode, `--rss` flag, input validation for concurrency/limit/timeout/host patterns, startup banner showing limit/hosts/skip-archived, human-readable duration in summary (h/m/s)
+- **`Request.post`** — new HTTP POST support in the request layer
+- **GitHub Actions CI** — replaced Travis CI, testing Ruby 3.3, 3.4 and 4.0
+- **Examples directory** — runnable scripts for all common use cases
+- **`bin/console`** — IRB console with the gem pre-loaded for local development
+
+**Bug fixes / internal:**
+
+- **Recover accepted jobs on resume** — saved job IDs are batch-polled before new discovery or submissions, instead of treating acceptance as confirmed success. Terminal outcomes are persisted and transient capture errors follow bounded retries. Missing/expired statuses remain explicitly incomplete, with no automatic duplicate submission.
+- **Unconfirmed results are not success** — final polling timeouts now reach callbacks, session files, and JSON/CSV/JSONL reports as `incomplete?` results with their job IDs intact. The CLI reports them separately, exits 1, and retains automatic recovery sessions. Status polling backs off after errors, including throttling.
+- **Screenshot credential protection** — authenticated screenshot downloads now require `https://web.archive.org` on port 443 for the initial request and every redirect, rejecting insecure or off-origin URLs before connecting. The shared request layer also strips authorization, cookie and proxy-authorization headers when a redirect changes scheme, host or port. Rejected screenshots remain best-effort and do not fail successful captures.
+- **Quieter retry logging** — intermediate retry attempts (connection errors, transient SPN2 errors, poll failures) now log at debug level instead of WARN. Only final failures (retry limit exceeded) log at ERROR.
+- **Increased retry limit** — per-URL retry cap for transient errors increased from 3 to 5, improving tolerance for intermittent SPN2 gateway timeouts and connection refused errors.
+- **Batch retries wait between attempts** — transient submit and poll errors in batch mode (every CLI run, `Archive.post` and `Archive.crawl`) were re-queued straight into the next chunk, so a URL could burn all five attempts within milliseconds of the first failure — long before a service having a bad minute could recover. Each retry of a URL now waits 2s, 4s, 8s, 16s and 32s (plus jitter), while the rest of the run keeps submitting and polling. A URL that exhausts its retries is reported with the transient error that kept failing, so it lands in the right bucket of the summary's failure breakdown instead of an uncategorised "retry limit exceeded".
+- `--limit` now counts URLs actually archived for every strategy. During crawl it was handed to the crawler, which counts *pages visited* — a link to a .zip or a dead link burned a slot, so `--limit 100` archived fewer than 100. It is also applied after the skip/extension filters, matching `Archive.post`.
+- `--limit` is now honoured by `--list-urls` and `--check` for the sitemap, rss and urls strategies (previously only crawl)
+- Duplicate URLs are collapsed before submission — a sitemap index with overlapping children no longer spends capture slots on repeats
+- Fixed `--include-ext`/`--exclude-ext` starving a crawl: the filters were passed to the crawler, which applies them to traversal, so `--include-ext pdf --crawl` refused to visit the HTML pages linking to the PDFs and archived nothing
+- Stopped polling the SPN2 user-status endpoint ~5x/second while a streaming crawl was still discovering URLs
+- CDX timestamps are formatted in UTC; `--skip-archived=TIMEDELTA` was shifting its window by the local UTC offset
+- A crawler failure part-way through a streaming crawl no longer discards the URLs already archived — `Archive.crawl` raises `CrawlError`, which carries the completed results, and the CLI prints the summary and a resume command before exiting 4
+- Listener callbacks are isolated: an exception from a listener is logged instead of silently dropping a URL (pool workers) or aborting the run (poll loop)
+- `CDX.rate_limiter` construction is serialised behind a mutex, and an unexpected exception in a CDX worker now records an errored `CheckResult` instead of dropping the URL from the results
+- Screenshot downloads no longer stall the poll loop: `--screenshot-dir` fans the batch out instead of fetching one PNG at a time on the main thread
+- Blank credentials (`export WAYBACK_ACCESS_KEY=`) count as missing instead of sending `Authorization: LOW :`
+- The progress footer clears every physical row it occupies, so a progress line wider than the terminal no longer leaves debris or erases output above it
+- Batch success/error counters use atomic integers rather than a non-atomic `hash[k] += 1` from pool workers
+- `Request.perform_request`/`build_request_error` are actually private (`private` has no effect on `def self.` methods)
+- The gem packages its README, changelog and license
+- `--sitemap` verifies the fetched document actually is a sitemap. A 200 response that isn't one (a homepage, an SPA catch-all route) parsed as an empty document and reported "0 URL(s) discovered" with exit 0; it now fails with a clear message and exit 4. Autodiscovery keeps probing the remaining common locations instead of stopping at the first 200, and a non-sitemap child of a sitemap index is skipped with a warning.
+- **CDX requests are rate limited to 24/minute** (was 15/*second*). Internet Archive's current CDX hard limit is 30/min — the reference Python client reduced its default to 24/min in June 2026 "to match the actual hard limits now set on Wayback Machine servers". Going over earns 429s, then an hour-long IP firewall block that doubles on repeat. The old value was 30x the ceiling. The limiter is process-wide, so it also caps the total rate across `--concurrency` workers.
+- **Screenshot downloads actually work.** `Screenshot.download` fetched SPN2's `screenshot` field directly, but that URL is the address the image was archived *under*, not a live endpoint — it returns 404, as does the example in the official SPN2 docs, so no screenshot was ever retrieved. The image is a separate Wayback capture and is now fetched through the replay path for the capture's timestamp. Downloads also raise on HTTP errors and verify the image signature before writing (a 404 HTML page used to be saved as a `.png` and logged as success), pick the extension from the real format, and send the credentials the method already required you to configure.
+- CDX lookups retry transient failures (408/425/429/5xx and connection errors) with exponential backoff, instead of getting one shot. archive.org's CDX endpoint sheds load often enough that `--check` reported "unknown" for most URLs and `--skip-archived` re-archived URLs already in the archive.
+- `Request.get` accepts per-call `open_timeout`/`read_timeout`; CDX uses 10s/15s so one hung lookup can't sit on the global 60s read timeout. Defaults are unchanged for every other caller.
+- CLI output reads from the reader's side: the progress footer's `Polling...` is now `Waiting for captures to finish...` (with `Submitting URLs...` and `Waiting for a free capture slot...` alongside it), and sitemap autodiscovery is down to two lines — one as it starts looking, one for the outcome. It no longer logs its expected "no sitemap here" probe at ERROR, and the per-location attempts (robots.txt plus six common paths) moved to debug.
+- A rejected status check no longer kills a healthy run. `check_user_status` maps HTTP 401/403 to `AuthenticationError`, which isn't a `Request::Error` and so escaped `BatchSubmitter`'s slot check — archive.org rejects that endpoint under load, so a run that was archiving fine would stream a few `ok` lines, print "credentials were rejected" and exit 3, dropping the remaining URLs with no summary. It is now treated as transient once anything has succeeded, and still fails fast when nothing has.
+- A finite `config.max_limit` no longer truncates crawl discovery before filtering. `Archive.crawl` enforces the limit itself, after the skip/extension filters, but stopped passing `limit:` to the collector — whose default is `config.max_limit` — so a global limit reintroduced the very ordering the move was meant to fix. With `config.max_limit = 1` and `include_ext: ['pdf']`, a homepage linking to a PDF archived nothing.
+- A failed session or report write no longer loses the result. `record_result` notified the caller's block before retaining the result, so a callback that raised — a full disk, a buggy block — took the URL out of the results while the counters had already moved, reporting "1 of 0 URL(s) posted" and exiting 0 with the automatic session deleted. Results are now retained first and observers notified afterwards, interim notifications included; the CLI reports a persistence failure, keeps the session and exits nonzero.
+- `--capture-all` and `--no-skip-duplicates` are carried into discovery for every mode. They decide which URLs are *eligible*, but the shared discovery API took only strategy/hosts/limit, so `--list-urls`, `--check` and `--skip-archived` reported on a different set of URLs than an archiving run with the same flags would have touched — `--crawl --capture-all --skip-archived` dropped its 4xx/5xx pages before they were ever checked.
+- Ctrl+C no longer waits on a crawler stuck in a socket read. Closing the queue only stops the crawler at its next push, so an interrupt landing mid-request printed the resume message and left the process running — crawl reads wait up to 60s. The crawler now gets a short grace period to wind down and is terminated if it doesn't.
+- The generated resume command keeps positional URLs given alongside `--file`, which it previously dropped — resuming then silently archived less than the original run. A run reading from stdin (`--file=-`) still cannot be replayed; the piped list is gone.
+- Documentation and examples corrected: the streaming-results example no longer reports every URL as failed the moment it is queued (it lacked the `submitted?` guard and shared a counter across threads), the basic example no longer calls credentials optional, the outlink example authenticates its status polls and gives up rather than looping forever, the two-phase example uses `--list-urls` instead of spending a CDX lookup per URL, the screenshot example no longer presents the raw `screenshot` field as a fetchable URL, and the README's host-pattern example is quoted and anchored.
+- `--list-urls` prints its summary to stderr, so the documented `--list-urls > urls.txt` / `--file=urls.txt` pipeline no longer writes `N URL(s) discovered` into the file as a bogus URL.
+- `--limit` deduplicates before truncating during discovery: a sitemap listing `a, a, b` with `--limit=2` returned a single URL.
+- Automatically generated session files carry a random suffix. Two runs starting in the same second shared one append-only file with independent mutexes, and either could delete the other's recovery data.
+- Screenshot filenames include a digest of the URL. `https://example.com/a/b` and `https://example.com/a_b` collapsed to the same name and the second download silently overwrote the first.
+- Reports export the failure reason wherever it landed. A polled failure stores its message in `response_error` while exports only read `error`, so a failed result could be written with every error field null.
+- A crawl that cannot reach its seed now fails instead of reporting an empty success. Spidr catches DNS, timeout, connection and TLS errors internally and emits failed-URL events, which nothing subscribed to, so an unreachable host exited 0 with zero URLs and no error. Failures later in the traversal keep the URLs already found and warn instead.
+- `--rss` rejects a response that isn't a feed, the way `--sitemap` already did. An HTML login page or truncated feed parsed to an empty list and exited 0; a valid feed with no entries is still an empty success.
+- Crawl deduplication remembers every body seen for a path rather than only the first, so a path serving A, B, B no longer archives the second B as new.
+- Fixed CLI typo: `Verboes` → `Verbose`
+- Removed duplicate `-h` flag in CLI
+- Fixed `:auto` strategy not passing `limit:` to all code paths
+- Fixed `:auto` strategy not passing `hosts:` to crawl
+- Fixed crawler not following redirects to different hosts
+- Fixed `Sitemapper.autodiscover` crash on URLs without scheme
+- Fixed `poll_statuses` Array response causing lost results and bloated pending list
+- Re-queue transient poll errors for fresh submit in batch mode
+- Route log output through progress renderer to prevent footer corruption
+- Added `logger`, `rss`, `csv` as explicit gem dependencies (removed from Ruby stdlib)
+- Replaced vendored `robots.rb` with `webrobots` gem
+- Refactored CLI into focused classes (`CLI`, `CLIListener`, `CLI::OptionParser`, `CLI::ProgressRenderer`, `CLI::Summary`)
 
 ## v1.5.0
 

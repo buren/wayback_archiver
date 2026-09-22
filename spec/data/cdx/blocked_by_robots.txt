@@ -1,0 +1,1 @@
+org.archive.util.io.RuntimeIOException: org.archive.wayback.exception.RobotAccessControlException: Blocked by robots.txt

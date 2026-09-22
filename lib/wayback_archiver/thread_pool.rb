@@ -2,6 +2,7 @@ require 'concurrent'
 
 module WaybackArchiver
   # Thread pool
+  # @api private
   class ThreadPool
     # Build a thread pool
     # @return [Concurrent::FixedThreadPool/Concurrent::ImmediateExecutor] an instance of a concurrent thread pool

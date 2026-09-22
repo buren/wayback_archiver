@@ -5,7 +5,7 @@ RSpec.describe WaybackArchiver::Sitemapper do
     {
       'Accept' => '*/*',
       'Accept-Encoding' => 'gzip;q=1.0,deflate;q=0.6,identity;q=0.3',
-      'User-Agent' => WaybackArchiver.user_agent
+      'User-Agent' => WaybackArchiver.config.user_agent
     }
   end
 
@@ -15,15 +15,23 @@ RSpec.describe WaybackArchiver::Sitemapper do
   let(:sitemap_xml) { File.read('spec/data/sitemap.xml') }
 
   describe '::autodiscover' do
+    context 'with a URL missing the scheme' do
+      it 'normalizes the URL before querying robots.txt' do
+        stub_request(:get, 'http://www.example.com/robots.txt')
+          .to_return(status: 200, body: robots_txt, headers: { 'Content-Type' => 'text/plain' })
+
+        stub_request(:get, 'http://www.example.com/sitemap.xml')
+          .with(headers: headers)
+          .to_return(status: 200, body: sitemap_xml, headers: {})
+
+        expect(described_class.autodiscover('www.example.com')).to eq(%w[http://www.example.com/])
+      end
+    end
+
     context 'with found Sitemap location in robots.txt' do
       it 'fetches those Sitemap(s) and returns all present URLs' do
-        # The robots gem doesn't play nice with the WebMock so we can't test this until
-        # https://github.com/fizx/robots/pull/9 is merged.
-        # Until then we're gonna use rspec-mocks
-        # stub_request(:get, 'http://www.example.com/robots.txt').
-        #   with(headers: headers).
-        #   to_return(status: 200, body: robots_txt, headers: {})
-        allow_any_instance_of(Robots).to receive(:other_values).and_return('Sitemap' => %w[http://www.example.com/sitemap.xml])
+        stub_request(:get, 'http://www.example.com/robots.txt')
+          .to_return(status: 200, body: robots_txt, headers: { 'Content-Type' => 'text/plain' })
 
         stub_request(:get, 'http://www.example.com/sitemap.xml')
           .with(headers: headers)
@@ -33,7 +41,11 @@ RSpec.describe WaybackArchiver::Sitemapper do
       end
 
       it 'returns empty list on request error' do
-        allow_any_instance_of(Robots).to receive(:other_values).and_raise(WaybackArchiver::Request::Error)
+        stub_request(:get, 'http://www.example.com/robots.txt')
+          .to_return(status: 200, body: robots_txt, headers: { 'Content-Type' => 'text/plain' })
+
+        stub_request(:get, 'http://www.example.com/sitemap.xml')
+          .to_raise(WaybackArchiver::Request::Error)
 
         expect(described_class.autodiscover('http://www.example.com')).to be_empty
       end
@@ -43,8 +55,7 @@ RSpec.describe WaybackArchiver::Sitemapper do
       it 'returns all present URLs if a Sitemap is found' do
         base_url = 'http://www.example.com'
         stub_request(:get, "#{base_url}/robots.txt")
-          .with(headers: headers)
-          .to_return(status: 200, body: robots_txt, headers: {})
+          .to_return(status: 200, body: "User-agent: *\nAllow: /\n", headers: { 'Content-Type' => 'text/plain' })
 
         sitemap_path = WaybackArchiver::Sitemapper::COMMON_SITEMAP_LOCATIONS.first
 
@@ -56,12 +67,26 @@ RSpec.describe WaybackArchiver::Sitemapper do
       end
     end
 
+    context 'when a network error occurs during common location probing' do
+      it 'rescues Request::Error and returns empty array' do
+        base_url = 'http://www.example.com'
+        stub_request(:get, "#{base_url}/robots.txt")
+          .to_return(status: 200, body: "User-agent: *\nAllow: /\n", headers: { 'Content-Type' => 'text/plain' })
+
+        # First common location raises a network error
+        allow(WaybackArchiver::Request).to receive(:get)
+          .with(/sitemap/, anything)
+          .and_raise(WaybackArchiver::Request::ServerError, 'connection reset')
+
+        expect(described_class.autodiscover(base_url)).to eq([])
+      end
+    end
+
     context 'at the provided URL' do
       it 'returns all present URLs if a Sitemap is found' do
         base_url = 'http://www.example.com'
         stub_request(:get, "#{base_url}/robots.txt")
-          .with(headers: headers)
-          .to_return(status: 200, body: robots_txt, headers: {})
+          .to_return(status: 200, body: "User-agent: *\nAllow: /\n", headers: { 'Content-Type' => 'text/plain' })
 
         WaybackArchiver::Sitemapper::COMMON_SITEMAP_LOCATIONS.each do |sitemap_path|
           stub_request(:get, [base_url, sitemap_path].join('/'))
@@ -131,10 +156,205 @@ RSpec.describe WaybackArchiver::Sitemapper do
       end
     end
 
-    it 'returns empty list on request error' do
+    # A network error must propagate: returning [] made 'site unreachable'
+    # indistinguishable from 'empty sitemap' for library callers. The auto
+    # cascade still falls back to crawl — autodiscover keeps its rescue.
+    it 'raises on request error' do
       allow(WaybackArchiver::Request).to receive(:get).and_raise(WaybackArchiver::Request::Error)
 
-      expect(described_class.urls(url: 'http://www.example.com')).to be_empty
+      expect { described_class.urls(url: 'http://www.example.com') }
+        .to raise_error(WaybackArchiver::Request::Error)
+    end
+  end
+
+  describe 'unreachable sitemaps' do
+    # Regression: a 404 body was parsed as empty XML and reported as
+    # "0 URLs found", so a typo in --sitemap looked like a successful run.
+    it 'raises when the sitemap URL returns an HTTP error' do
+      stub_request(:get, 'http://example.com/sitemap.xml').to_return(status: 404, body: 'not found')
+
+      expect { described_class.urls(url: 'http://example.com/sitemap.xml') }
+        .to raise_error(WaybackArchiver::Request::ResponseError)
+    end
+
+    it 'skips an unreachable child of a sitemap index instead of failing the lot' do
+      index = <<~XML
+        <?xml version="1.0" encoding="UTF-8"?>
+        <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <sitemap><loc>http://example.com/good.xml</loc></sitemap>
+          <sitemap><loc>http://example.com/dead.xml</loc></sitemap>
+        </sitemapindex>
+      XML
+      good = <<~XML
+        <?xml version="1.0" encoding="UTF-8"?>
+        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <url><loc>http://example.com/page</loc></url>
+        </urlset>
+      XML
+      stub_request(:get, 'http://example.com/sitemap_index.xml').to_return(status: 200, body: index)
+      stub_request(:get, 'http://example.com/good.xml').to_return(status: 200, body: good)
+      stub_request(:get, 'http://example.com/dead.xml').to_return(status: 500, body: 'oops')
+
+      expect(described_class.urls(url: 'http://example.com/sitemap_index.xml'))
+        .to eq(%w[http://example.com/page])
+    end
+
+    it 'falls back to crawling when autodiscovery hits an unreachable sitemap' do
+      stub_request(:get, 'http://example.com/robots.txt').to_return(status: 404, body: '')
+      stub_request(:get, %r{http://example\.com/sitemap}).to_return(status: 404, body: '')
+      stub_request(:get, 'http://example.com').to_return(status: 404, body: '')
+
+      expect(described_class.autodiscover('http://example.com')).to eq([])
+    end
+  end
+
+  describe 'sitemap validation' do
+    let(:urlset) do
+      <<~XML
+        <?xml version="1.0" encoding="UTF-8"?>
+        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <url><loc>http://example.com/page</loc></url>
+        </urlset>
+      XML
+    end
+    let(:html) { "<!DOCTYPE html>\n<html><body>homepage</body></html>" }
+
+    # Regression: a 200 that isn't a sitemap parsed as an empty document and
+    # reported "0 URL(s) discovered" with exit 0, so a mistyped --sitemap
+    # target looked like a successful run that archived nothing.
+    it 'raises when the fetched document is not a sitemap' do
+      stub_request(:get, 'http://example.com/').to_return(status: 200, body: html)
+
+      expect { described_class.urls(url: 'http://example.com/') }
+        .to raise_error(WaybackArchiver::Sitemapper::InvalidSitemapError, /not a sitemap/i)
+    end
+
+    it 'keeps probing common locations past a 200 that is not a sitemap' do
+      stub_request(:get, 'http://example.com/robots.txt').to_return(status: 404, body: '')
+      stub_request(:get, %r{http://example\.com/sitemap[_-]index\.xml(\.gz)?$})
+        .to_return(status: 200, body: html) # SPA catch-all returns the homepage
+      stub_request(:get, 'http://example.com/sitemap.xml.gz').to_return(status: 404, body: '')
+      stub_request(:get, 'http://example.com/sitemap.xml').to_return(status: 200, body: urlset)
+
+      expect(described_class.autodiscover('http://example.com'))
+        .to eq(%w[http://example.com/page])
+    end
+
+    it 'falls back to crawling when no candidate is a real sitemap' do
+      stub_request(:get, 'http://example.com/robots.txt').to_return(status: 404, body: '')
+      stub_request(:get, %r{http://example\.com/sitemap}).to_return(status: 200, body: html)
+      stub_request(:get, 'http://example.com').to_return(status: 200, body: html)
+
+      expect(described_class.autodiscover('http://example.com')).to eq([])
+    end
+
+    it 'skips an index child that is not a sitemap' do
+      index = <<~XML
+        <?xml version="1.0" encoding="UTF-8"?>
+        <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <sitemap><loc>http://example.com/good.xml</loc></sitemap>
+          <sitemap><loc>http://example.com/bogus.xml</loc></sitemap>
+        </sitemapindex>
+      XML
+      stub_request(:get, 'http://example.com/index.xml').to_return(status: 200, body: index)
+      stub_request(:get, 'http://example.com/good.xml').to_return(status: 200, body: urlset)
+      stub_request(:get, 'http://example.com/bogus.xml').to_return(status: 200, body: html)
+
+      expect(described_class.urls(url: 'http://example.com/index.xml'))
+        .to eq(%w[http://example.com/page])
+    end
+  end
+
+  describe 'autodiscovery logging' do
+    before do
+      stub_request(:get, 'http://example.com/robots.txt').to_return(status: 404, body: '')
+      stub_request(:get, %r{http://example\.com/sitemap}).to_return(status: 404, body: '')
+    end
+
+    # Regression: the auto cascade logged its expected "no sitemap here" probe
+    # at ERROR, so a perfectly successful run shouted
+    #   ERROR: Error raised when requesting http://example.com,
+    #   WaybackArchiver::Request::ResponseError, Failed with response code: 404
+    #   when requesting https://www.other.example/sv
+    # — wrong level, the class name in the text, the message said it twice, and
+    # the URL named was the redirect target rather than the one asked for.
+    it 'reports a missing sitemap at info level, not error' do
+      stub_request(:get, 'http://example.com').to_return(status: 404, body: '')
+
+      described_class.autodiscover('http://example.com')
+
+      expect(WaybackArchiver.logger.error_log).to be_empty
+      expect(WaybackArchiver.logger.info_log).to include(
+        'No Sitemap found at http://example.com (HTTP 404) - falling back to crawling'
+      )
+    end
+
+    it 'names the requested URL, not the redirect target' do
+      stub_request(:get, 'http://example.com')
+        .to_return(status: 301, headers: { 'Location' => 'https://elsewhere.example/sv' })
+      stub_request(:get, 'https://elsewhere.example/sv').to_return(status: 404, body: '')
+
+      described_class.autodiscover('http://example.com')
+
+      line = WaybackArchiver.logger.info_log.grep(/No Sitemap found/).first
+      expect(line).to include('http://example.com')
+      expect(line).not_to include('elsewhere.example')
+    end
+
+    it 'describes a non-sitemap response without a stack of class names' do
+      stub_request(:get, 'http://example.com')
+        .to_return(status: 200, body: '<!doctype html><html><body>hi</body></html>')
+
+      described_class.autodiscover('http://example.com')
+
+      expect(WaybackArchiver.logger.error_log).to be_empty
+      expect(WaybackArchiver.logger.info_log).to include(
+        'No Sitemap found at http://example.com (not a sitemap) - falling back to crawling'
+      )
+    end
+  end
+
+  describe 'autodiscovery verbosity' do
+    before do
+      stub_request(:get, 'http://example.com/robots.txt').to_return(status: 404, body: '')
+      stub_request(:get, %r{http://example\.com/sitemap}).to_return(status: 404, body: '')
+      stub_request(:get, 'http://example.com').to_return(status: 404, body: '')
+    end
+
+    # Probing robots.txt plus six common locations narrated one line each was
+    # most of what a user saw on any site without a sitemap.
+    it 'narrates the probe once at info level, not once per location' do
+      described_class.autodiscover('http://example.com')
+
+      probing = WaybackArchiver.logger.info_log.grep(/Looking for/)
+      expect(probing.length).to eq(1)
+      expect(probing.first).to eq('Looking for a Sitemap for http://example.com')
+    end
+
+    it 'keeps the per-location detail at debug level' do
+      described_class.autodiscover('http://example.com')
+
+      debug = WaybackArchiver.logger.debug_log
+      expect(debug).to include('Looking for Sitemap(s) in /robots.txt')
+      expect(debug).to include('Looking for Sitemap at sitemap.xml')
+      expect(debug).to include('Looking for Sitemap at sitemap_index.xml.gz')
+      expect(debug.grep(/Looking for Sitemap at/).length)
+        .to eq(described_class::COMMON_SITEMAP_LOCATIONS.length + 1) # + the URL itself
+    end
+
+    it 'still announces the outcome at info level' do
+      urlset = <<~XML
+        <?xml version="1.0" encoding="UTF-8"?>
+        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <url><loc>http://example.com/page</loc></url>
+        </urlset>
+      XML
+      stub_request(:get, 'http://example.com/sitemap.xml').to_return(status: 200, body: urlset)
+
+      described_class.autodiscover('http://example.com')
+
+      expect(WaybackArchiver.logger.info_log)
+        .to include('Sitemap found at http://example.com/sitemap.xml')
     end
   end
 end

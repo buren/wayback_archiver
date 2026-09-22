@@ -3,6 +3,7 @@ require 'rexml/document'
 
 module WaybackArchiver
   # Parse Sitemaps, https://www.sitemaps.org
+  # @api private
   class Sitemap
     attr_reader :document
 
@@ -65,7 +66,31 @@ module WaybackArchiver
       root_name == 'urlset'
     end
 
+    # Whether this document actually is a sitemap: a <urlset>, a
+    # <sitemapindex>, or the sitemaps.org plain-text format.
+    #
+    # Worth checking before trusting {#urls}. An HTML page isn't well-formed
+    # XML, so it lands in the plain-text branch and gets line-scanned for
+    # anything URL-shaped — which silently turns "this isn't a sitemap" into
+    # "this sitemap is empty", or worse, into a handful of bogus URLs.
+    # @return [Boolean]
+    def valid?
+      return true if urlset? || sitemap_index?
+      return false unless plain_document?
+
+      plain_text_sitemap?
+    end
+
     private
+
+    # The sitemaps.org plain-text format is one URL per line and nothing
+    # else, so every non-blank line has to be an http(s) URL.
+    def plain_text_sitemap?
+      lines = @contents.to_s.each_line.map(&:strip).reject(&:empty?)
+      return false if lines.empty?
+
+      lines.all? { |line| valid_url?(line) }
+    end
 
     def valid_url?(url)
       uri = URI.parse(url)
