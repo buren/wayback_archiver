@@ -2,6 +2,9 @@ require 'simplecov'
 SimpleCov.start do
   # Without this the specs count themselves and inflate the figure.
   add_filter '/spec/'
+  # examples_spec.rb loads the example scripts into this process, which would
+  # otherwise fold them into the library's coverage figure.
+  add_filter '/examples/'
 end
 
 Dir['./spec/support/**/*.rb'].each { |file| require file }
